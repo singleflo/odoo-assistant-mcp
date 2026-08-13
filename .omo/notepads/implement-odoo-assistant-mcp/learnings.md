@@ -12,6 +12,17 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Credentials handling**: ODOO_BASE_URL + ODOO_API_KEY for this dev instance are held by the orchestrator (Atlas) in-session and passed directly into delegation prompts ONLY for todos that need live access (T16, and any live smoke check) — NEVER written to a repo-tracked file, NEVER passed to Wave-1/Wave-2/Wave-3 subagents that don't need them. `.gitignore` (T1) additionally excludes `.env*` and `*.local` as defense in depth.
 - **User explicit request**: initialize the GitHub repo now (not deferred to T24) and commit periodically. T1 extended accordingly (git init → gitignore → pre-commit → first commit → `gh repo create --push`). T24 still owns the PyPI/MCP-Registry OIDC prerequisites only (those genuinely need human 2FA/web UI).
 
+## [2026-08-13T15:30Z] Task: references audit/scrub public bundle
+- Created `references_public/` with the seven generic methodology files: `SKILL.md`, `writing.md`, `deletion.md`, `documents.md`, `collaboration.md`, `recipes.md`, and `payments.md`.
+- Scrubbed instance identifiers, real business figures, partner/user names, URLs, payment providers, invoice references, and in-house module identifiers while preserving the teaching rules, query patterns, safety guidance, and verification methodology.
+- Excluded `BUILD-STATE.md` and all 17 instance-generated module references; the original `references/` directory remains unchanged.
+- Verification is recorded in `.omo/evidence/task-5-implement-odoo-assistant-mcp.txt`: public file count 7, required and broader grep checks empty, and source checksum/diff checks empty.
+
+## [2026-08-13T15:20Z] Task: git repository initialization
+- Created the public `crottolo/odoo-assistant-mcp` repository and pushed the initial commit to `origin/main`.
+- Added `.gitignore` exclusions for local environments, generated files, credentials, and `.omo/` planning artifacts.
+- Configured the gitleaks pre-commit hook. Vendored documentation contains example token-shaped strings, so `.gitleaks.toml` allowlists only those two documentation files; no live credentials were found.
+
 ## [2026-08-13T13:30Z] Task: pyproject and package shims (todo 2)
 - `uv sync` required a present `README.md` for Hatchling metadata validation and a present `references_public/` directory for the requested force-include mapping; the latter is currently an empty placeholder anticipating the parallel references todo.
 - Resolved and installed `mcp==2.0.0` from the exact `mcp[cli]>=2.0.0,<3` constraint. The package does not expose `mcp.__version__`; use `importlib.metadata.version("mcp")` for verification.
@@ -31,3 +42,16 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
   - .claude/skills/tdd/SKILL.md (CLI-created symlink)
 - Verification: find . -iname "SKILL.md" -not -path "./.venv/*" found all three named skills.
 - Verification: find . -iname "*fastmcp*" -not -path "./.venv/*" returned no matches.
+
+## [2026-08-13] Task 6: wheel packaging gate
+- `uv build` produced `dist/odoo_assistant-1.0.0.tar.gz` and `dist/odoo_assistant-1.0.0-py3-none-any.whl`.
+- The wheel listing confirmed all nine `odoo_scripts` modules and `odoo_assistant/references/SKILL.md` plus the six other public reference files.
+- Clean-target install into `/tmp/odoo-assistant-freshenv` succeeded; importing `odoo_assistant.odoo_scripts.query` from literal `/tmp` exited 0 with no output, proving the flat installed-location import bootstrap works.
+- Negative proof: commenting out the Hatch `force-include` mapping caused the references assertion to fail (`NEGATIVE_REFERENCES_PRESENT=False`); the mapping was restored and the final rebuild passed. No Hatchling config fix was needed.
+
+## [2026-08-13T15:45Z] Task 4 correction: harness-specific global discovery
+- The opencode harness scans ~/.agents/skills/, not the project-local .agents/skills/ directory.
+- Removed the dead project-local .agents/skills/ installation; .agents/ is now absent.
+- Reinstalled globally with -g: mcp-builder, setup-pre-commit, and tdd.
+- Verified ~/.agents/.skill-lock.json contains all three entries and ~/.agents/skills/ contains all three directories.
+- Future skill installs for this session/project must use -g, not project-local installation.

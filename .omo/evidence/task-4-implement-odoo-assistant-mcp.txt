@@ -1,18 +1,21 @@
-# Task 4 evidence — project-level agent skills
+# Task 4 evidence — corrected global installation
 
-Commands:
-npx skills add anthropics/skills --skill mcp-builder -y
-npx skills add mattpocock/skills --skill setup-pre-commit -y
-npx skills add mattpocock/skills --skill tdd -y
+Correction:
+The opencode harness discovers skills from ~/.agents/skills/, not the project-local .agents/skills/ directory.
 
-Installation paths:
-.agents/skills/mcp-builder/SKILL.md
-.agents/skills/setup-pre-commit/SKILL.md
-.agents/skills/tdd/SKILL.md
-.claude/skills/mcp-builder/SKILL.md
-.claude/skills/setup-pre-commit/SKILL.md
-.claude/skills/tdd/SKILL.md
+Removed:
+.agents/skills/ (and empty .agents/ directory)
 
-Verification:
-find . -iname "SKILL.md" -not -path "./.venv/*": all three requested skills present.
-find . -iname "*fastmcp*" -not -path "./.venv/*": no matches.
+Global installs completed with:
+npx skills add anthropics/skills --skill mcp-builder -g -y
+npx skills add mattpocock/skills --skill setup-pre-commit -g -y
+npx skills add mattpocock/skills --skill tdd -g -y
+
+Verified global paths:
+~/.agents/skills/mcp-builder
+~/.agents/skills/setup-pre-commit
+~/.agents/skills/tdd
+
+Verified ~/.agents/.skill-lock.json contains entries for mcp-builder, setup-pre-commit, and tdd.
+Verified no fastmcp-* matches in the repository or ~/.agents/skills/.
+Future installs for this session/project must use -g.

@@ -39,7 +39,7 @@
         },
         {
           "name": "ODOO_API_KEY",
-          "description": "Odoo API key (Odoo 14+). Settings > Users > API Keys > New. Passwords are not accepted.",
+          "description": "Odoo API key (Odoo 14+ required). Generate under Preferences / My Profile > Account Security > New API Key. Passwords are not accepted.",
           "isRequired": true,
           "isSecret": true,
           "format": "string"

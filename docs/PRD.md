@@ -540,11 +540,13 @@ Source: [Odoo 19 external RPC API](https://www.odoo.com/documentation/19.0/devel
 | 16–18 | API Key recommended, password still works | Password deprecated but not removed |
 | 19 | API Key recommended | JSON-2 API adds Bearer token auth |
 
+*Note: The claim that XML-RPC exists "since Odoo 8" is unverified by primary sources in this project; we guarantee compatibility across all versions this server supports (14–19).*
+
 ### What the server accepts
 
 An **API key only**. The table above is the protocol's history, not this
 server's surface: `ODOO_API_KEY` is the single accepted secret and it is
-required.
+required. Odoo 14.0 is the absolute minimum supported version because API keys do not exist in Odoo 13 or earlier.
 
 ```python
 import os
@@ -728,11 +730,9 @@ Source: internal skill (`payments.md` §"Odoo 17→18 field renames"),
 
 ### XML-RPC availability
 
-XML-RPC (`/xmlrpc/2/common`, `/xmlrpc/2/object`) is available on **every
-Odoo version since 8.0** (2014). It is the most universal external API.
-The `/json/2` endpoint (used as a faster fallback by the client) requires
-the `commons_odoo` module and is not always present — the client already
-falls back to XML-RPC transparently.
+XML-RPC (`/xmlrpc/2/common`, `/xmlrpc/2/object`) is available on Odoo versions this server supports (14–19). The `/json/2` endpoint (used as a faster fallback by the client) requires the `commons_odoo` module (or native support in Odoo 19+) and is not always present — the client already falls back to XML-RPC transparently.
+
+*Note: The claim that XML-RPC exists "since Odoo 8" is unverified by primary sources in this project. The claim that Odoo 18's JSON-2 requires a module specifically named `api_doc` or `commons_odoo` is also unverified.*
 
 ### Version detection at startup
 
@@ -781,11 +781,13 @@ def _adapt_fields(model, fields, major):
 
 | Odoo | Support level | Auth | Transport | Notes |
 |---|---|---|---|---|
-| ≤13 | **Unsupported** | password only | XML-RPC ✅ | Security: no API keys |
-| 14–15 | **Best-effort** | API Key ✅ | XML-RPC ✅ | Field maps untested |
-| 16–17 | **Supported** | API Key ✅ | XML-RPC ✅ | Field adaptation active |
-| **18** | **Primary target** | API Key ✅ | XML-RPC ✅ + JSON-2 ✅ | All 12 patterns verified |
-| 19 | **Forward-compatible** | API Key + Bearer | XML-RPC ✅ + JSON-2 ✅ | Not tested, should work |
+| ≤13 | **Unsupported** | password only | XML-RPC ✅ | Security: no API keys. Cannot authenticate. |
+| 14–15 | **Best-effort** | API Key ✅ | XML-RPC ✅ | Field maps untested. Protocol-compatible. |
+| 16–17 | **Supported** | API Key ✅ | XML-RPC ✅ | Field adaptation active. Protocol-compatible. |
+| **18** | **Primary target** | API Key ✅ | XML-RPC ✅ + JSON-2 ✅ | All 12 patterns verified against a live instance. |
+| 19 | **Forward-compatible** | API Key + Bearer | XML-RPC ✅ + JSON-2 ✅ | Protocol-compatible. API keys require description and expiry (max 3 months). |
+
+*Note: Only Odoo 18 has been verified against a live instance by this project. Other versions are protocol-compatible but untested.*
 
 ---
 

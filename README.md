@@ -44,9 +44,30 @@ The `ODOO_MCP_MAX_LEVEL` environment variable sets the ceiling (default is `3`).
 
 ## Odoo Version Support
 
-* **Odoo 18**: Verified and fully supported.
-* **Odoo 16-17**: Best-effort, untested.
-* **Odoo 13 and earlier**: Unsupported.
+Odoo 14.0 is the absolute minimum supported version because this server authenticates using API keys only, which do not exist in Odoo 13 or earlier.
+
+| Odoo Version | API Keys | XML-RPC | Officially Maintained (Aug 2026) | Support Level / Notes |
+|---|---|---|---|---|
+| **≤ 13.0** | **No** | Yes | No | **Unsupported**. Cannot authenticate with this server. |
+| **14.0** | **Yes** | Yes | No | Protocol-compatible. Untested against a live instance. |
+| **15.0** | Yes | Yes | No | Protocol-compatible. Untested against a live instance. |
+| **16.0** | Yes | Yes | No | Protocol-compatible. Untested against a live instance. |
+| **17.0** | Yes | Yes | **Yes** (until Sep 2026) | Protocol-compatible. Untested against a live instance. |
+| **18.0** | Yes | Yes | **Yes** (until Sep 2027) | **Primary target**. Verified and fully supported against a live instance. |
+| **19.0** | Yes | Yes | **Yes** (until Sep 2028) | Protocol-compatible. Untested against a live instance. API keys require description and expiry (max 3 months). |
+
+### API Key Generation Path
+To generate an API key, log in to your Odoo instance and navigate to:
+**Preferences / My Profile → Account Security → New API Key**
+
+### Transport & Deprecation Note
+The client automatically detects if the native JSON-2 API is available at `/json/2/<model>/<method>` (which uses `Authorization: bearer <API_KEY>`) and falls back to XML-RPC if it is not. Please note that XML-RPC and JSON-RPC are deprecated in Odoo 19 and scheduled for removal in Odoo 22.
+
+### Sources
+- [Odoo 14.0 External API Documentation](https://www.odoo.com/documentation/14.0/developer/reference/external_api.html) (API keys introduction)
+- [Odoo 19.0 External API Documentation](https://www.odoo.com/documentation/19.0/developer/reference/external_api.html) (JSON-2)
+- [Odoo 19.0 External RPC API Documentation](https://www.odoo.com/documentation/19.0/developer/reference/external_rpc_api.html) (XML-RPC deprecation)
+- [Odoo Standard & Extended Support Policy](https://www.odoo.com/documentation/19.0/administration/standard_extended_support.html) (Support timelines)
 
 ## Tools and Resources
 

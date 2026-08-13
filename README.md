@@ -22,8 +22,7 @@ The server requires the following environment variables to connect to your Odoo 
 * `ODOO_BASE_URL`: The base URL of your Odoo instance (e.g., `https://mycompany.odoo.com`).
 * `ODOO_DB`: The database name.
 * `ODOO_USER`: The username or email of the Odoo user.
-* `ODOO_API_KEY`: The Odoo API key (preferred for Odoo 14+, generate under Settings > Users > API Keys).
-* `ODOO_PASSWORD`: The legacy password fallback (only for Odoo 13 and earlier).
+* `ODOO_API_KEY`: The Odoo API key — **required** (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted: a key is per-user, scoped and revocable on its own.
 
 Optional configuration:
 * `ODOO_MCP_MAX_LEVEL`: The maximum safety level allowed (default: `3`).

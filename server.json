@@ -39,15 +39,8 @@
         },
         {
           "name": "ODOO_API_KEY",
-          "description": "Odoo API key (Odoo 14+, preferred). Settings > Users > API Keys > New.",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
-        },
-        {
-          "name": "ODOO_PASSWORD",
-          "description": "Legacy password for Odoo <=13. Not recommended.",
-          "isRequired": false,
+          "description": "Odoo API key (Odoo 14+). Settings > Users > API Keys > New. Passwords are not accepted.",
+          "isRequired": true,
           "isSecret": true,
           "format": "string"
         },

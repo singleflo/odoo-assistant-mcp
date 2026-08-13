@@ -49,8 +49,7 @@ LAUNCH = "uv run odoo-assistant"
 # `_credentials()` too, so this suite cannot reach a live instance even if the
 # SDK ever inherits more of the environment.
 NO_CREDENTIALS = {
-    name: ""
-    for name in ("ODOO_BASE_URL", "ODOO_DB", "ODOO_USER", "ODOO_API_KEY", "ODOO_PASSWORD")
+    name: "" for name in ("ODOO_BASE_URL", "ODOO_DB", "ODOO_USER", "ODOO_API_KEY")
 }
 
 # One resource per file in `references_public/`. Membership, not a total: a dev

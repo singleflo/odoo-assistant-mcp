@@ -26,8 +26,10 @@ Credentials flow exclusively through environment variables:
 * `ODOO_BASE_URL`
 * `ODOO_DB`
 * `ODOO_USER`
-* `ODOO_API_KEY` (preferred)
-* `ODOO_PASSWORD` (legacy fallback)
+* `ODOO_API_KEY` (required — an API key, never an account password)
+
+Account passwords are not accepted. An API key is per-user, scoped and
+revocable without changing the account itself; a password is none of those.
 
 The server never stores, logs, or transmits these credentials anywhere other than the direct XML-RPC or JSON-RPC connection to the configured Odoo instance. Credentials are never written to source code, packages, or configuration files.
 

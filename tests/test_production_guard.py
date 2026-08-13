@@ -48,7 +48,6 @@ def connecting_to(monkeypatch):
     monkeypatch.setattr(server, "_odoo_instance", None)
     monkeypatch.delenv("ODOO_ALLOW_PROD_WRITE", raising=False)
     monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
-    monkeypatch.delenv("ODOO_PASSWORD", raising=False)
 
     def _configure(base_url):
         monkeypatch.setenv("ODOO_BASE_URL", base_url)

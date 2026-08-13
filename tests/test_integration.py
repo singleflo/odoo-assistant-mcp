@@ -69,7 +69,7 @@ def live_odoo():
     patch = pytest.MonkeyPatch()
     bootstrap = connect(
         base=os.environ["ODOO_BASE_URL"],
-        key=os.environ.get("ODOO_API_KEY") or os.environ.get("ODOO_PASSWORD"),
+        key=os.environ["ODOO_API_KEY"],
     )
     patch.setenv("ODOO_DB", str(bootstrap.db))
     patch.setenv("ODOO_USER", str(bootstrap.user))

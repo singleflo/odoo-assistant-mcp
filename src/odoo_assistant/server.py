@@ -56,21 +56,26 @@ class _Credentials(NamedTuple):
     base_url: str
     db: str
     user: str
-    secret: str
+    api_key: str
 
 
 def _credentials() -> _Credentials:
     """Read the connection settings from the environment. No defaults, ever.
 
-    Odoo passes an API key and a password through the same authentication
-    slot, so either one works: the key is preferred (Odoo 14+) and the
-    password is the legacy fallback for Odoo 13 and earlier (PRD §6B).
-    The database and the login are required by the XML-RPC transport.
+    An API key is the ONLY accepted secret. Odoo passes keys and passwords
+    through the same authentication slot, so a password would technically
+    work — which is exactly why it is refused here rather than left to the
+    protocol: a key is per-user, revocable and scoped, an account password is
+    none of those (PRD non-goal N5, references/SKILL.md rule 7). The client
+    itself takes no password either — `connect()` accepts `key` only. The one
+    case a password could serve is Odoo ≤13, which this server declares
+    unsupported. The database and the login are required by the XML-RPC
+    transport.
     """
     base_url = os.environ.get("ODOO_BASE_URL", "")
     db = os.environ.get("ODOO_DB", "")
     user = os.environ.get("ODOO_USER", "")
-    secret = os.environ.get("ODOO_API_KEY", "") or os.environ.get("ODOO_PASSWORD", "")
+    api_key = os.environ.get("ODOO_API_KEY", "")
 
     missing = [
         name
@@ -78,7 +83,7 @@ def _credentials() -> _Credentials:
             ("ODOO_BASE_URL", base_url),
             ("ODOO_DB", db),
             ("ODOO_USER", user),
-            ("ODOO_API_KEY or ODOO_PASSWORD", secret),
+            ("ODOO_API_KEY", api_key),
         )
         if not value
     ]
@@ -86,11 +91,11 @@ def _credentials() -> _Credentials:
         raise RuntimeError(
             "Missing Odoo credentials: " + ", ".join(missing) + ". "
             "Set these environment variables — the server never guesses an "
-            "instance. ODOO_API_KEY (Odoo 14+, Settings > Users > API Keys) is "
-            "preferred; ODOO_PASSWORD is the legacy fallback for Odoo 13 and "
-            "earlier."
+            "instance. ODOO_API_KEY is an API key (Odoo 14+, Settings > Users "
+            "> API Keys > New), never an account password: passwords are not "
+            "accepted."
         )
-    return _Credentials(base_url, db, user, secret)
+    return _Credentials(base_url, db, user, api_key)
 
 
 def _detect_version(odoo: Odoo) -> dict[str, object]:
@@ -137,7 +142,7 @@ def _get_odoo() -> Odoo:
             base=creds.base_url,
             db=creds.db,
             user=creds.user,
-            key=creds.secret,
+            key=creds.api_key,
         )
         logger.info(
             "Connected to %s (db=%s, Odoo %s)",

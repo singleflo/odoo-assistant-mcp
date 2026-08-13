@@ -542,31 +542,50 @@ Source: [Odoo 19 external RPC API](https://www.odoo.com/documentation/19.0/devel
 
 ### What the server accepts
 
+An **API key only**. The table above is the protocol's history, not this
+server's surface: `ODOO_API_KEY` is the single accepted secret and it is
+required.
+
 ```python
 import os
 
 def _get_credentials():
-    """Resolve Odoo credentials with version-aware fallback.
+    """Resolve Odoo credentials. An API key is the only accepted secret.
 
-    Odoo's authenticate() accepts BOTH passwords and API keys in the same
-    parameter slot — it does not distinguish between them at the protocol
-    level. We prefer API keys for security, but fall back to password for
-    Odoo 13 and earlier where API keys don't exist.
+    Odoo's authenticate() takes passwords and API keys in the SAME parameter
+    slot and does not distinguish them, so a password would technically
+    connect. It is refused here instead of being left to the protocol.
     """
     base = os.environ.get("ODOO_BASE_URL")
     db   = os.environ.get("ODOO_DB")
     user = os.environ.get("ODOO_USER")
-    key  = os.environ.get("ODOO_API_KEY")    # Odoo 14+ (preferred)
-    pwd  = os.environ.get("ODOO_PASSWORD")    # Odoo ≤13 fallback
+    key  = os.environ.get("ODOO_API_KEY")    # Odoo 14+, the only secret
 
-    secret = key or pwd
-    if not secret:
+    if not key:
         raise RuntimeError(
-            "Set ODOO_API_KEY (Odoo 14+) or ODOO_PASSWORD (legacy). "
-            "API keys: Settings > Users > API Keys > New."
+            "Set ODOO_API_KEY — an API key, never an account password. "
+            "Settings > Users > API Keys > New."
         )
-    return base, db, user, secret
+    return base, db, user, key
 ```
+
+> **Decision — `ODOO_PASSWORD` removed (was: a legacy fallback).**
+> An earlier draft of this section specified an `ODOO_PASSWORD` fallback, and
+> the server implemented it. It is gone, for three reasons that were already
+> written down elsewhere and that it contradicted:
+> 1. **Non-goal N5** (§4): *"Password auth is a security regression we won't
+>    ship."* The only instances a password serves are Odoo ≤13, which §11.2
+>    lists as **Unsupported** — so the fallback bought nothing and cost the
+>    regression on 14+, where a user could hand over an account password
+>    instead of a per-user, scoped, revocable key.
+> 2. **`references/SKILL.md` rule 7**: *"Ask for an API key, never a
+>    password."*
+> 3. **The verified client takes no password**: `connect(allow_write=False,
+>    base=None, key=None, db=None, user=None)` — the password only ever
+>    "worked" because the server passed it through the `key` slot.
+>
+> Revoking a leaked key is a click; revoking a leaked password is an account
+> reset for a human being.
 
 ### server.json environment variables
 
@@ -575,15 +594,13 @@ def _get_credentials():
   {"name": "ODOO_BASE_URL", "isRequired": true, "isSecret": false},
   {"name": "ODOO_DB", "isRequired": true, "isSecret": false},
   {"name": "ODOO_USER", "isRequired": true, "isSecret": false},
-  {"name": "ODOO_API_KEY", "isRequired": false, "isSecret": true,
-   "description": "Odoo 14+ API key (preferred). Settings > Users > API Keys."},
-  {"name": "ODOO_PASSWORD", "isRequired": false, "isSecret": true,
-   "description": "Legacy password for Odoo ≤13. NOT recommended."}
+  {"name": "ODOO_API_KEY", "isRequired": true, "isSecret": true,
+   "description": "Odoo 14+ API key. Settings > Users > API Keys."}
 ]
 ```
 
-Both are `isRequired: false` because the user provides exactly one. The
-server checks at startup and gives a clear error if neither is present.
+All four are `isRequired: true`: there is exactly one way to authenticate.
+The server checks at startup and names every missing variable.
 
 ---
 

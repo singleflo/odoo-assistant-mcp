@@ -119,10 +119,18 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
             phase="after_mutation_possible",
         ).deliver()
     if result.raised:
+        # `result.after` is `None` both when the field genuinely reads None AND
+        # when Writer._read() swallowed an OdooError during its post-write
+        # verification. We cannot distinguish the two from here, so we report
+        # the value Writer observed without overclaiming it as "verified".
+        state = (
+            repr(result.after) if result.after is not None
+            else "unknown (the post-write re-read returned no value)"
+        )
         return ToolOutcome(
             False,
             f"COMMITTED but result unserializable. {result.raised}\n"
-            f"Verified state: {result.after!r}\n"
+            f"Post-write observation: {state}\n"
             "Do NOT retry — the change is already applied.",
         ).deliver()
     if not result.changed:

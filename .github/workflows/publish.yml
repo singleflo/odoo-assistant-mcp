@@ -25,11 +25,14 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run non-live tests
-        run: uv run pytest tests/ -m "not live"
+      - name: Run unit tests (excluding live and wheel — wheel needs a built artifact)
+        run: uv run pytest tests/ -m "not live and not wheel"
 
       - name: Build package
         run: uv build
+
+      - name: Run wheel E2E tests against the built artifact
+        run: uv run pytest tests/ -m wheel
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

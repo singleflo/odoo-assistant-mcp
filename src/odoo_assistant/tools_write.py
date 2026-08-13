@@ -162,10 +162,17 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
             phase="after_mutation_possible",
         ).deliver()
     if result.raised:
+        # See write_record for why we do not call this "verified": result.after
+        # is None both when the field genuinely reads None and when
+        # Writer._read() swallowed an OdooError on its post-write verification.
+        state = (
+            repr(result.after) if result.after is not None
+            else "unknown (the post-write re-read returned no value)"
+        )
         return ToolOutcome(
             False,
             f"COMMITTED but result unserializable. {result.raised}\n"
-            f"Verified state: {result.after!r}\n"
+            f"Post-write observation: {state}\n"
             "Do NOT retry — the change is already applied.",
         ).deliver()
     return tool_result(repr(result))

@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from odoo_assistant import server
+from odoo_client import MissingCredentials
 
 CREDENTIAL_VARS = (
     "ODOO_BASE_URL",
@@ -24,7 +25,7 @@ def clean_environment(monkeypatch):
 
 def test_missing_credentials_are_named_one_by_one(clean_environment):
     """When nothing is set, the error names every variable the server needs."""
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.raises(MissingCredentials) as raised:
         server._get_odoo()
 
     message = str(raised.value)
@@ -38,7 +39,7 @@ def test_api_key_is_required_and_blamed_alone(clean_environment, monkeypatch):
     monkeypatch.setenv("ODOO_DB", "testdb")
     monkeypatch.setenv("ODOO_USER", "tester")
 
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.raises(MissingCredentials) as raised:
         server._get_odoo()
 
     listed = str(raised.value).split("Missing Odoo credentials: ", 1)[1]
@@ -55,7 +56,7 @@ def test_a_password_is_ignored_and_cannot_stand_in_for_the_api_key(
     monkeypatch.setenv("ODOO_USER", "tester")
     monkeypatch.setenv("ODOO_PASSWORD", "account-password")
 
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.raises(MissingCredentials) as raised:
         server._get_odoo()
 
     message = str(raised.value)

@@ -141,6 +141,8 @@ def test_a_tool_without_credentials_reports_isError_to_the_client(roundtrip: Rou
     assert result.is_error is True
     assert isinstance(block, TextContent)
     assert "ODOO_BASE_URL" in block.text
+    assert "nothing was sent to Odoo" in block.text
+    assert "may or may not have been applied" not in block.text
 
 
 def test_that_error_reaches_the_wire_as_isError_and_not_a_protocol_code(roundtrip: Roundtrip):

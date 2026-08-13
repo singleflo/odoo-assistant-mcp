@@ -26,7 +26,7 @@ from mcp.server import MCPServer
 # module import them the same way, both from the repo and from a wheel.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
-from odoo_client import Odoo, connect  # noqa: E402  (needs the bootstrap above)
+from odoo_client import MissingCredentials, Odoo, connect  # noqa: E402  (needs the bootstrap above)
 
 # These import this module back, for `_get_odoo` at call time. The cycle
 # resolves through `sys.modules` only because none of them reads an attribute
@@ -88,7 +88,7 @@ def _credentials() -> _Credentials:
         if not value
     ]
     if missing:
-        raise RuntimeError(
+        raise MissingCredentials(
             "Missing Odoo credentials: " + ", ".join(missing) + ". "
             "Set these environment variables — the server never guesses an "
             "instance. ODOO_API_KEY is an API key (Odoo 14+, Settings > Users "

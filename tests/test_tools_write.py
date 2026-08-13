@@ -320,7 +320,7 @@ def test_real_writer_surfaces_a_swallowed_write_serialisation_failure(monkeypatc
     text = tools_write.write_record("sale.order", 7, {"note": "NEW"})
 
     assert "COMMITTED but result unserializable" in text
-    assert "Verified state: 'NEW'" in text
+    assert "Post-write observation: 'NEW'" in text
     assert "Do NOT retry" in text
 
 
@@ -335,7 +335,7 @@ def test_real_writer_surfaces_a_swallowed_action_serialisation_failure(monkeypat
     text = tools_write.run_action("account.payment", "action_post", [7])
 
     assert "COMMITTED but result unserializable" in text
-    assert "Verified state: 'posted'" in text
+    assert "Post-write observation: 'posted'" in text
     assert "Do NOT retry" in text
 
 

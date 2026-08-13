@@ -71,7 +71,7 @@ The client automatically detects if the native JSON-2 API is available at `/json
 
 ## Tools and Resources
 
-The server exposes 14 tools and 2 resource types:
+The server exposes 15 tools and 2 resource types:
 
 ### Tools
 
@@ -79,16 +79,17 @@ The server exposes 14 tools and 2 resource types:
 2. `read_record`: Read one record by id, always with named fields.
 3. `count_records`: Count the records matching a domain (Odoo `search_count`).
 4. `instance_overview`: Summarise the connected instance: version, companies, volumes per area, in-house modules, anomalies.
-5. `create_record`: Create a record, reusing an existing match when `unique_on` is given.
-6. `write_record`: Write field values to one record and report what actually changed.
-7. `run_action`: Run a workflow method and report the state it left behind.
-8. `cancel_record`: Cancel a record through `action_cancel`, following the wizard it returns.
-9. `notify_user`: Notify users on a record's chatter. Internal by default.
-10. `create_activity`: Schedule an activity: the only notification that carries a deadline.
-11. `download_docs`: Save every document of a record to disk, chatter files included.
-12. `generate_pdf`: Render the PDF of a record and return where it was saved.
-13. `explore_module`: Discover a module's structure by interrogating the live instance.
-14. `list_known_modules`: List the modules this server has learned: name, generation date, records.
+5. `required_fields`: List what Odoo demands before a `create` on a model, the default it would apply, and how existing records actually use it.
+6. `create_record`: Create a record, reusing an existing match when `unique_on` is given.
+7. `write_record`: Write field values to one record and report what actually changed.
+8. `run_action`: Run a workflow method and report the state it left behind.
+9. `cancel_record`: Cancel a record through `action_cancel`, following the wizard it returns.
+10. `notify_user`: Notify users on a record's chatter. Internal by default.
+11. `create_activity`: Schedule an activity: the only notification that carries a deadline.
+12. `download_docs`: Save every document of a record to disk, chatter files included.
+13. `generate_pdf`: Render the PDF of a record and return where it was saved.
+14. `explore_module`: Discover a module's structure by interrogating the live instance.
+15. `list_known_modules`: List the modules this server has learned: name, generation date, records.
 
 ### Resources
 

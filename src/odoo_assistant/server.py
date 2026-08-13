@@ -161,7 +161,7 @@ def _get_odoo() -> Odoo:
 
 
 def _register_all() -> None:
-    """Attach every tool and resource to `mcp`: 14 tools and the `odoo://` set.
+    """Attach every tool and resource to `mcp`: 15 tools and the `odoo://` set.
 
     Order is free. The one coupling worth naming is already settled: importing
     `tools_evolution` points `explore_module.REF_DIR` at the same directory

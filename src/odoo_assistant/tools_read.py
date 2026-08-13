@@ -53,6 +53,15 @@ STATE_FIELDS = ("display_name", "name", "state", "payment_state", "amount_residu
 
 CENSUS_SCRIPT = Path(__file__).parent / "odoo_scripts" / "census.py"
 
+PHONE_NOTE = (
+    "\n  Phone: this model has `phone_sanitized`, which Odoo computes itself —\n"
+    "  from `mobile` first, `phone` second, one E.164 value per record, not one\n"
+    "  per field. It normalises only what it can parse: without a '+' prefix\n"
+    "  AND without country_id it stays False, with no error. So write the\n"
+    "  number in E.164 yourself (+39...), and put mobiles in `mobile` and\n"
+    "  landlines in `phone` — that choice is what decides which one is kept."
+)
+
 
 def _gate_or_raise(model: str, method: str, target: object) -> None:
     """Refuse before Odoo is touched. `target` is the first `execute_kw` slot:
@@ -214,7 +223,91 @@ def instance_overview() -> str:
     return tool_result(f"{printed.getvalue()}\n(profile: {path})")
 
 
+def _distribution(odoo: Odoo, model: str, field: str) -> str:
+    """How existing records divide over `field`.
+
+    The structural guard refuses an unfiltered `read_group` on the mixed
+    models, so a refusal is reported as a refusal — never as "no history".
+    """
+    decision = gate(model, "read_group", [])
+    if not decision.allowed:
+        return "not counted (structural guard: this model needs an explicit filter)"
+    rows = odoo.call(model, "read_group", [[], [field], [field]], {"lazy": False})
+    if not isinstance(rows, list):
+        return f"not counted (read_group returned {type(rows).__name__})"
+    counted = [
+        f"{row.get(field)}={row.get('__count')}"
+        for row in rows
+        if isinstance(row, dict)
+    ]
+    return ", ".join(counted) or "no records yet"
+
+
+def required_fields(model: str) -> str:
+    """List the fields Odoo demands before it will accept a `create`, with the
+    default it would apply and how existing records actually use it.
+
+    Ask this BEFORE `create_record` on a model you have not written to in this
+    session. The answer is read from the live instance — `fields_get` plus
+    `default_get` — never from a table in this file, so a model customised
+    in-house reports its own requirements.
+
+    The dangerous required field is the one that already carries a default: the
+    create succeeds without you naming it and the record lands wherever the
+    default points, with no error to notice. `crm.lead.type` is the standing
+    example — Odoo defaults it to 'lead', and on an instance that works its
+    pipeline as opportunities that record goes straight to a menu nobody opens.
+    That is why the live distribution is printed beside each default.
+
+    Args:
+        model: Odoo model, e.g. "crm.lead".
+    """
+    _gate_or_raise(model, "fields_get", [])
+    try:
+        odoo = server._get_odoo()
+        meta = odoo.fields_get(model, [], ["string", "type", "required", "selection"])
+        if not isinstance(meta, dict):
+            raise ToolExecutionError(f"{model}: fields_get returned {type(meta).__name__}")
+        required = {
+            name: spec
+            for name, spec in meta.items()
+            if isinstance(spec, dict) and spec.get("required")
+        }
+        answered = odoo.call(model, "default_get", [sorted(required)], {})
+        defaults = answered if isinstance(answered, dict) else {}
+
+        lines = [f"{model} — Odoo requires {len(required)} field(s) for a create:"]
+        for name, spec in sorted(required.items()):
+            lines.append(f"  {name}  ({spec.get('type')})  {spec.get('string')!r}")
+            selection = spec.get("selection")
+            if isinstance(selection, list):
+                allowed = " | ".join(
+                    str(pair[0])
+                    for pair in selection
+                    if isinstance(pair, (list, tuple)) and pair
+                )
+                lines.append(f"      one of: {allowed}")
+            if name in defaults:
+                lines.append(
+                    f"      Odoo would default to {defaults[name]!r} — "
+                    f"existing records: {_distribution(odoo, model, name)}"
+                )
+        if "phone_sanitized" in meta:
+            lines.append(PHONE_NOTE)
+        return tool_result("\n".join(lines))
+    except ToolExecutionError:
+        raise
+    except Exception as exc:
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+
 def register(mcp: MCPServer) -> None:
     """Attach the read tools to `mcp`. Called by server.py, never at import."""
-    for tool in (search_read, read_record, count_records, instance_overview):
+    for tool in (
+        search_read,
+        read_record,
+        count_records,
+        instance_overview,
+        required_fields,
+    ):
         mcp.tool()(tool)

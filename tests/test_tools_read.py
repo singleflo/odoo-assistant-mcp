@@ -1,4 +1,4 @@
-"""The four read tools: what reaches Odoo, and what comes back.
+"""The read tools: what reaches Odoo, and what comes back.
 
 Every test asserts on the call that was actually recorded, not on the fact that
 something was returned — a read tool that quietly drops the company context or
@@ -216,11 +216,77 @@ def test_instance_overview_without_a_profile_says_how_to_build_one(monkeypatch):
     assert "census.py" in str(raised.value)
 
 
-def test_register_exposes_the_four_read_tools():
-    """Given a real MCPServer, When registered, Then all four tools are listed."""
+def test_required_fields_prints_the_default_beside_how_records_really_use_it(mock_odoo):
+    """Given a required selection with a default, When asked, Then the live split shows.
+
+    Odoo defaults `crm.lead.type` to 'lead'. On an instance that runs its
+    pipeline as opportunities, a create that accepts that default lands in a
+    menu nobody opens, and nothing errors — so the default alone is not enough
+    to report.
+    """
+    mock_odoo.set_results("crm.lead", {
+        "name": {"string": "Opportunity", "type": "char", "required": True},
+        "type": {"string": "Type", "type": "selection", "required": True,
+                 "selection": [["lead", "Lead"], ["opportunity", "Opportunity"]]},
+        "email_from": {"string": "Email", "type": "char", "required": False},
+    }, method="fields_get")
+    mock_odoo.set_results("crm.lead", {"type": "lead"}, method="default_get")
+    mock_odoo.set_results("crm.lead", [
+        {"type": "lead", "__count": 1},
+        {"type": "opportunity", "__count": 12},
+    ], method="read_group")
+
+    out = tools_read.required_fields("crm.lead")
+
+    assert "requires 2 field(s)" in out
+    assert "one of: lead | opportunity" in out
+    assert "default to 'lead'" in out
+    assert "lead=1, opportunity=12" in out
+    assert "email_from" not in out
+
+
+def test_required_fields_reports_a_guard_refusal_instead_of_an_empty_history(mock_odoo):
+    """Given account.move, When asked, Then the refused count says so.
+
+    An unfiltered `read_group` on that table is exactly what the structural
+    guard exists to stop, and "no records yet" would be a lie about a model
+    holding thousands.
+    """
+    mock_odoo.set_results("account.move", {
+        "move_type": {"string": "Type", "type": "selection", "required": True,
+                      "selection": [["entry", "Journal Entry"],
+                                    ["out_invoice", "Customer Invoice"]]},
+    }, method="fields_get")
+    mock_odoo.set_results("account.move", {"move_type": "entry"}, method="default_get")
+
+    out = tools_read.required_fields("account.move")
+
+    assert "default to 'entry'" in out
+    assert "structural guard" in out
+    assert "no records yet" not in out
+
+
+def test_the_phone_note_only_appears_where_odoo_computes_phone_sanitized(mock_odoo):
+    """Given a model without the phone mixin, When asked, Then no phone advice."""
+    mock_odoo.set_results("project.task", {
+        "name": {"string": "Title", "type": "char", "required": True},
+    }, method="fields_get")
+    mock_odoo.set_results("project.task", {}, method="default_get")
+
+    out = tools_read.required_fields("project.task")
+
+    assert "phone_sanitized" not in out
+    assert "E.164" not in out
+
+
+def test_register_exposes_the_read_tools():
+    """Given a real MCPServer, When registered, Then every read tool is listed."""
     mcp = MCPServer("test-read-tools")
 
     tools_read.register(mcp)
 
     listed = {tool.name for tool in asyncio.run(mcp.list_tools())}
-    assert listed == {"search_read", "read_record", "count_records", "instance_overview"}
+    assert listed == {
+        "search_read", "read_record", "count_records", "instance_overview",
+        "required_fields",
+    }

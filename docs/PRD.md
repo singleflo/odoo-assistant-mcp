@@ -6,7 +6,7 @@
 > Author: Roberto Crotti / ZCode
 > Date: 2026-08-13 (revised)
 > Status: Draft for review
-> Spec version: MCP 2026-07-28 · Python SDK ≥ 1.28.1
+> Spec version: MCP 2026-07-28 · Python SDK ≥ 2.0.0
 > Odoo: 14+ (XML-RPC universal), best on 18
 
 ---
@@ -139,7 +139,7 @@ Source: [Connect to remote MCP servers](https://modelcontextprotocol.io/docs/202
 ┌──────────────────────────────────────────────────────┐
 │  MCP Host (Claude / ChatGPT / Cursor / Hermes / ...)  │
 │                                                       │
-│  1. Discovers tools via server/discover               │
+│  1. Discovers tools via tools/list (server/discover)  │
 │  2. User approves tool call                           │
 │  3. Calls tool → receives JSON result                 │
 │  4. Can read resources (SKILL.md, references)         │
@@ -149,7 +149,7 @@ Source: [Connect to remote MCP servers](https://modelcontextprotocol.io/docs/202
 ┌───────────────────────▼──────────────────────────────┐
 │  odoo-assistant (our server)                                │
 │  ┌───────────────────────────────────────────────┐   │
-│  │  FastMCP("odoo-assistant")                        │   │
+│  │  MCPServer("odoo-assistant")                      │   │
 │  │                                               │   │
 │  │  Tools (12)          Resources (24)           │   │
 │  │  search_read         odoo://skill (SKILL.md) │   │
@@ -179,6 +179,8 @@ Source: [Connect to remote MCP servers](https://modelcontextprotocol.io/docs/202
 └──────────────────────────────────────────────────────┘
 ```
 
+*Note: While `server/discover` exists in the MCP specification, the actual tool listing in practice goes through `tools/list` (not `server/discover` alone). The `initialize` request remains a legacy fallback per the spec.*
+
 ### Design principle: thin wrapper
 
 The MCP server is **~200 lines** of tool definitions. All business logic
@@ -199,19 +201,21 @@ every call.
 
 | Tool | Input | Output | Maps to |
 |------|-------|--------|---------|
-| `search_read` | model, domain, fields, limit | JSON array | `odoo_client.search_read` |
-| `read_record` | model, id, fields | JSON object | `odoo_client.read` |
-| `count_records` | model, domain | integer | `odoo_client.search_count` |
+| `search_read` | model, domain, fields, limit | JSON array | `Odoo.search_read` (shortcut) |
+| `read_record` | model, id, fields | JSON object | `Odoo.call(model, "read", ...)` |
+| `count_records` | model, domain | integer | `Odoo.search_count` (shortcut) |
 | `instance_overview` | none | text summary | `query.py` |
 | `explore_module` | module_name | reference text | `explore_module.py` |
 
 ### Write tools (L1–L5 — safety layer gates)
 
+*Note: Safety levels are computed dynamically at call time via `classify()` through `src/odoo_assistant/server_safety.py`'s `gate()` function. For example, a single-record write is L1 (not L2), and `run_action`'s level depends on the method string.*
+
 | Tool | Input | Safety | Maps to |
 |------|-------|--------|---------|
 | `create_record` | model, values, unique_on | L1 | `Writer.create` |
-| `write_record` | model, id, values | L2 | `Writer.write` |
-| `run_action` | model, method, ids | L3 (state changes) | `Writer.act` |
+| `write_record` | model, id, values | L1 (single-record) / L2 (batch) | `Writer.write` |
+| `run_action` | model, method, ids | Dynamic (L1-L4) | `Writer.act` |
 | `cancel_record` | model, id | L4 (destructive — blocked by default) | `Writer.act` with `action_cancel` |
 
 ### Collaboration tools (L1 — safe)
@@ -255,7 +259,7 @@ async def search_read(
 ) -> str:                                # JSON array, max 5000 chars
     """Search and read records in one call. Equivalent to Odoo search_read."""
 ```
-**Error handling:** model not found → `-32602`. Domain syntax error → `-32603`.
+**Error handling:** raises `ToolExecutionError` (resulting in `isError:true` on the wire) if the model is not found or the domain has syntax errors, handled via `src/odoo_assistant/server_errors.py`.
 **Truncation:** if output > 5000 chars, return first N records + `"... truncated, use limit"`.
 **Safety:** L0 (read-only).
 
@@ -312,7 +316,7 @@ async def explore_module(
 async def create_record(
     model: str,
     values: dict,                        # {"name": "Test", "partner_id": 1}
-    unique_on: list[tuple] | None = None # [("name", "Test")] for idempotency
+    unique_on: list[str] | None = None   # ["name"] for idempotency
 ) -> str:
     """Create a record. If unique_on is set, reuse an existing match
     (pattern 8 — no idempotency keys in Odoo)."""
@@ -329,7 +333,7 @@ async def write_record(
 ) -> str:
     """Write field values to a record. Verifies before/after (pattern 9)."""
 ```
-**Safety:** L2. **Returns:** `"before: X → after: Y"` or `"NOT CHANGED"`.
+**Safety:** L1 (single-record) / L2 (batch). **Returns:** `"before: X → after: Y"` or `"NOT CHANGED"`.
 
 #### `run_action`
 ```python
@@ -342,7 +346,7 @@ async def run_action(
     """Run a workflow action. Follows wizards automatically (pattern 11).
     Handles OdooExecutedButUnserializable (pattern 2 — committed but raised)."""
 ```
-**Safety:** L3 (state transitions). **Blocked at L4+ by default.**
+**Safety:** Dynamic (L1-L4 depending on method). Blocked at L4+ by default.
 
 #### `cancel_record`
 ```python
@@ -418,7 +422,7 @@ async def generate_pdf(
     Uses the print wizard, extracts the binary field (invoice_pdf_report_file),
     decodes base64, saves to disk."""
 ```
-**Safety:** L0 (read).
+**Safety:** L3 (state-change/comms) because it can trigger the print/send wizard. **Requires** `ODOO_MCP_MAX_LEVEL >= 3`.
 
 ---
 
@@ -594,15 +598,17 @@ host will ask the user for consent, but it won't enforce our business rules.
 Our safety layer is the **enforcement point**.
 
 ```python
+from odoo_assistant.server_safety import gate
+
 @mcp.tool()
 async def run_action(model: str, method: str, record_ids: list) -> str:
     """Run a workflow action on records."""
-    # 1. Safety layer classifies
-    level = classify(model, method, {"ids": record_ids})
+    # 1. Safety layer gates the call dynamically
+    decision = gate(model, method, record_ids)
 
-    # 2. Block L4+ by default
-    if level in ("L4_DESTRUCTIVE", "L5_UNKNOWN"):
-        return f"BLOCKED: {level}. This operation is destructive. Use the Odoo web UI."
+    # 2. Block if not allowed by the ceiling
+    if not decision.allowed:
+        return f"BLOCKED: {decision.reason}"
 
     # 3. Execute with Writer (verifies before/after)
     o = _get_odoo()
@@ -632,6 +638,8 @@ ODOO_MCP_MAX_LEVEL=2  # blocks L3 and above
 This lets cautious users restrict the server to read-only (L0) or read+write
 (L2) without touching the code.
 
+*Note: The `ODOO_MCP_MAX_LEVEL` semantics, default value (3), and the ordinal mapping table are defined and enforced dynamically at call time in `src/odoo_assistant/server_safety.py`.*
+
 ---
 
 ## 7B. Error Handling — the Odoo Execution Trap
@@ -654,16 +662,18 @@ as failed, then retried → double invoice).
 
 ### MCP mapping
 
-| Situation | MCP behavior | Error code |
+The actual implemented model uses `isError:true` / `isError:false` via return-vs-raise, exactly as built in `src/odoo_assistant/server_errors.py`. The SDK converts raised exceptions (except `MCPError`) into `isError:true` with the exception's string representation as the message. Normal returns yield `isError:false`.
+
+| Situation | MCP behavior | Wire Result |
 |---|---|---|
-| `OdooExecutedButUnserializable` | **Success with warning** — the operation committed, the result couldn't be serialized | `-32603` with `data.executed=True` |
-| Real Odoo error (AccessDenied, ValidationError) | **Error** — nothing committed | `-32000` with the Odoo traceback |
-| Network timeout | **Error** — state unknown, advise re-read before retry | `-32001` with `data.state_unknown=True` |
+| `OdooExecutedButUnserializable` | **Success with warning** — the operation committed, the result couldn't be serialized. Returns a warning string. | `isError:false` |
+| Real Odoo error (AccessDenied, ValidationError) | **Error** — raises `ToolExecutionError` | `isError:true` |
+| Network timeout / other exceptions | **Error** — raises `ToolExecutionError` with state unknown warning | `isError:true` |
 
 ### Tool implementation
 
 ```python
-from odoo_client import OdooExecutedButUnserializable
+from odoo_assistant.server_errors import tool_result, handle_odoo_exception
 
 @mcp.tool()
 async def run_action(model: str, method: str, record_ids: list[int]) -> str:
@@ -672,24 +682,9 @@ async def run_action(model: str, method: str, record_ids: list[int]) -> str:
         o = _get_odoo()
         w = Writer(o)
         result = w.act(model, method, record_ids, watch="state")
-        return f"Done: {result.before} → {result.after}"
-
-    except OdooExecutedButUnserializable as e:
-        # THE OPERATION COMMITTED. Do NOT retry.
-        # Re-read the record to report the actual state.
-        actual = w.state_of(model, record_ids[0])
-        return (
-            f"COMMITTED but result unserializable. "
-            f"Verified state: {actual}. "
-            f"Do NOT retry this operation."
-        )
-
-    except Exception as e:
-        # Check if it's a real Odoo error or a timeout
-        if "AccessDenied" in str(e) or "ValidationError" in str(e):
-            raise  # real error, nothing committed
-        # For anything else, advise re-read
-        return f"UNCERTAIN: {e}. Re-read the record before retrying."
+        return tool_result(f"Done: {result.before} → {result.after}")
+    except Exception as exc:
+        return handle_odoo_exception(exc, lambda: w.state_of(model, record_ids)).deliver()
 ```
 
 ### Idempotency via `unique_on`
@@ -698,7 +693,7 @@ For `create_record`, the safety layer enforces `unique_on` (pattern 8):
 
 ```python
 @mcp.tool()
-async def create_record(model: str, values: dict, unique_on: list | None = None) -> str:
+async def create_record(model: str, values: dict, unique_on: list[str] | None = None) -> str:
     """Create a record. If unique_on is set, reuse an existing match."""
     w = Writer(_get_odoo())
     rid = w.create(model, values, unique_on=unique_on)
@@ -727,8 +722,8 @@ falls back to XML-RPC transparently.
 ```python
 def _detect_version(o):
     """Detect Odoo version at connection time."""
-    info = o.version()  # /xmlrpc/2/common → version()
-    serie = str(info.get("server_serie", ""))  # "18.0", "17.0", etc.
+    info = o.info()  # /xmlrpc/2/common → version() via info()
+    serie = str(info.get("odoo_version", ""))  # "18.0", "17.0", etc.
     major = int(serie.split(".")[0]) if serie else 0
     return {"serie": serie, "major": major,
             "server_version": info.get("server_version", "")}
@@ -842,7 +837,7 @@ release. It is milestone M7.
 
 ## 9. Repository Structure
 
-### GitHub repository: `singleflo/odoo-assistant-mcp`
+### GitHub repository: `crottolo/odoo-assistant-mcp`
 
 ```
 odoo-assistant/
@@ -856,7 +851,7 @@ odoo-assistant/
 │       └── publish.yml         # CD: tag → PyPI → MCP Registry
 ├── src/
 │   └── odoo_assistant/
-│       ├── __init__.py         # FastMCP init, tool registration
+│       ├── __init__.py         # MCPServer init, tool registration
 │       ├── server.py           # main entry point (mcp.run)
 │       └── odoo_scripts/       # bundled Odoo scripts (from skill)
 │           ├── __init__.py
@@ -906,7 +901,7 @@ odoo-assistant/
     scripts/    ← same code
     references/ ← same docs
 
-singleflo/odoo-assistant-mcp               ← MCP server (PyPI, Registry)
+crottolo/odoo-assistant-mcp               ← MCP server (PyPI, Registry)
     src/odoo_assistant/odoo_scripts/   ← bundled copy of scripts
     references/                  ← bundled copy of refs
 ```
@@ -946,14 +941,14 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "mcp[cli]>=1.28.1",
+    "mcp[cli]>=2.0.0,<3",
 ]
 
 [project.urls]
-Homepage = "https://github.com/singleflo/odoo-assistant-mcp"
-Repository = "https://github.com/singleflo/odoo-assistant-mcp"
-Issues = "https://github.com/singleflo/odoo-assistant-mcp/issues"
-MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.singleflo/odoo-assistant"
+Homepage = "https://github.com/crottolo/odoo-assistant-mcp"
+Repository = "https://github.com/crottolo/odoo-assistant-mcp"
+Issues = "https://github.com/crottolo/odoo-assistant-mcp/issues"
+MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.crottolo/odoo-assistant"
 
 [project.scripts]
 odoo-assistant = "odoo_assistant.server:main"
@@ -981,9 +976,9 @@ packages = ["src/odoo_assistant"]
 import sys
 import os
 
-from mcp.server import FastMCP
+from mcp.server import MCPServer
 
-mcp = FastMCP("odoo-assistant")
+mcp = MCPServer("odoo-assistant")
 
 # ... tool definitions ...
 
@@ -1002,8 +997,7 @@ if __name__ == "__main__":
 
 ```
 Code → Tests pass → Tag v1.0.0 → GitHub Actions:
-  ├── PyPI publish (twine/uv publish)
-  └── MCP Registry publish (mcp-publisher)
+  PyPI publish (twine/uv publish) → MCP Registry publish (mcp-publisher)
 ```
 
 ### Step-by-step publishing flow
@@ -1023,14 +1017,14 @@ uv publish  # or: twine upload dist/*
 
 #### 11.2 MCP Registry publication
 
-**Namespace:** `io.github.singleflo/odoo-assistant`
+**Namespace:** `io.github.crottolo/odoo-assistant`
 (reverse-DNS, verified via GitHub OAuth)
 
 **Ownership verification for PyPI:**
 The README.md must contain an HTML comment with the server name:
 
 ```markdown
-<!-- mcp-name: io.github.singleflo/odoo-assistant -->
+<!-- mcp-name: io.github.crottolo/odoo-assistant -->
 ```
 
 This string is checked by the Registry against the PyPI package README.
@@ -1040,11 +1034,11 @@ This string is checked by the Registry against the PyPI package README.
 ```json
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.singleflo/odoo-assistant",
+  "name": "io.github.crottolo/odoo-assistant",
   "title": "Odoo MCP",
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows, generate PDFs, manage activities.",
   "repository": {
-    "url": "https://github.com/singleflo/odoo-assistant-mcp",
+    "url": "https://github.com/crottolo/odoo-assistant-mcp",
     "source": "github"
   },
   "version": "1.0.0",
@@ -1140,7 +1134,7 @@ jobs:
 Source: [registry/versioning](https://modelcontextprotocol.io/registry/versioning)
 
 - SemVer: `MAJOR.MINOR.PATCH`
-- Version in `server.json` MUST match PyPI version
+- Version in `server.json` matching the PyPI version is a best-practice, not a strict MUST.
 - Once published, a version **cannot be changed** — must publish a new one
 - Registry sorts by SemVer; the highest is marked "latest"
 
@@ -1213,15 +1207,15 @@ def test_live_workflow():
     o = _get_odoo()
 
     # Create test partner
-    partner_id = o.create("res.partner", {"name": "MCP Test Partner"})
+    partner_id = o.call("res.partner", "create", [{"name": "MCP Test Partner"}])[0]
     try:
         # Create order
-        order_id = w.create("sale.order", {...}, unique_on=[("name", "...")])
+        order_id = w.create("sale.order", {...}, unique_on=["name"])
         # Confirm
         w.act("sale.order", "action_confirm", [order_id], watch="state")
         assert w.state_of("sale.order", order_id)["state"] == "sale"
     finally:
-        o.unlink("res.partner", [partner_id])
+        o.call("res.partner", "unlink", [[partner_id]])
 ```
 
 ### 12.3 E2E tests (MCP host)
@@ -1421,7 +1415,7 @@ The MCP server logs to stderr (required by stdio spec). The host captures it:
 
 ### M0 — Prototype (1 day)
 
-- [ ] Create `singleflo/odoo-assistant-mcp` GitHub repo
+- [ ] Create `crottolo/odoo-assistant-mcp` GitHub repo
 - [ ] `pyproject.toml` with hatchling
 - [ ] Copy scripts into `src/odoo_assistant/odoo_scripts/`
 - [ ] Write `server.py` with 5 basic tools (search_read, read, count, write, run_action)
@@ -1499,7 +1493,7 @@ The MCP server logs to stderr (required by stdio spec). The host captures it:
 |---|------|------------|--------|------------|
 | R1 | Odoo API key has admin access → destructive ops | Medium | High | Safety layer blocks L4/L5; `ODOO_MCP_MAX_LEVEL` env var |
 | R2 | MCP Registry breaks in preview | Medium | Low | Package still works via `uvx`/`pip` without Registry |
-| R3 | MCP Python SDK API changes | Low | Medium | Pin `mcp>=1.28.1,<2.0.0` |
+| R3 | MCP Python SDK API changes | Low | Medium | Pin `mcp[cli]>=2.0.0,<3` |
 | R4 | Users expose Odoo to internet for remote MCP | Low | High | Document stdio-only; warn about remote in README |
 | R5 | Safety layer too restrictive → user frustration | Medium | Low | Configurable max level; clear error messages |
 | R6 | Token leak in git history | Low | Critical | Pre-commit hook scanning for hex strings |

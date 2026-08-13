@@ -1,13 +1,11 @@
 # AGENTS.md — odoo-assistant-mcp
 
 MCP server (`odoo-assistant` on PyPI, stdio transport) wrapping 9 battle-tested
-Odoo scripts as MCP tools. **Current state: pre-M0 scaffolding** — no
-`pyproject.toml`, no `server.py`, no git repo yet, `tests/` empty. The plan is
-written; the server is not.
+Odoo scripts as MCP tools. **Current state: fully implemented** — 14 tools, 8 resources, git initialized, GitHub repo `crottolo/odoo-assistant-mcp` is public, 165 tests exist and pass.
 
 ## Read before coding
 
-- `docs/PRD.md` — the spec: 12 tools (§5B), auth (§6), safety mapping (§7), packaging (§10), milestones (§15)
+- `docs/PRD.md` — the spec: 14 tools (§5B), auth (§6), safety mapping (§7), packaging (§10), milestones (§15)
 - `docs/IMPLEMENTATION-REVIEW.md` — verified gaps + build order. Follow its phases.
 - `references/BUILD-STATE.md` — how the underlying skill was validated (12 cold-start runs) + sanity figures for the dev instance
 - `docs/mcp-spec/` — the ENTIRE MCP 2026-07-28 spec vendored locally (142 files). Consult it instead of the web.
@@ -15,16 +13,19 @@ written; the server is not.
 
 ## Hard rules
 
-- **Never rewrite `src/odoo_assistant/odoo_scripts/`.** Those 9 scripts are verified against a live instance and are the source of truth; the MCP server is a ~200-line thin wrapper importing them. Canonical copy lives at `~/.agents/skills/odoo/` — sync direction is skill → this repo.
+- **Never rewrite `src/odoo_assistant/odoo_scripts/`.** Those 9 scripts are verified against a live instance and are the source of truth; the MCP server is a thin wrapper importing them. Canonical copy lives at `~/.agents/skills/odoo/` — sync direction is skill → this repo.
 - Scripts are **flat modules**: each does `sys.path.insert(0, <own dir>)` + `from odoo_client import ...`. Keep that import style working when packaging.
-- SDK API: `from mcp.server import FastMCP` — **`MCPServer` does not exist** (parts of `docs/mcp-server-guide.md` describe a future SDK 2.0; IMPLEMENTATION-REVIEW GAP 1 is the correction). Pin `mcp>=1.28.1,<2`.
+- SDK API: `from mcp.server import MCPServer` — **`MCPServer` is the correct class** in SDK 2.0. Pin `mcp[cli]>=2.0.0,<3`. See `tests/SPIKE_NOTES.md` for the SDK-verify spike pattern.
+- **Module Decomposition Pattern**: `server.py` stays thin; tools/resources live in `tools_read.py`/`tools_write.py`/`tools_collab.py`/`tools_evolution.py`/`resources.py`, each exposing `register(mcp)`, wired via `server._register_all()`.
+- **`explore_module.REF_DIR` Redirect**: Package-qualified import is required (`from odoo_assistant.odoo_scripts import explore_module as explorer`) to ensure the redirect is visible to all qualified importers. See `src/odoo_assistant/tools_evolution.py`'s docstring for the reasoning.
+- **References Bundling Split**: Only the scrubbed generic set in `references_public/` ships in the wheel, while the full instance-specific set remains in `references/` (excluded from the wheel).
 - stdio transport: **nothing may print to stdout** except the JSON-RPC stream. Diagnostics → stderr.
 - Every write tool goes through the safety layer (`classify()` → L0–L5). L4/L5 refuse by default; `ODOO_MCP_MAX_LEVEL` moves the bar. Host consent dialogs are untrusted — the safety layer is the only enforcement point.
 
 ## Toolchain
 
-- uv + Python 3.11 (`.venv` exists; `mcp` NOT installed yet — `uv add "mcp[cli]"` is step one)
-- Planned packaging: hatchling, package `odoo-assistant`, entry point `odoo_assistant.server:main` (PRD §10)
+- uv + Python 3.11 (`.venv` exists; `mcp` is installed)
+- Packaging: hatchling, package `odoo-assistant`, entry point `odoo_assistant.server:main` (PRD §10)
 - Tests: pytest; live tests marked `@pytest.mark.live`. Default run: `uv run pytest tests/ -m "not live"`.
 - Protocol test: `npx @modelcontextprotocol/inspector` pointed at the server
 

@@ -1,0 +1,18 @@
+# Task 4 evidence — project-level agent skills
+
+Commands:
+npx skills add anthropics/skills --skill mcp-builder -y
+npx skills add mattpocock/skills --skill setup-pre-commit -y
+npx skills add mattpocock/skills --skill tdd -y
+
+Installation paths:
+.agents/skills/mcp-builder/SKILL.md
+.agents/skills/setup-pre-commit/SKILL.md
+.agents/skills/tdd/SKILL.md
+.claude/skills/mcp-builder/SKILL.md
+.claude/skills/setup-pre-commit/SKILL.md
+.claude/skills/tdd/SKILL.md
+
+Verification:
+find . -iname "SKILL.md" -not -path "./.venv/*": all three requested skills present.
+find . -iname "*fastmcp*" -not -path "./.venv/*": no matches.

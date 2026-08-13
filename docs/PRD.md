@@ -1478,8 +1478,8 @@ The MCP server logs to stderr (required by stdio spec). The host captures it:
 
 - [ ] Write README.md with `mcp-name` comment
 - [ ] Create `server.json`
-- [ ] Set up PyPI account / token
-- [ ] `uv build && uv publish`
+- [ ] Set up PyPI OIDC Trusted Publishing
+- [ ] Build and publish via GitHub Actions (`pypa/gh-action-pypi-publish`)
 - [ ] `mcp-publisher login github-oidc`
 - [ ] `mcp-publisher publish`
 - [ ] Verify in Registry

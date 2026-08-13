@@ -22,8 +22,9 @@ Three rules the wrapper exists to keep:
     rejects them unconditionally, so a gate that allowed them would promise
     something the enforcement point below it refuses.
 
-An allowed decision IS the standing consent the scripts ask for: the caller
-passes `confirmed=True` to `safe_call`/`Writer` on the strength of it. The
+An allowed decision IS the standing consent the scripts ask for: the gate's
+`allowed` field is the enforcement decision; it does not get passed downstream
+because Writer has no such parameter — gate IS the sole enforcement point. The
 ceiling is where the human granted that consent, once, out of band.
 """
 import os
@@ -53,7 +54,7 @@ DEFAULT_MAX_LEVEL = 3
 
 
 class GateResult(NamedTuple):
-    """`allowed` doubles as the `confirmed=` argument for the call it permits."""
+    """`allowed` is the enforcement decision for the call it permits."""
 
     allowed: bool
     level: str

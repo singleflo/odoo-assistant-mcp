@@ -2,7 +2,7 @@
 
 ## Data Access
 
-The Odoo Assistant MCP Server acts as a bridge between your Odoo instance and the Model Context Protocol client. The server can access and modify any data that the configured Odoo user's credentials (API key or password) have permissions to access.
+The Odoo Assistant MCP Server acts as a bridge between your Odoo instance and the Model Context Protocol client. The server can access and modify any data that the configured Odoo user's credentials (API key) have permissions to access.
 
 We recommend creating a dedicated Odoo user for the assistant with the minimum necessary permissions required for its tasks.
 

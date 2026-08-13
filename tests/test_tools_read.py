@@ -152,6 +152,26 @@ def test_an_odoo_refusal_becomes_an_error_result(mock_odoo):
 
 
 @pytest.mark.parametrize("read_it", [
+    pytest.param(lambda: tools_read.search_read("sale.order", []), id="search_read"),
+    pytest.param(lambda: tools_read.read_record("sale.order", 7), id="read_record"),
+    pytest.param(lambda: tools_read.count_records("sale.order"), id="count_records"),
+])
+def test_missing_credentials_are_mapped_for_every_odoo_read(monkeypatch, read_it):
+    from odoo_assistant import server
+    from odoo_client import MissingCredentials
+
+    monkeypatch.setattr(
+        server, "_get_odoo",
+        lambda: (_ for _ in ()).throw(MissingCredentials("missing credentials")),
+    )
+
+    with pytest.raises(ToolExecutionError) as failure:
+        read_it()
+
+    assert "nothing was sent to Odoo" in str(failure.value)
+
+
+@pytest.mark.parametrize("read_it", [
     pytest.param(lambda: tools_read.search_read("account.move", [["state", "=", "posted"]]),
                  id="search_read"),
     pytest.param(lambda: tools_read.count_records("account.move"), id="count_records"),

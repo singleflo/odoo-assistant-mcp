@@ -101,6 +101,33 @@ def call_named(client, method):
     return next(c for c in client.calls if c["method"] == method)
 
 
+@pytest.mark.parametrize("tool", [
+    pytest.param(
+        lambda: notify_user("sale.order", 42, "hello", [7]), id="notify_user"),
+    pytest.param(
+        lambda: create_activity("crm.lead", 11, "Call back", 7),
+        id="create_activity",
+    ),
+    pytest.param(
+        lambda: download_docs("sale.order", 42), id="download_docs"),
+    pytest.param(
+        lambda: generate_pdf("account.move", 5775), id="generate_pdf"),
+])
+def test_missing_credentials_are_mapped_for_every_collab_tool(monkeypatch, tool):
+    from odoo_assistant import server
+    from odoo_client import MissingCredentials
+
+    monkeypatch.setattr(
+        server, "_get_odoo",
+        lambda: (_ for _ in ()).throw(MissingCredentials("missing credentials")),
+    )
+
+    with pytest.raises(ToolExecutionError) as failure:
+        tool()
+
+    assert "nothing was sent to Odoo" in str(failure.value)
+
+
 # --------------------------------------------------------------- notify_user
 def test_a_note_reaches_the_named_user_without_touching_followers(odoo):
     """Given a record with an external follower, When a note is sent,

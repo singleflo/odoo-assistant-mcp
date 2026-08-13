@@ -146,8 +146,8 @@ def read_record(model: str, record_id: int, fields: list[str] | None = None) -> 
         fields: Field names to read. Omit for the usual state fields.
     """
     _gate_or_raise(model, "read", [record_id])
-    odoo = server._get_odoo()
     try:
+        odoo = server._get_odoo()
         names = fields or _default_fields(odoo, model)
         return tool_result(odoo.call(model, "read", [[record_id], names], {}))
     except Exception as exc:

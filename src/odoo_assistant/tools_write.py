@@ -33,6 +33,7 @@ from mcp.types import ToolAnnotations
 from odoo_assistant import server
 from odoo_assistant.server_errors import (
     ToolExecutionError,
+    ToolOutcome,
     handle_odoo_exception,
     tool_result,
 )
@@ -83,8 +84,8 @@ def create_record(
     visible, not which company owns the new record.
     """
     _guard(model, "create", None, values)
-    writer = _writer()
     try:
+        writer = _writer()
         record_id = writer.create(model, values, unique_on=unique_on)
     except Exception as exc:
         # No re-read: `Writer.create` raises without ever handing back an id, and
@@ -104,13 +105,25 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
     deleting it — and is classified destructive rather than as a plain write.
     """
     _guard(model, "write", record_id, values)
-    writer = _writer()
+    try:
+        writer = _writer()
+    except Exception as exc:
+        return handle_odoo_exception(
+            exc, phase="after_mutation_possible"
+        ).deliver()
     try:
         result = writer.write(model, record_id, values)
     except Exception as exc:
         return handle_odoo_exception(
             exc, lambda: writer.state_of(model, record_id, list(values)),
             phase="after_mutation_possible",
+        ).deliver()
+    if result.raised:
+        return ToolOutcome(
+            False,
+            f"COMMITTED but result unserializable. {result.raised}\n"
+            f"Verified state: {result.after!r}\n"
+            "Do NOT retry — the change is already applied.",
         ).deliver()
     if not result.changed:
         return tool_result(
@@ -135,13 +148,25 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
     transition is one-way — calling it twice raises instead of doing nothing.
     """
     _guard(model, method, record_ids)
-    writer = _writer()
+    try:
+        writer = _writer()
+    except Exception as exc:
+        return handle_odoo_exception(
+            exc, phase="after_mutation_possible"
+        ).deliver()
     try:
         result = writer.act(model, method, record_ids, watch="state")
     except Exception as exc:
         return handle_odoo_exception(
             exc, lambda: writer.state_of(model, record_ids),
             phase="after_mutation_possible",
+        ).deliver()
+    if result.raised:
+        return ToolOutcome(
+            False,
+            f"COMMITTED but result unserializable. {result.raised}\n"
+            f"Verified state: {result.after!r}\n"
+            "Do NOT retry — the change is already applied.",
         ).deliver()
     return tool_result(repr(result))
 

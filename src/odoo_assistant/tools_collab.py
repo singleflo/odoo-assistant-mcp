@@ -131,8 +131,8 @@ def notify_user(
     if not decision.allowed:
         return ToolOutcome(True, decision.reason).deliver()
 
-    docs = Documents(_odoo())
     try:
+        docs = Documents(_odoo())
         audience = docs.audience(model, record_id)  # always, before posting
     except Exception as exc:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()

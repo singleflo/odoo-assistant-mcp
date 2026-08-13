@@ -21,6 +21,7 @@ from odoo_assistant.server_safety import gate
 
 from odoo_client import OdooError, OdooExecutedButUnserializable
 from write_patterns import Writer
+from tests.conftest import MockOdoo
 
 SIX_IDS = [1, 2, 3, 4, 5, 6]
 FIVE_IDS = [1, 2, 3, 4, 5]
@@ -41,6 +42,23 @@ def writer(mock_writer, monkeypatch):
 
 def _writer_calls(writer, name):
     return [call for call in writer.calls if call["call"] == name]
+
+
+class CommittedWriteOdoo(MockOdoo):
+    def __init__(self, method, before, after):
+        super().__init__()
+        self.target_method = method
+        self.before = before
+        self.after = after
+        self.committed = False
+
+    def call(self, model, method, args=None, kwargs=None):
+        if method == "read":
+            value = self.after if self.committed else self.before
+            self.set_results(model, [{"state": value, "note": value}], method="read")
+        if method == self.target_method:
+            self.committed = True
+        return super().call(model, method, args, kwargs)
 
 
 # --------------------------------------------------------------- create_record
@@ -257,6 +275,70 @@ def test_cancel_record_runs_action_cancel_once_the_ceiling_allows_it(writer,
 
 
 # ------------------------------------------------- committed but unserializable
+@pytest.mark.parametrize(("tool", "method"), [
+    pytest.param(
+        lambda: tools_write.create_record("res.partner", {"name": "ACME"}),
+        "create_record",
+    ),
+    pytest.param(
+        lambda: tools_write.write_record("sale.order", 7, {"note": "NEW"}),
+        "write_record",
+    ),
+    pytest.param(
+        lambda: tools_write.run_action("sale.order", "action_confirm", [7]),
+        "run_action",
+    ),
+    pytest.param(
+        lambda: tools_write.cancel_record("sale.order", 7),
+        "cancel_record",
+    ),
+])
+def test_missing_credentials_are_mapped_for_every_write_tool(
+        monkeypatch, tool, method):
+    from odoo_client import MissingCredentials
+
+    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+    monkeypatch.setattr(
+        tools_write, "_writer",
+        lambda: (_ for _ in ()).throw(MissingCredentials("missing credentials")),
+    )
+
+    with pytest.raises(ToolExecutionError) as failure:
+        tool()
+
+    assert "nothing was sent to Odoo" in str(failure.value), method
+
+
+def test_real_writer_surfaces_a_swallowed_write_serialisation_failure(monkeypatch):
+    client = CommittedWriteOdoo("write", "OLD", "NEW")
+    client.set_results(
+        "sale.order", OdooExecutedButUnserializable("cannot marshal None"),
+        method="write",
+    )
+    monkeypatch.setattr(tools_write, "_writer", lambda: Writer(client))
+
+    text = tools_write.write_record("sale.order", 7, {"note": "NEW"})
+
+    assert "COMMITTED but result unserializable" in text
+    assert "Verified state: 'NEW'" in text
+    assert "Do NOT retry" in text
+
+
+def test_real_writer_surfaces_a_swallowed_action_serialisation_failure(monkeypatch):
+    client = CommittedWriteOdoo("action_post", "draft", "posted")
+    client.set_results(
+        "account.payment", OdooExecutedButUnserializable("cannot marshal None"),
+        method="action_post",
+    )
+    monkeypatch.setattr(tools_write, "_writer", lambda: Writer(client))
+
+    text = tools_write.run_action("account.payment", "action_post", [7])
+
+    assert "COMMITTED but result unserializable" in text
+    assert "Verified state: 'posted'" in text
+    assert "Do NOT retry" in text
+
+
 @pytest.fixture
 def committed_action(writer, monkeypatch):
     """Given: the action lands in Odoo and then fails to serialise its reply."""

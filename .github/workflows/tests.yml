@@ -1,0 +1,72 @@
+name: Tests
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run non-live tests
+        run: uv run pytest tests/ -m "not live"
+
+      - name: Build package
+        run: uv build
+
+      - name: Assert wheel contents
+        shell: bash
+        run: |
+          wheel=$(uv run python -c "import glob; print(glob.glob('dist/*.whl')[0])")
+          python -m zipfile -l "$wheel" > wheel-contents.txt
+          uv run python - "$wheel" <<'PY'
+          import sys
+          import zipfile
+
+          expected = {
+              "odoo_assistant/__init__.py",
+              "odoo_assistant/server.py",
+              "odoo_assistant/tools_read.py",
+              "odoo_assistant/tools_write.py",
+              "odoo_assistant/tools_collab.py",
+              "odoo_assistant/tools_evolution.py",
+              "odoo_assistant/resources.py",
+              "odoo_assistant/server_safety.py",
+              "odoo_assistant/server_errors.py",
+              "odoo_assistant/references/SKILL.md",
+          }
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              missing = expected - set(archive.namelist())
+          assert not missing, f"Missing wheel files: {sorted(missing)}"
+          print("FINAL_WHEEL_ASSERTION_OK")
+          PY
+
+      - name: Smoke test installed wheel
+        shell: bash
+        run: |
+          wheel=$(uv run python -c "import glob; print(glob.glob('dist/*.whl')[0])")
+          set +e
+          printf '' | timeout 15s uvx --from "$wheel" odoo-assistant 2>uvx-stderr.txt
+          status=$?
+          set -e
+          test "$status" = 0 || test "$status" = 124
+          ! grep -Eiq 'traceback|importerror|modulenotfounderror' uvx-stderr.txt

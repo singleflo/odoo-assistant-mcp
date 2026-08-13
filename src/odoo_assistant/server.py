@@ -9,8 +9,9 @@ OpenTelemetry instrumentation which is silent here because only
 `OTEL_TRACES_EXPORTER=console` would write spans to stdout and corrupt the
 stream. The JSON-lines purity assertion in the smoke test is what catches it.)
 
-Tools, resources and prompts are registered in a later milestone (PRD §5B);
-this module owns only the server instance, credentials, logging and startup.
+Tools and resources live in their own modules and are attached here by
+`_register_all()`; this module owns the server instance, credentials, logging
+and startup, and no business logic of its own.
 """
 import logging
 import os
@@ -26,6 +27,17 @@ from mcp.server import MCPServer
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
 from odoo_client import Odoo, connect  # noqa: E402  (needs the bootstrap above)
+
+# These import this module back, for `_get_odoo` at call time. The cycle
+# resolves through `sys.modules` only because none of them reads an attribute
+# of `server` at import time — keep it that way.
+from odoo_assistant import (  # noqa: E402  (cycle: must follow the bootstrap)
+    resources,
+    tools_collab,
+    tools_evolution,
+    tools_read,
+    tools_write,
+)
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -113,9 +125,24 @@ def _get_odoo() -> Odoo:
     return _odoo_instance
 
 
+def _register_all() -> None:
+    """Attach every tool and resource to `mcp`: 14 tools and the `odoo://` set.
+
+    Order is free. The one coupling worth naming is already settled: importing
+    `tools_evolution` points `explore_module.REF_DIR` at the same directory
+    `resources.USER_REFERENCES_DIR` serves, so both agree whichever runs first.
+    """
+    tools_read.register(mcp)
+    tools_write.register(mcp)
+    tools_collab.register(mcp)
+    tools_evolution.register(mcp)
+    resources.register(mcp)
+
+
 def main() -> None:
     """Entry point of the `odoo-assistant` console script."""
     logger.info("Starting odoo-assistant MCP server on stdio")
+    _register_all()
     mcp.run(transport="stdio")
 
 

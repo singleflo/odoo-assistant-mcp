@@ -44,6 +44,11 @@ packages = ["src/odoo_assistant"]
 [tool.hatch.build.targets.wheel.force-include]
 "references_public" = "odoo_assistant/references"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src/odoo_assistant/odoo_scripts"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["live: requires a live Odoo instance (needs ODOO_BASE_URL)"]

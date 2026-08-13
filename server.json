@@ -1,0 +1,64 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.crottolo/odoo-assistant",
+  "description": "Odoo virtual employee via MCP: query, create, modify records, workflows, PDFs, and activities.",
+  "repository": {
+    "url": "https://github.com/crottolo/odoo-assistant-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "odoo-assistant",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ODOO_BASE_URL",
+          "description": "Your Odoo instance URL (e.g. http://localhost:8069)",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_DB",
+          "description": "Odoo database name",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_USER",
+          "description": "Odoo login username",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_API_KEY",
+          "description": "Odoo API key (Odoo 14+, preferred). Settings > Users > API Keys > New.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_PASSWORD",
+          "description": "Legacy password for Odoo <=13. Not recommended.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_MCP_MAX_LEVEL",
+          "description": "Safety ceiling 0-5, default 3 (state transitions allowed, destructive ops blocked). See server_safety.py.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

@@ -26,10 +26,10 @@ from pathlib import Path
 import pytest
 
 from odoo_assistant import server, tools_evolution, tools_read, tools_write
+from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
 
-import explore_module as explorer  # noqa: E402  (conftest bootstraps the path)
-from odoo_client import connect  # noqa: E402
+from odoo_client import connect  # noqa: E402  (conftest bootstraps the path)
 
 # The dev instance carries two companies; reading one of them and calling it
 # the business is the multi-company failure this argument exists to prevent.

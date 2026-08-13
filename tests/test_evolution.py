@@ -12,9 +12,8 @@ from pathlib import Path
 import pytest
 
 from odoo_assistant import tools_evolution
+from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
-
-import explore_module as explorer  # noqa: E402  (conftest bootstraps the path)
 
 NOTES_MARKER = "## NOTES — hand-written, preserved across regenerations"
 

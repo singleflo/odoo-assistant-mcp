@@ -11,28 +11,26 @@ instance and this server is only a wrapper around it.
 
 **Importing this module redirects `explore_module.REF_DIR`** — the call at the
 bottom of the file runs on import, so anything that imports the script
-afterwards sees the user path. `register()` re-applies it, so the redirect
-holds whichever way this module is reached. Neither creates the directory:
-`mkdir` happens only when a reference is actually written, exactly where
-`explore_module.main()` does it. Importing the server must not touch the
+afterwards *by the same name* sees the user path. That name is the
+package-qualified one; see the import below. `register()` re-applies it, so
+the redirect holds whichever way this module is reached. Neither creates the
+directory: `mkdir` happens only when a reference is actually written, exactly
+where `explore_module.main()` does it. Importing the server must not touch the
 user's disk.
 """
 import contextlib
 import io
 import re
-import sys
 from pathlib import Path
 
 from mcp.server import MCPServer
 
-# The nine Odoo scripts are flat modules imported by bare name; same bootstrap
-# `server.py` uses, so this module is importable on its own too.
-sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
-
-import explore_module as explorer  # noqa: E402  (needs the bootstrap above)
-
-from odoo_assistant import server  # noqa: E402
-from odoo_assistant.server_errors import (  # noqa: E402
+from odoo_assistant import server
+# Package-qualified, unlike the bare bootstrap the sibling modules use: a bare
+# `import explore_module` loads the same file under a SECOND `sys.modules` key,
+# and the redirect below would then be invisible to every qualified importer.
+from odoo_assistant.odoo_scripts import explore_module as explorer
+from odoo_assistant.server_errors import (
     ToolOutcome,
     handle_odoo_exception,
     tool_result,

@@ -10,3 +10,5 @@ __pycache__/
 .env*
 *.local
 .vscode/
+# carries a real API key for local MCP testing
+.opencode/opencode.json

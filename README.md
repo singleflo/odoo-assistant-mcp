@@ -25,7 +25,7 @@ The server requires the following environment variables to connect to your Odoo 
 * `ODOO_API_KEY`: The Odoo API key — **required** (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted: a key is per-user, scoped and revocable on its own.
 
 Optional configuration:
-* `ODOO_MCP_MAX_LEVEL`: The maximum safety level allowed (default: `3`).
+* `ODOO_MCP_MAX_LEVEL`: The highest safety level this server may execute, `0` to `4` (default: `3`). This is how you make the server read-only or let it delete — see [Choosing the ceiling](#choosing-the-ceiling).
 
 ## Safety Layer
 
@@ -40,7 +40,41 @@ Every write and action passes through a dynamic safety classifier before reachin
 | **L4** | `L4_DESTRUCTIVE` | Destructive operations (e.g., `unlink`, `action_cancel`, archiving). | Blocked |
 | **L5** | `L5_PRIVATE` / `L5_UNKNOWN` | Private methods or unknown operations. | Blocked |
 
-The `ODOO_MCP_MAX_LEVEL` environment variable sets the ceiling (default is `3`). Operations above this ceiling are blocked. Destructive operations (L4) and private/unknown operations (L5) are blocked by default. To allow destructive operations, set `ODOO_MCP_MAX_LEVEL=4`. L5 operations are always blocked.
+### Choosing the ceiling
+
+`ODOO_MCP_MAX_LEVEL` sets the highest level this server may execute. Each value
+is cumulative — it permits its own level and everything below:
+
+| Value | What it permits |
+|---|---|
+| `0` | Reads only. |
+| `1` | + single-record writes and creations. |
+| `2` | + batches above 5 records. |
+| `3` | **Default.** + confirming orders, posting invoices, sending mail. |
+| `4` | + `unlink`, `action_cancel`, archiving. |
+| `5` | Accepted, but identical to `4` in effect — see below. |
+
+Two behaviours are worth knowing before you pick a number:
+
+* **`5` does not unlock L5.** Both L5 variants are refused before the ceiling is
+  ever read. `L5_PRIVATE` is refused because Odoo itself rejects every method
+  starting with `_`, so no ceiling could deliver it; `L5_UNKNOWN` is refused
+  because a method nobody classified has, by definition, unreviewed effects. The
+  way to allow such a method is to add it to `WRITE_L1`/`L3`/`L4` in
+  `safety_layer.py` — in code, reviewed — never through configuration.
+* **An invalid value refuses startup.** `ODOO_MCP_MAX_LEVEL="O"` raises rather
+  than falling back to the default, because the fallback is write-capable: a
+  typo must not hand you a writing server you believed was read-only.
+
+The ceiling is set out of band, by a human, and read from the process
+environment at startup. The model running against this server cannot raise it;
+when a call exceeds the ceiling the refusal names the level required, so the
+agent can explain what the operation would change and leave the decision to you.
+
+Note that this is the authority of *this server*, not of the account. An agent
+with shell access can always bypass an MCP server by invoking Odoo directly. A
+limit that must hold regardless of the client belongs in the Odoo access rights
+of the user the API key belongs to, where the Odoo server enforces it.
 
 ## Odoo Version Support
 
@@ -98,6 +132,11 @@ The server exposes 15 tools and 2 resource types:
 
 ## Host Configuration Examples
 
+Every example below sets `ODOO_MCP_MAX_LEVEL` explicitly. It is optional — `3` is
+the default — but writing it down is what makes the server's authority visible in
+the file the human owns. Note the **quotes**: environment values are strings, so
+`"3"` is correct and `3` is rejected by most host schemas.
+
 ### Claude Desktop
 Add this to your `claude_desktop_config.json`:
 ```json
@@ -112,7 +151,8 @@ Add this to your `claude_desktop_config.json`:
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_DB": "mycompany",
         "ODOO_USER": "admin",
-        "ODOO_API_KEY": "your-api-key-here"
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_MCP_MAX_LEVEL": "3"
       }
     }
   }
@@ -133,7 +173,8 @@ Add this to your `.cursor/mcp.json` or configure it in the Cursor settings UI:
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_DB": "mycompany",
         "ODOO_USER": "admin",
-        "ODOO_API_KEY": "your-api-key-here"
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_MCP_MAX_LEVEL": "3"
       }
     }
   }
@@ -154,12 +195,53 @@ Add this to your VS Code `settings.json`:
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_DB": "mycompany",
         "ODOO_USER": "admin",
-        "ODOO_API_KEY": "your-api-key-here"
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_MCP_MAX_LEVEL": "3"
       }
     }
   }
 }
 ```
+
+### opencode
+Add this to `opencode.json` or `.opencode/opencode.json` in your project, or to
+`~/.config/opencode/opencode.json` to make the server available everywhere:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "odoo-assistant": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "uvx",
+        "odoo-assistant"
+      ],
+      "timeout": 120000,
+      "environment": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_DB": "mycompany",
+        "ODOO_USER": "admin",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_MCP_MAX_LEVEL": "3"
+      }
+    }
+  }
+}
+```
+
+opencode's shape differs from the hosts above in ways it rejects outright: the
+key is `mcp` (not `mcpServers`), `type` is required, `command` is a single array
+holding the program *and* its arguments (there is no separate `args`), and the
+environment block is `environment` (not `env`).
+
+Set `timeout` deliberately. It defaults to **5000 ms**, and the first call of a
+session pays for authentication plus, for `instance_overview`, dozens of XML-RPC
+round trips — comfortably past five seconds against a real instance.
+
+opencode reads its config once at startup and does not hot-reload it, so **quit
+and restart** after editing. Anything you change here — the ceiling included —
+takes effect only on the next launch.
 
 ### ChatGPT (Custom Connectors)
 To connect this server to ChatGPT via Custom Connectors:
@@ -175,6 +257,7 @@ hermes mcp add odoo-assistant \
   --env ODOO_DB=mycompany \
   --env ODOO_USER=admin \
   --env ODOO_API_KEY=your-api-key-here \
+  --env ODOO_MCP_MAX_LEVEL=3 \
   --args run odoo-assistant
 ```
 

@@ -22,7 +22,7 @@ This project uses `uv` for Python package management.
 
 ## Hard Rules for Code Changes
 
-* **Never edit files under `src/odoo_assistant/odoo_scripts/` directly.** These 9 scripts are verified against a live Odoo instance and are the source of truth. The MCP server is a thin wrapper importing them. The canonical copy lives at `~/.agents/skills/odoo/` and the sync direction is skill → this repository.
+* **Treat `src/odoo_assistant/odoo_scripts/` as verified code, not as your working surface.** These 9 scripts are verified against a live Odoo instance and are the source of truth; the MCP server is a thin wrapper importing them. They came from an agent skill that has since been retired, so this repository is now the canonical copy — there is no upstream to sync from. Fix a bug here only with a live-instance test proving it, and never refactor them to suit the wrapper: adapt the wrapper instead.
 * **Keep server.py thin.** Tools and resources must live in their respective modules (`tools_read.py`, `tools_write.py`, `tools_collab.py`, `tools_evolution.py`, `resources.py`) and expose a `register(mcp)` function.
 * **No stdout printing.** The stdio transport uses stdout for JSON-RPC communication. Any diagnostic prints must go to stderr.
 

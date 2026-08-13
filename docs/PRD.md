@@ -925,10 +925,12 @@ crottolo/odoo-assistant-mcp               ← MCP server (PyPI, Registry)
     references/                  ← bundled copy of refs
 ```
 
-**Maintenance strategy:** the skill stays at `~/.agents/skills/odoo/` as the
-canonical source. A script (`sync-from-skill.sh`) copies scripts and
-references to the MCP repo before each release. This avoids a monorepo while
-keeping them synchronized.
+**Maintenance strategy (superseded).** This was written while the skill was
+still the canonical source and `sync-from-skill.sh` copied scripts and
+references into the MCP repo before each release. The skill has since been
+retired — the MCP server replaced it — so **this repo is the canonical copy**
+and the sync direction it describes no longer has an upstream. The scripts are
+edited here, under the "never rewrite" rule in AGENTS.md.
 
 ---
 
@@ -1395,21 +1397,12 @@ A dedicated `SECURITY.md` explaining:
 9. Test install: uvx odoo-assistant (fresh machine)
 ```
 
-### 14.2 Sync from skill
+### 14.2 Sync from skill (no longer applicable)
 
-When the skill at `~/.agents/skills/odoo/` is updated:
-
-```bash
-# scripts/sync-from-skill.sh
-SKILL_DIR=~/.agents/skills/odoo
-MCP_DIR=~/VSC/odoo-assistant-mcp
-
-cp "$SKILL_DIR/scripts/"*.py "$MCP_DIR/src/odoo_assistant/odoo_scripts/"
-cp "$SKILL_DIR/references/"*.md "$MCP_DIR/references/"
-cp "$SKILL_DIR/SKILL.md" "$MCP_DIR/references/"
-
-echo "Synced. Review diff, then commit."
-```
+This procedure assumed a skill at `~/.agents/skills/odoo/` feeding the repo.
+That skill was retired once this server superseded it, so there is no upstream
+left to sync from and `scripts/sync-from-skill.sh` exits with "Canonical skill
+not found". Scripts and references are now edited in this repo directly.
 
 ### 14.3 Rollback
 

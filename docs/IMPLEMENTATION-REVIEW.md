@@ -44,6 +44,8 @@
 
 **VERIFIED** on installed package `mcp==1.28.1`, Python 3.11:
 
+> **SUPERSEDED NOTE (2026-08-13)**: The project has been updated to use MCP SDK 2.0+ which introduces the `MCPServer` class as the correct API. The `FastMCP` pattern documented below was correct for SDK 1.28.1 but is now superseded. The codebase now uses `MCPServer` from `mcp.server`.
+
 ```python
 # WRONG (from the tutorial — refers to a future SDK 2.0):
 from mcp.server import MCPServer

@@ -1091,38 +1091,50 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  publish:
+  pypi:
+    name: Publish package to PyPI
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync
 
-      - name: Run tests
+      - name: Run non-live tests
         run: uv run pytest tests/ -m "not live"
 
       - name: Build package
         run: uv build
 
       - name: Publish to PyPI
-        run: uv publish
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  registry:
+    name: Publish server to MCP Registry
+    needs: pypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
       - name: Install mcp-publisher
+        shell: bash
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
 
-      - name: Authenticate to MCP Registry (GitHub OIDC)
+      - name: Authenticate to MCP Registry
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry

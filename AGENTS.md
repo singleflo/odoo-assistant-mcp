@@ -25,6 +25,7 @@ Odoo scripts as MCP tools. **Current state: fully implemented** — 14 tools, 8 
 ## Toolchain
 
 - uv + Python 3.11 (`.venv` exists; `mcp` is installed)
+- **Agent Skills Location**: The three agent skills (`mcp-builder`, `setup-pre-commit`, `tdd`) live globally at `~/.agents/skills/` because that is the only location this harness discovers. Project-local installs (previously symlinked under `.claude/skills/`) are not functional here and have been removed from git tracking.
 - Packaging: hatchling, package `odoo-assistant`, entry point `odoo_assistant.server:main` (PRD §10)
 - Tests: pytest; live tests marked `@pytest.mark.live`. Default run: `uv run pytest tests/ -m "not live"`.
 - Protocol test: `npx @modelcontextprotocol/inspector` pointed at the server

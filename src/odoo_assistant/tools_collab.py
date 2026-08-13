@@ -16,6 +16,19 @@ default path is `Documents.tell()` (`message_notify`: reaches exactly the
 users named, subscribes nobody, emails nobody), and the comment path is
 refused while an external follower exists unless the caller says `force=True`.
 
+**The order every tool here keeps**, and why each step sits where it does:
+
+    decide the plan from the arguments   a bad subtype costs zero Odoo calls
+    gate() the method that will run      a refusal costs zero Odoo calls
+    read, then refuse on what was read   the external-follower check
+    post inside the only try             what failed there may have landed
+
+Deterministic refusals — an unknown subtype, a gate decision, an external
+follower — are raised OUTSIDE any `try`. Inside one, `deliver()`'s
+`ToolExecutionError` would be caught by `except Exception` and re-mapped to
+"UNCERTAIN: may or may not have been applied", turning "nothing was touched"
+into "something might have been".
+
 Two facts read from the sources rather than assumed:
 
   * The method handed to `gate()` is the one that will ACTUALLY run:
@@ -102,36 +115,44 @@ def notify_user(
             follower exists, unless force=True.
         force: post the comment anyway, knowing those people get an email.
     """
+    match subtype:
+        case "note":
+            method, emails_followers = "message_notify", False
+        case "comment":
+            method, emails_followers = "message_post", True
+        case _:
+            return ToolOutcome(True, (
+                f"Unknown subtype {subtype!r}. Nothing was posted. Use "
+                f"'note' (internal, nobody emailed) or 'comment' (posts to "
+                f"the chatter and emails every follower)."
+            )).deliver()
+
+    decision = gate(model, method, record_id)
+    if not decision.allowed:
+        return ToolOutcome(True, decision.reason).deliver()
+
+    docs = Documents(_odoo())
     try:
-        docs = Documents(_odoo())
         audience = docs.audience(model, record_id)  # always, before posting
-        match subtype:
-            case "note":
-                decision = gate(model, "message_notify", record_id)
-                if not decision.allowed:
-                    return ToolOutcome(True, decision.reason).deliver()
-                delivery = docs.tell(model, record_id, message, users=user_ids)
-            case "comment":
-                if audience["external"] and not force:
-                    return ToolOutcome(
-                        True, _external_refusal(model, record_id, audience["external"])
-                    ).deliver()
-                decision = gate(model, "message_post", record_id)
-                if not decision.allowed:
-                    return ToolOutcome(True, decision.reason).deliver()
-                delivery = docs.notify(
-                    model, record_id, message, users=user_ids,
-                    subtype="mail.mt_comment",
-                )
-            case _:
-                return ToolOutcome(True, (
-                    f"Unknown subtype {subtype!r}. Nothing was posted. Use "
-                    f"'note' (internal, nobody emailed) or 'comment' (posts to "
-                    f"the chatter and emails every follower)."
-                )).deliver()
+    except Exception as exc:
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+    if emails_followers and audience["external"] and not force:
+        return ToolOutcome(
+            True, _external_refusal(model, record_id, audience["external"])
+        ).deliver()
+
+    try:
+        delivery = (
+            docs.notify(model, record_id, message, users=user_ids,
+                        subtype="mail.mt_comment")
+            if emails_followers
+            else docs.tell(model, record_id, message, users=user_ids)
+        )
     except Exception as exc:
         return handle_odoo_exception(
-            exc, lambda: Collab(_odoo()).history(model, record_id, limit=3)
+            exc, lambda: Collab(_odoo()).history(model, record_id, limit=3),
+            phase="after_mutation_possible",
         ).deliver()
     return tool_result(
         {"subtype": subtype, "audience": audience, "delivery": delivery})
@@ -160,20 +181,21 @@ def create_activity(
             Activity types differ per instance; the first available type is
             used when this is omitted or matches nothing.
     """
+    decision = gate("mail.activity", "create", None, {
+        "res_model": model, "res_id": record_id,
+        "summary": summary, "user_id": user_id,
+    })
+    if not decision.allowed:
+        return ToolOutcome(True, decision.reason).deliver()
     try:
-        decision = gate("mail.activity", "create", None, {
-            "res_model": model, "res_id": record_id,
-            "summary": summary, "user_id": user_id,
-        })
-        if not decision.allowed:
-            return ToolOutcome(True, decision.reason).deliver()
         activity = Collab(_odoo()).todo(
             model, record_id, summary, user_id, days=days,
             type_name=activity_type,
         )
     except Exception as exc:
         return handle_odoo_exception(
-            exc, lambda: Collab(_odoo()).pending(user_id=user_id, model=model)
+            exc, lambda: Collab(_odoo()).pending(user_id=user_id, model=model),
+            phase="after_mutation_possible",
         ).deliver()
     return tool_result(activity)
 
@@ -191,14 +213,14 @@ def download_docs(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
         record_id: id of the record whose documents to fetch.
         dest_dir: directory to write the files into.
     """
+    decision = gate("ir.attachment", "search_read",
+                    [["res_model", "=", model], ["res_id", "=", record_id]])
+    if not decision.allowed:
+        return ToolOutcome(True, decision.reason).deliver()
     try:
-        decision = gate("ir.attachment", "search_read",
-                        [["res_model", "=", model], ["res_id", "=", record_id]])
-        if not decision.allowed:
-            return ToolOutcome(True, decision.reason).deliver()
         result = Documents(_odoo()).download(model, record_id, dest_dir)
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
     return tool_result(result)
 
 
@@ -215,13 +237,15 @@ def generate_pdf(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
         record_id: id of the record to print.
         dest_dir: directory to write the PDF into.
     """
+    decision = gate(model, "action_send_and_print", record_id)
+    if not decision.allowed:
+        return ToolOutcome(True, decision.reason).deliver()
     try:
-        decision = gate(model, "action_send_and_print", record_id)
-        if not decision.allowed:
-            return ToolOutcome(True, decision.reason).deliver()
         path = Documents(_odoo()).generate_pdf(model, record_id, dest_dir)
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        # The wizard can SEND the document, and no read can tell whether an
+        # email left — so this failure names no state rather than a wrong one.
+        return handle_odoo_exception(exc, phase="after_mutation_possible").deliver()
     return tool_result({"path": path})
 
 

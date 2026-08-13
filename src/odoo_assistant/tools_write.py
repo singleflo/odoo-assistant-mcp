@@ -14,7 +14,10 @@ Every tool keeps the same three beats:
 
 Nothing retries. Odoo commits before serialising its reply, so an exception can
 mean the write landed; the only recovery is one re-read, which
-`handle_odoo_exception` performs and this module never fakes.
+`handle_odoo_exception` performs and this module never fakes. Every handler here
+says `phase="after_mutation_possible"`, because `_guard` runs BEFORE the `try`:
+whatever reaches those blocks failed with the write already in flight, and only
+a re-read may say where it landed.
 
 The annotations in `register()` are for the host's UI. They are documentation,
 not enforcement — a host may ignore them, which is why `gate()` runs inside
@@ -84,7 +87,9 @@ def create_record(
     try:
         record_id = writer.create(model, values, unique_on=unique_on)
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        # No re-read: `Writer.create` raises without ever handing back an id, and
+        # inventing one to read would name a record nobody looked at.
+        return handle_odoo_exception(exc, phase="after_mutation_possible").deliver()
     return tool_result(f"Created (or reused) {model} id={record_id}")
 
 
@@ -104,7 +109,8 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
         result = writer.write(model, record_id, values)
     except Exception as exc:
         return handle_odoo_exception(
-            exc, lambda: writer.state_of(model, record_id, list(values))
+            exc, lambda: writer.state_of(model, record_id, list(values)),
+            phase="after_mutation_possible",
         ).deliver()
     if not result.changed:
         return tool_result(
@@ -134,7 +140,8 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
         result = writer.act(model, method, record_ids, watch="state")
     except Exception as exc:
         return handle_odoo_exception(
-            exc, lambda: writer.state_of(model, record_ids)
+            exc, lambda: writer.state_of(model, record_ids),
+            phase="after_mutation_possible",
         ).deliver()
     return tool_result(repr(result))
 

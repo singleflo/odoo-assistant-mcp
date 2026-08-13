@@ -26,7 +26,7 @@ from odoo_assistant.tools_collab import (
     notify_user,
     register,
 )
-from odoo_client import OdooExecutedButUnserializable
+from odoo_client import OdooError, OdooExecutedButUnserializable
 from tests.conftest import MockOdoo
 
 PDF_BYTES = b"%PDF-1.4 pretend invoice"
@@ -188,8 +188,8 @@ def test_an_unknown_subtype_posts_nothing(odoo):
         notify_user("sale.order", 42, "<p>hi</p>", [7], subtype="internal")
 
     assert "internal" in str(refused.value)
-    assert "message_post" not in methods_called(odoo)
-    assert "message_notify" not in methods_called(odoo)
+    assert "UNCERTAIN" not in str(refused.value)
+    assert odoo.calls == []
 
 
 def test_a_read_only_ceiling_refuses_even_the_safe_note(odoo, monkeypatch):
@@ -202,6 +202,32 @@ def test_a_read_only_ceiling_refuses_even_the_safe_note(odoo, monkeypatch):
 
     assert "L1_WRITE" in str(refused.value)
     assert "message_notify" not in methods_called(odoo)
+
+
+@pytest.mark.parametrize(("ceiling", "run", "level"), [
+    ("0", lambda: notify_user("sale.order", 42, "<p>hi</p>", [7]), "L1_WRITE"),
+    ("0", lambda: create_activity("crm.lead", 11, "Call back", 7), "L1_WRITE"),
+    ("2", lambda: generate_pdf("account.move", 5775, "/tmp"), "L3_STATE_CHANGE"),
+], ids=["notify_user", "create_activity", "generate_pdf"])
+def test_a_blocked_gate_refuses_in_its_own_words_and_opens_no_connection(
+        odoo, monkeypatch, ceiling, run, level):
+    """Given a ceiling that blocks the tool, When it runs, Then the gate's own
+    reason is what the caller reads and the client was never used.
+
+    Both halves matter. A refusal re-mapped to "UNCERTAIN: may or may not have
+    been applied" turns "nothing was touched" into "something might have been",
+    and an empty call log is the only proof that a blocked server really is a
+    blocked server — `notify_user` used to read the audience before deciding.
+    """
+    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", ceiling)
+    program_chatter(odoo, followers=[ALICE, CUSTOMER])
+
+    with pytest.raises(ToolExecutionError) as refused:
+        run()
+
+    assert level in str(refused.value)
+    assert "UNCERTAIN" not in str(refused.value)
+    assert odoo.calls == []
 
 
 # ------------------------------------------------------------ create_activity
@@ -252,6 +278,66 @@ def test_create_activity_reports_a_committed_write_without_retrying(odoo):
     assert "COMMITTED" in text and "Do NOT retry" in text
     assert "Call back" in text          # the state was actually re-read
     assert len([c for c in odoo.calls if c["method"] == "create"]) == 1
+
+
+class VerificationFailsOdoo(PostingOdoo):
+    """A double where the create lands and the read that VERIFIES it fails.
+
+    That read is a SEPARATE call: `Collab.todo` creates the activity and then
+    re-reads it (collaboration.py:135-138). An OdooError arriving from the
+    second call arrives with the record already in the database — which is why
+    the phase, not the exception class, decides what may be claimed.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.activity_reads = 0
+
+    def call(self, model, method, args=None, kwargs=None):
+        if model == "mail.activity" and method == "search_read":
+            self.activity_reads += 1
+            if self.activity_reads == 1:
+                raise OdooError("mail.activity.search_read: cannot marshal None")
+        return super().call(model, method, args, kwargs)
+
+
+@pytest.fixture
+def verification_fails(monkeypatch):
+    """Given: the activity is created, then the read that confirms it fails."""
+    from odoo_assistant import server
+
+    client = VerificationFailsOdoo()
+    monkeypatch.setattr(server, "_odoo_instance", None)
+    monkeypatch.setattr(server, "_get_odoo", lambda: client)
+    program_activity(client, types=[{"id": 4, "name": "To Do"}])
+    return client
+
+
+def test_a_failed_verification_never_reports_the_activity_as_not_created(
+        verification_fails):
+    """Given the create landed and its verification read failed, When the tool
+    answers, Then it does NOT say nothing changed.
+
+    It did change: the activity is in the database. Telling the caller otherwise
+    is the invitation to call again, and calling again is a second activity.
+    """
+    with pytest.raises(ToolExecutionError) as failure:
+        create_activity("crm.lead", 11, "Call back", 7)
+
+    assert "nothing changed" not in str(failure.value)
+    assert "repeating the same call cannot succeed" not in str(failure.value)
+    assert "UNCERTAIN" in str(failure.value)
+
+
+def test_a_failed_verification_answers_with_the_activity_it_re_read(
+        verification_fails):
+    """Given the same failure, Then the answer is what the re-read found."""
+    with pytest.raises(ToolExecutionError) as failure:
+        create_activity("crm.lead", 11, "Call back", 7)
+
+    assert "Call back" in str(failure.value)
+    assert verification_fails.activity_reads == 2      # verify, then re-read
+    assert len([c for c in verification_fails.calls if c["method"] == "create"]) == 1
 
 
 # -------------------------------------------------------------- download_docs

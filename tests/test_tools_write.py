@@ -289,18 +289,56 @@ def test_a_committed_action_re_reads_the_state_exactly_once(committed_action):
     assert "'state': 'posted'" in text
 
 
-def test_an_odoo_refusal_is_delivered_as_an_error(writer, monkeypatch):
-    """Given Odoo refuses, When the action runs, Then the tool raises with its text."""
+@pytest.fixture
+def refused_action(writer, monkeypatch):
+    """Given: the action raised OdooError, with the order already confirmed.
+
+    An OdooError around a write proves nothing about the record: `Writer.create`
+    raises it from the `search_count` that VERIFIES the create
+    (write_patterns.py:141-146), and `_call_json2` raises it for any HTTPError
+    (odoo_client.py:338) — a 502 from a proxy after Odoo committed included.
+    """
     def act_that_was_refused(*_args, **_kwargs):
         raise OdooError("sale.order(7,) is not in a state requiring confirmation")
 
     monkeypatch.setattr(writer, "act", act_that_was_refused)
+    writer.set_record("sale.order", 7, {"state": "sale"})
+    return writer
 
+
+def test_an_odoo_refusal_is_delivered_as_an_error(refused_action):
+    """Given Odoo refuses, When the action runs, Then the tool raises with its text."""
     with pytest.raises(ToolExecutionError) as failure:
         tools_write.run_action("sale.order", "action_confirm", [7])
 
     assert "not in a state requiring confirmation" in str(failure.value)
-    assert "repeating the same call cannot succeed" in str(failure.value)
+
+
+def test_an_odoo_refusal_after_a_write_never_claims_nothing_changed(refused_action):
+    """Given the same refusal, Then it does NOT report the record as untouched.
+
+    The claim "nothing changed" is what invites the retry, and a retry is what
+    produced four identical customers and two orphan invoices in the cold-start
+    runs. Only a caller that wrapped pre-flight work alone may make it.
+    """
+    with pytest.raises(ToolExecutionError) as failure:
+        tools_write.run_action("sale.order", "action_confirm", [7])
+
+    assert "nothing changed" not in str(failure.value)
+    assert "repeating the same call cannot succeed" not in str(failure.value)
+
+
+def test_an_odoo_refusal_after_a_write_reports_the_state_it_re_read(refused_action):
+    """Given the same refusal, Then the answer is the state actually read back.
+
+    'state: sale' is the whole answer to "did my confirm land?" — and it comes
+    from a read, never from the exception text.
+    """
+    with pytest.raises(ToolExecutionError) as failure:
+        tools_write.run_action("sale.order", "action_confirm", [7])
+
+    assert "'state': 'sale'" in str(failure.value)
+    assert len(_writer_calls(refused_action, "state_of")) == 1
 
 
 # ------------------------------------------------------------------- the wiring

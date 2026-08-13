@@ -15,7 +15,9 @@ encoding lives, so a tool function reads:
     try:
         rows = odoo.search_read(...)
     except Exception as exc:
-        return handle_odoo_exception(exc, lambda: writer.state_of(model, ids)).deliver()
+        return handle_odoo_exception(
+            exc, lambda: writer.state_of(model, ids), phase="before_mutation"
+        ).deliver()
     return tool_result(rows)
 
 **Why an exception can be a success**: Odoo commits before serialising its
@@ -23,11 +25,25 @@ reply, so `OdooExecutedButUnserializable` means the write IS applied. Reporting
 it as a failure invites a retry, and a retry posts the payment twice. Nothing
 in this module ever retries; the only recovery is a re-read, and a state that
 was not re-read is never named (references/SKILL.md rule 5).
+
+**Why the same exception needs the PHASE to be read correctly**: `OdooError`
+alone does not prove the record is untouched. Two verified reasons, both from
+sources in this repo:
+
+  * `Writer.create` calls `create` and THEN a `search_count` to verify it
+    (write_patterns.py:136-146); `Collab.todo` creates and THEN re-reads
+    (collaboration.py:135-138). An `OdooError` from that verification step
+    comes AFTER the record exists.
+  * `Odoo._call_json2` turns EVERY `HTTPError` into `OdooError`
+    (odoo_client.py:338-340), so a 502 from a proxy after Odoo committed
+    arrives as the same class as a validation refusal.
+
+So "nothing changed" is a claim only a `before_mutation` caller may make.
 """
 import json
 import sys
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import Callable, Literal, NamedTuple
 
 # The nine Odoo scripts are flat modules imported by bare name; mirror the
 # bootstrap `server.py` uses so this module is importable on its own too.
@@ -42,6 +58,10 @@ from odoo_client import (  # noqa: E402  (needs the bootstrap above)
 
 MAX_RESULT_CHARS = 5000
 TRUNCATION_NOTICE = "\n... truncated, use limit/offset to narrow the result."
+
+# A Literal, not a bool: `phase="after_mutation_possible"` names the claim it
+# licenses at the call site, where a bare `True` would name nothing.
+Phase = Literal["before_mutation", "after_mutation_possible"]
 
 
 class ToolExecutionError(RuntimeError):
@@ -83,11 +103,21 @@ def tool_result(payload: object) -> str:
 def handle_odoo_exception(
     exc: BaseException,
     reread_state_fn: Callable[[], object] | None = None,
+    phase: Phase = "after_mutation_possible",
 ) -> ToolOutcome:
     """Map an exception to what the tool should report. Never retries.
 
-    `reread_state_fn` is used ONLY for the committed-but-unserializable case,
-    and only once — typically `lambda: writer.state_of(model, ids)`.
+    `phase` is what the CALLER knows and this module cannot: whether a write
+    had already been attempted when `exc` was raised. Only a caller that wrapped
+    nothing but pre-flight work may pass `before_mutation`, which is the one
+    phase allowed to say "nothing changed".
+
+    It defaults to `after_mutation_possible` on purpose: a call site that forgets
+    to say lands on caution, never on the false all-clear that invites the retry
+    this whole module exists to prevent.
+
+    `reread_state_fn` — typically `lambda: writer.state_of(model, ids)` — is
+    called at most once, for every outcome whose state is in doubt.
     """
     match exc:
         case OdooExecutedButUnserializable():
@@ -98,19 +128,38 @@ def handle_odoo_exception(
                 f"{exc}\nNo call was made: nothing was sent to Odoo, so no "
                 f"record changed. Fix the configuration and call the tool again.",
             )
-        case OdooError():
+        case OdooError() if phase == "before_mutation":
             return ToolOutcome(
                 True,
                 f"{exc}\nOdoo refused the call, so nothing changed. Fix the "
                 f"arguments named above — repeating the same call cannot succeed.",
             )
         case _:
-            return ToolOutcome(
-                True,
-                f"UNCERTAIN: {exc}\nThe call may or may not have been applied "
-                f"before this failure. Re-read the record and decide from its "
-                f"actual state; do NOT repeat the call blindly.",
-            )
+            return ToolOutcome(True, _uncertain(exc, reread_state_fn))
+
+
+def _reread(reread_state_fn: Callable[[], object] | None) -> str:
+    """The state as it was actually observed — never one that was not read."""
+    if reread_state_fn is None:
+        return "NOT RE-READ — no read was performed, so the state is unknown."
+    try:
+        return repr(reread_state_fn())
+    except Exception as read_exc:  # a failed read proves nothing
+        return f"RE-READ FAILED ({read_exc}) — the state is unknown."
+
+
+def _uncertain(
+    exc: BaseException,
+    reread_state_fn: Callable[[], object] | None,
+) -> str:
+    """Text for a failure that may or may not have left a change behind."""
+    return (
+        f"UNCERTAIN: {exc}\n"
+        f"The call may already have been applied before this failure.\n"
+        f"Verified state: {_reread(reread_state_fn)}\n"
+        f"Do NOT repeat the call blindly: decide from the state above, and "
+        f"re-read the record when it says the state is unknown."
+    )
 
 
 def _committed(
@@ -118,16 +167,9 @@ def _committed(
     reread_state_fn: Callable[[], object] | None,
 ) -> str:
     """Text for a write that landed but could not report itself."""
-    if reread_state_fn is None:
-        state = "NOT RE-READ — no read was performed, so the state is unknown."
-    else:
-        try:
-            state = repr(reread_state_fn())
-        except Exception as read_exc:  # a failed read proves nothing
-            state = f"RE-READ FAILED ({read_exc}) — the state is unknown."
     return (
         f"COMMITTED but result unserializable. {exc}\n"
-        f"Verified state: {state}\n"
+        f"Verified state: {_reread(reread_state_fn)}\n"
         f"Do NOT retry — the change is already applied; a second call would "
         f"duplicate it."
     )

@@ -2,16 +2,22 @@
 """The four read tools (PRD §5B): search_read, read_record, count_records,
 instance_overview.
 
-All four are L0 in `safety_layer.classify()`, and all four still go through
-`gate()` — not for the ceiling, which L0 clears at any setting, but for the
-structural guards `gate()` runs alongside it. `account.move` holds customer
-invoices, vendor bills, credit notes AND raw journal entries in one table, so a
-query without `move_type` answers a question nobody asked (3.613 records where
-the user sees 373). One code path per tool means that guard cannot be skipped.
+The three that query Odoo — `search_read`, `read_record`, `count_records` — are
+L0 in `safety_layer.classify()` and all three go through `gate()`: not for the
+ceiling, which L0 clears at any setting, but for the structural guards `gate()`
+runs alongside it. `account.move` holds customer invoices, vendor bills, credit
+notes AND raw journal entries in one table, so a query without `move_type`
+answers a question nobody asked (3.613 records where the user sees 373). One
+code path per tool means that guard cannot be skipped.
+
+`instance_overview` is the exception, and it needs no gate: it reads the local
+profile `census.py` wrote and never opens a connection, so there is no call for
+a guard to inspect.
 
 The gate runs BEFORE any call to Odoo — including the `fields_get` that
 resolves default field names — so a refused tool leaves no trace on the
-instance.
+instance. Nothing here mutates, which is why every handler below reports
+`phase="before_mutation"`: a refused read really did change nothing.
 
 `register(mcp)` is called by `server.py`. Importing this module registers
 nothing, which keeps every tool callable as a plain function in tests.
@@ -117,7 +123,7 @@ def search_read(
     try:
         return tool_result(server._get_odoo().call(model, "search_read", [domain], kwargs))
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
 def read_record(model: str, record_id: int, fields: list[str] | None = None) -> str:
@@ -145,7 +151,7 @@ def read_record(model: str, record_id: int, fields: list[str] | None = None) -> 
         names = fields or _default_fields(odoo, model)
         return tool_result(odoo.call(model, "read", [[record_id], names], {}))
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
 def count_records(
@@ -176,7 +182,7 @@ def count_records(
     try:
         return tool_result(server._get_odoo().search_count(model, domain, context=context))
     except Exception as exc:
-        return handle_odoo_exception(exc).deliver()
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
 def instance_overview() -> str:

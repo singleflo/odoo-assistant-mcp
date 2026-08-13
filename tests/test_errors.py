@@ -130,6 +130,70 @@ def test_private_method_rejection_surfaces_intact():
     assert "public wizard" in outcome.text
 
 
+def test_an_odoo_error_before_any_mutation_states_that_nothing_changed():
+    # Given a refusal raised while validating, before a write was attempted
+    exc = OdooError("crm.lead.write: ValidationError: lost_reason is required")
+    # When mapped by a caller that wrapped nothing but pre-flight work
+    outcome = handle_odoo_exception(exc, phase="before_mutation")
+    # Then it may say the record is untouched — that is the one phase that can
+    assert outcome.is_error is True
+    assert "nothing changed" in outcome.text
+    assert "UNCERTAIN" not in outcome.text
+
+
+def test_an_odoo_error_after_a_possible_mutation_never_says_nothing_changed():
+    # Given the SAME exception, raised from the read that VERIFIES a create
+    # (write_patterns.py:141-146 — the record already exists at that point)
+    exc = OdooError("mail.activity.search_read: serialisation error")
+    # When mapped by the caller that wrapped the create
+    outcome = handle_odoo_exception(exc, phase="after_mutation_possible")
+    # Then the false all-clear is gone: claiming it invites the retry that
+    # duplicates the record (references/SKILL.md rule 5)
+    assert outcome.is_error is True
+    assert "nothing changed" not in outcome.text
+    assert "repeating the same call cannot succeed" not in outcome.text
+    assert "UNCERTAIN" in outcome.text
+
+
+def test_an_odoo_error_after_a_possible_mutation_reports_the_state_it_re_read():
+    # Given a re-read standing in for Writer.state_of()
+    calls = []
+
+    def reread():
+        calls.append(1)
+        return {"id": 77, "summary": "Call back", "state": "planned"}
+
+    # When an OdooError is mapped in the post-mutation phase
+    outcome = handle_odoo_exception(
+        OdooError("mail.activity.search_read: serialisation error"),
+        reread_state_fn=reread,
+        phase="after_mutation_possible",
+    )
+    # Then the record's ACTUAL state is the answer, read exactly once
+    assert len(calls) == 1
+    assert "Call back" in outcome.text
+    assert "'state': 'planned'" in outcome.text
+
+
+def test_an_odoo_error_without_a_re_read_names_no_state_at_all():
+    # Given no way to re-read after a write that may have landed
+    outcome = handle_odoo_exception(
+        OdooError("res.partner.search_count: connection reset"),
+        phase="after_mutation_possible",
+    )
+    # Then the text says the state is unknown instead of guessing one
+    assert "NOT RE-READ" in outcome.text
+    assert "presum" not in outcome.text.lower()
+
+
+def test_the_default_phase_is_the_cautious_one():
+    # A call site that forgets to say must land on caution, never on the false
+    # all-clear: the wrong default here is the whole defect this parameter fixes.
+    outcome = handle_odoo_exception(OdooError("sale.order.write: whatever"))
+    assert "nothing changed" not in outcome.text
+    assert "UNCERTAIN" in outcome.text
+
+
 def test_unexpected_exception_is_uncertain_not_failed():
     # Given a transport-level failure: the request may or may not have landed
     outcome = handle_odoo_exception(TimeoutError("connection reset by peer"))

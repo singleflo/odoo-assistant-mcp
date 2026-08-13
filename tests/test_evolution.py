@@ -115,7 +115,7 @@ def test_generate_writes_the_reference_under_the_redirected_dir(user_home, insta
 
 @pytest.mark.parametrize(
     "hostile",
-    ["/tmp/EVIL", "../../../tmp/EVIL2", "..", "a/b", "sales/../../escape", ".hidden"],
+    ["/tmp/EVIL", "../../../tmp/EVIL2", "..", "a/b", "sales/../../escape", ".hidden", "sale\n"],
 )
 def test_a_name_that_is_not_a_module_slug_is_refused(user_home, instance, hostile):
     """Given a module name that is really a path, When generation is asked,
@@ -161,6 +161,14 @@ def test_a_generated_reference_is_served_without_a_restart(user_home, instance):
 
     assert "odoo://ref/sales" in _uris(mcp)
     assert "## Models and volumes" in _read(mcp, "odoo://ref/sales")
+
+
+def test_direct_generation_reports_when_no_mcp_server_is_active(user_home, instance):
+    """Given no registered MCP server, When generation runs directly, Then the
+    result says the file was written but not registered as a resource."""
+    message = tools_evolution.explore_module("sales", "generate", models="sale.order")
+
+    assert "not registered as a resource because no MCP server is active" in message
 
 
 def test_a_second_generate_preserves_hand_written_notes(user_home, instance):

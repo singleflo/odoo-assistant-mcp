@@ -154,12 +154,17 @@ def _generate(odoo: object, name: str, models: str, ctx: dict) -> ToolOutcome:
     # Two-half write: the body ends at the NOTES marker, hand-written notes
     # below it are carried over from the previous generation.
     path.write_text(body + explorer.preserved_notes(str(path)))
-    _serve(path)
+    served = _serve(path)
+    service_note = (
+        f"The NOTES section at the bottom was preserved, and the reference is "
+        f"served as odoo://ref/{name} from now on."
+        if served
+        else "The NOTES section at the bottom was preserved. NOTE: not registered "
+        "as a resource because no MCP server is active."
+    )
     return ToolOutcome(
         False,
-        f"Written: {path} ({path.stat().st_size / 1024:.1f} KB). "
-        f"The NOTES section at the bottom was preserved, and the reference is "
-        f"served as odoo://ref/{name} from now on.",
+        f"Written: {path} ({path.stat().st_size / 1024:.1f} KB). {service_note}",
     )
 
 
@@ -171,7 +176,7 @@ def _reference_path(name: str) -> Path | None:
     slug, and the path it produces must still resolve to a direct child of
     the resolved reference directory.
     """
-    if not MODULE_NAME.match(name):
+    if not MODULE_NAME.fullmatch(name):
         return None
     directory = Path(explorer.REF_DIR).resolve()
     path = (directory / f"{name}.md").resolve()
@@ -189,7 +194,7 @@ def _rejected_name(name: str) -> str:
     )
 
 
-def _serve(path: Path) -> None:
+def _serve(path: Path) -> bool:
     """Publish a generated reference as `odoo://ref/<module>` right away.
 
     PRD §19 promises the reference is "available to all future queries"; the
@@ -198,6 +203,8 @@ def _serve(path: Path) -> None:
     """
     if _mcp is not None:
         resources.register_reference(_mcp, path)
+        return True
+    return False
 
 
 def _over_budget(name: str, body: str) -> str:

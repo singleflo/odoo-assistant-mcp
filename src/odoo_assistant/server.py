@@ -16,6 +16,7 @@ and startup, and no business logic of its own.
 import logging
 import os
 import sys
+from importlib.metadata import PackageNotFoundError, version as _package_version
 from pathlib import Path
 from typing import NamedTuple
 
@@ -47,7 +48,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-mcp = MCPServer("odoo-assistant")
+try:
+    _VERSION = _package_version("odoo-assistant")
+except PackageNotFoundError:  # a source tree that was never installed
+    _VERSION = "0+unknown"
+
+# The SDK defaults `version` to "", which is what a host then displays.
+mcp = MCPServer("odoo-assistant", version=_VERSION)
 
 _odoo_instance: Odoo | None = None
 

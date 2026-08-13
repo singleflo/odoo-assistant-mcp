@@ -9,7 +9,10 @@ read-only on most systems. Every test here runs with `HOME` pointed at a
 """
 from pathlib import Path
 
+import anyio
 import pytest
+from mcp.server import MCPServer
+from mcp.types import InputRequiredResult
 
 from odoo_assistant import tools_evolution
 from odoo_assistant.odoo_scripts import explore_module as explorer
@@ -36,6 +39,9 @@ def user_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     # Records the real (import-time) value so teardown puts it back.
     monkeypatch.setattr(explorer, "REF_DIR", explorer.REF_DIR)
+    # Same for the server a previous `register()` may have stashed: a test
+    # must never publish onto the real `odoo_assistant.server` instance.
+    monkeypatch.setattr(tools_evolution, "_mcp", None)
     tools_evolution._redirect_references()
     return home
 
@@ -54,6 +60,16 @@ def instance(mock_odoo):
     mock_odoo.set_results("ir.model.fields", [])  # action_methods probe
     mock_odoo.set_results("ir.ui.view", [])       # action_methods form scan
     return mock_odoo
+
+
+def _uris(mcp: MCPServer) -> set[str]:
+    return {str(resource.uri) for resource in anyio.run(mcp.list_resources)}
+
+
+def _read(mcp: MCPServer, uri: str) -> str:
+    contents = anyio.run(mcp.read_resource, uri)
+    assert not isinstance(contents, InputRequiredResult)
+    return "".join(item.content for item in contents if isinstance(item.content, str))
 
 
 def test_the_reference_dir_is_redirected_under_the_user_home():
@@ -95,6 +111,56 @@ def test_generate_writes_the_reference_under_the_redirected_dir(user_home, insta
     assert "| `sale.order` | 133 |" in head
     assert "`amount_total` → use **`amount_total_signed`**" in head
     assert notes  # the second half exists even on a first generation
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["/tmp/EVIL", "../../../tmp/EVIL2", "..", "a/b", "sales/../../escape", ".hidden"],
+)
+def test_a_name_that_is_not_a_module_slug_is_refused(user_home, instance, hostile):
+    """Given a module name that is really a path, When generation is asked,
+    Then it is refused and nothing is written where that name pointed — a
+    tool caller must not be able to overwrite an arbitrary `.md` file."""
+    would_be = Path(explorer.REF_DIR) / f"{hostile}.md"
+
+    with pytest.raises(ToolExecutionError) as refusal:
+        tools_evolution.explore_module(hostile, "generate", models="sale.order")
+
+    assert "REFUSED" in str(refusal.value)
+    assert not would_be.exists()
+    assert not Path(explorer.REF_DIR).exists()
+
+
+def test_a_real_odoo_module_slug_is_accepted(user_home, instance):
+    """Given a name shaped like a real Odoo module, When it is generated,
+    Then the guard lets it through — refusing must not cost the legitimate
+    names it exists to protect."""
+    tools_evolution.explore_module("l10n_cz", "generate", models="sale.order")
+
+    assert (Path(explorer.REF_DIR) / "l10n_cz.md").is_file()
+
+
+def test_the_default_action_generates(user_home, instance):
+    """Given only a module name, When the tool runs, Then it generates the
+    reference — PRD §5B and §19 both document `action="generate"` as the
+    default, so a bare call must not silently return a ranking instead."""
+    tools_evolution.explore_module("sales", models="sale.order")
+
+    assert (Path(explorer.REF_DIR) / "sales.md").is_file()
+
+
+def test_a_generated_reference_is_served_without_a_restart(user_home, instance):
+    """Given a running server, When a module is generated, Then its
+    `odoo://ref/<module>` resource answers immediately — PRD §19 promises the
+    reference is available to all future queries, not after a restart."""
+    mcp = MCPServer("test-evolution")
+    tools_evolution.register(mcp)
+    assert "odoo://ref/sales" not in _uris(mcp)
+
+    tools_evolution.explore_module("sales", "generate", models="sale.order")
+
+    assert "odoo://ref/sales" in _uris(mcp)
+    assert "## Models and volumes" in _read(mcp, "odoo://ref/sales")
 
 
 def test_a_second_generate_preserves_hand_written_notes(user_home, instance):

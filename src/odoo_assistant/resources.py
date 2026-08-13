@@ -69,6 +69,25 @@ def _reader(source: Traversable) -> Callable[[], str]:
     return read
 
 
+def register_reference(mcp: MCPServer, source: Traversable) -> None:
+    """Serve one reference file as `odoo://ref/<stem>`.
+
+    Called for every file found at startup, and again by `explore_module` the
+    moment it generates a new one: the SDK asks its resource manager on every
+    `resources/list` and `resources/read`, so a file registered mid-session is
+    served without a restart (PRD §19 step 4). Registering a URI twice keeps
+    the first registration, so a regeneration is a no-op here.
+    """
+    stem = source.name.removesuffix(".md")
+    mcp.resource(
+        REF_URI_PREFIX + stem,
+        name=f"odoo-ref-{stem}",
+        title=f"Odoo reference: {stem}",
+        description=f"Odoo methodology reference: {stem}.",
+        mime_type=MARKDOWN,
+    )(_reader(source))
+
+
 def register(mcp: MCPServer) -> None:
     """Register `odoo://skill` and one `odoo://ref/<stem>` per reference file.
 
@@ -92,11 +111,4 @@ def register(mcp: MCPServer) -> None:
     )(_reader(bundled.joinpath(SKILL_FILE)))
 
     for source in (*_markdown_files(bundled), *_markdown_files(USER_REFERENCES_DIR)):
-        stem = source.name.removesuffix(".md")
-        mcp.resource(
-            REF_URI_PREFIX + stem,
-            name=f"odoo-ref-{stem}",
-            title=f"Odoo reference: {stem}",
-            description=f"Odoo methodology reference: {stem}.",
-            mime_type=MARKDOWN,
-        )(_reader(source))
+        register_reference(mcp, source)

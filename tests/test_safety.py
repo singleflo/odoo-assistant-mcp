@@ -21,7 +21,7 @@ import re
 import pytest
 
 from odoo_assistant import server_safety
-from odoo_assistant.server_safety import LEVEL_ORDINALS, gate, max_level
+from odoo_assistant.server_safety import DEFAULT_MAX_LEVEL, LEVEL_ORDINALS, gate, max_level
 
 from safety_layer import BATCH_THRESHOLD, classify  # noqa: E402  (conftest bootstrap)
 
@@ -84,24 +84,31 @@ def test_archiving_write_is_l4():
 # --------------------------------------------------------------- max_level()
 def test_max_level_defaults_to_three():
     """Given no environment variable, When max_level() is read, Then it is 3."""
-    assert max_level() == 3
+    assert max_level() == DEFAULT_MAX_LEVEL
 
 
-@pytest.mark.parametrize("raw", ["", "   ", "abc", "L3", "3.5", "3,5", "0x2"])
-def test_max_level_falls_back_on_garbage(monkeypatch, raw):
-    """Given an unparsable ODOO_MCP_MAX_LEVEL, When max_level() is read,
-    Then it falls back to 3 instead of raising in the middle of a tool call."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
+def test_max_level_defaults_when_empty(monkeypatch):
+    """Given an empty ceiling, When max_level() is read, Then it uses the default."""
+    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "")
 
-    assert max_level() == 3
+    assert max_level() == DEFAULT_MAX_LEVEL
 
 
-@pytest.mark.parametrize(("raw", "expected"), [("0", 0), ("1", 1), (" 4 ", 4), ("5", 5)])
+@pytest.mark.parametrize(("raw", "expected"), [(str(level), level) for level in range(6)])
 def test_max_level_reads_a_valid_ceiling(monkeypatch, raw, expected):
     """Given a numeric ODOO_MCP_MAX_LEVEL, When max_level() is read, Then it wins."""
     monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
 
     assert max_level() == expected
+
+
+@pytest.mark.parametrize("raw", ["O", "abc", "3.5", "-1", "6"])
+def test_max_level_rejects_invalid_configured_values(monkeypatch, raw):
+    """Given an invalid configured ceiling, When read, Then startup is refused."""
+    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
+
+    with pytest.raises(RuntimeError, match=rf"{re.escape(raw)}.*0.*5"):
+        max_level()
 
 
 # --------------------------------------------------------------------- gate()

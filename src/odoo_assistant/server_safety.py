@@ -64,13 +64,23 @@ class GateResult(NamedTuple):
 def max_level() -> int:
     """The highest level this server may execute, from ODOO_MCP_MAX_LEVEL.
 
-    Garbage falls back to the default rather than raising: a typo in a host's
-    config file must not turn every tool call into a stack trace.
+    An explicitly invalid authorization ceiling refuses startup rather than
+    silently enabling the write-capable default.
     """
-    try:
-        return int(os.environ.get("ODOO_MCP_MAX_LEVEL", ""))
-    except ValueError:
+    raw = os.environ.get("ODOO_MCP_MAX_LEVEL", "")
+    if raw == "":
         return DEFAULT_MAX_LEVEL
+    try:
+        level = int(raw)
+    except ValueError as error:
+        raise RuntimeError(
+            f"invalid ODOO_MCP_MAX_LEVEL={raw!r}; expected an integer from 0 to 5"
+        ) from error
+    if not 0 <= level <= 5:
+        raise RuntimeError(
+            f"invalid ODOO_MCP_MAX_LEVEL={raw!r}; expected an integer from 0 to 5"
+        )
+    return level
 
 
 def _positional_args(ids: Any, values: Any) -> list[Any]:

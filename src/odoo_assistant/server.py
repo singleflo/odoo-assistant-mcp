@@ -38,6 +38,7 @@ from odoo_assistant import (  # noqa: E402  (cycle: must follow the bootstrap)
     tools_read,
     tools_write,
 )
+from odoo_assistant.server_safety import max_level  # noqa: E402
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -109,12 +110,34 @@ def _detect_version(odoo: Odoo) -> dict[str, object]:
 
 
 def _get_odoo() -> Odoo:
-    """Return the shared client, connecting on first use."""
+    """Return the shared client, connecting on first use.
+
+    `allow_write` is the client's declaration of intent, and it is the ONLY
+    thing that arms its production guard: `connect()` blocks a
+    `PRODUCTION_HOSTS` base URL with `ProductionWriteBlocked` if and only if
+    `allow_write` is true. Connecting with the default `False` while the
+    server goes on to write through `Writer` disarmed that guard entirely —
+    `create_record` against app.persevida.com would have gone straight
+    through. So the intent must be declared here, truthfully.
+
+    "Truthfully" is `max_level() >= 1`: the ceiling already decides whether
+    this process may execute anything above L0_READ, so it is the honest
+    answer to "can this server write at all". A server pinned to
+    ODOO_MCP_MAX_LEVEL=0 never writes, declares no write intent, and keeps
+    read-only access to a production instance — a hardcoded `True` would have
+    broken that legitimate case, since the guard raises at connect time,
+    before any tool has a chance to be read-only. `ODOO_ALLOW_PROD_WRITE=yes`
+    remains the script's own documented, deliberate escape hatch.
+    """
     global _odoo_instance
     if _odoo_instance is None:
         creds = _credentials()
         _odoo_instance = connect(
-            base=creds.base_url, db=creds.db, user=creds.user, key=creds.secret
+            allow_write=max_level() >= 1,
+            base=creds.base_url,
+            db=creds.db,
+            user=creds.user,
+            key=creds.secret,
         )
         logger.info(
             "Connected to %s (db=%s, Odoo %s)",

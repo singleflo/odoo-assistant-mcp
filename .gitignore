@@ -1,0 +1,12 @@
+.venv/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+.omo/
+.codegraph
+.DS_Store
+/tmp-install/
+.env*
+*.local
+.vscode/

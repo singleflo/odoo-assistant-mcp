@@ -1,0 +1,6 @@
+[allowlist]
+description = "Allow documented example credentials in vendored documentation"
+paths = [
+  '''docs/json2-source/docs/SPA_AUTH_GUIDE\.md$''',
+  '''docs/mcp-spec/docs/2026-07-28/tutorials/security/authorization\.md$''',
+]

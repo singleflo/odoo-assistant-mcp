@@ -1,0 +1,50 @@
+[project]
+name = "odoo-assistant"
+version = "1.0.0"
+description = "An Odoo virtual employee via MCP: query, create, modify records, run workflows"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Roberto Crotti", email = "bo@fl1.cz" },
+]
+keywords = ["mcp", "odoo", "erp", "model-context-protocol", "claude", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = ["mcp[cli]>=2.0.0,<3"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[project.scripts]
+odoo-assistant = "odoo_assistant.server:main"
+
+[project.urls]
+Homepage = "https://github.com/crottolo/odoo-assistant-mcp"
+Repository = "https://github.com/crottolo/odoo-assistant-mcp"
+Issues = "https://github.com/crottolo/odoo-assistant-mcp/issues"
+MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.crottolo/odoo-assistant"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/odoo_assistant"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"references_public" = "odoo_assistant/references"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: requires a live Odoo instance (needs ODOO_BASE_URL)"]
+addopts = "-m 'not live'"

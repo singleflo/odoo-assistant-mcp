@@ -51,5 +51,8 @@ extraPaths = ["src/odoo_assistant/odoo_scripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: requires a live Odoo instance (needs ODOO_BASE_URL)"]
-addopts = "-m 'not live'"
+markers = [
+    "live: requires a live Odoo instance (needs ODOO_BASE_URL)",
+    "wheel: drives the built artifact in dist/ (needs `uv build` and network for uvx)",
+]
+addopts = "-m 'not live and not wheel'"

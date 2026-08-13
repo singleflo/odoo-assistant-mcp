@@ -28,7 +28,7 @@ jobs:
         run: uv sync
 
       - name: Run non-live tests
-        run: uv run pytest tests/ -m "not live"
+        run: uv run pytest tests/ -m "not live and not wheel"
 
       - name: Build package
         run: uv build
@@ -60,13 +60,8 @@ jobs:
           print("FINAL_WHEEL_ASSERTION_OK")
           PY
 
-      - name: Smoke test installed wheel
-        shell: bash
-        run: |
-          wheel=$(uv run python -c "import glob; print(glob.glob('dist/*.whl')[0])")
-          set +e
-          printf '' | timeout 15s uvx --from "$wheel" odoo-assistant 2>uvx-stderr.txt
-          status=$?
-          set -e
-          test "$status" = 0 || test "$status" = 124
-          ! grep -Eiq 'traceback|importerror|modulenotfounderror' uvx-stderr.txt
+      # Replaces the former empty-stdin uvx smoke check: EOF closed the session
+      # before any tool ran, so it exited 0 without reaching the credential
+      # check and could not fail. Do not restore it — this supersedes it.
+      - name: Run installed-wheel E2E
+        run: uv run pytest tests/ -m wheel

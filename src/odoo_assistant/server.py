@@ -76,8 +76,18 @@ def _credentials() -> _Credentials:
     none of those (PRD non-goal N5, references/SKILL.md rule 7). The client
     itself takes no password either — `connect()` accepts `key` only. The one
     case a password could serve is Odoo ≤13, which this server declares
-    unsupported. The database and the login are required by the XML-RPC
-    transport.
+    unsupported.
+
+    The database is required — the client raises without it
+    (`odoo_client.py:212`). The **login is not**. Supplied, it costs one
+    `common.authenticate()` round trip. Omitted, `_discover_uid()`
+    (`odoo_client.py:250`) reads `res.users.login` for uid 1..59 and keeps the
+    one the key answers for, so the login is discovered rather than guessed —
+    but that probe costs up to 59 extra round trips and FAILS on an instance
+    where the key owner's uid is 60 or higher. Odoo publishes no endpoint that
+    maps a key to its owner, which is why discovery has to be a probe: its own
+    `authenticate()` looks the user up BY LOGIN before it ever checks the key.
+    So ODOO_USER stays worth setting; it is simply not required.
     """
     base_url = os.environ.get("ODOO_BASE_URL", "")
     db = os.environ.get("ODOO_DB", "")
@@ -89,7 +99,6 @@ def _credentials() -> _Credentials:
         for name, value in (
             ("ODOO_BASE_URL", base_url),
             ("ODOO_DB", db),
-            ("ODOO_USER", user),
             ("ODOO_API_KEY", api_key),
         )
         if not value

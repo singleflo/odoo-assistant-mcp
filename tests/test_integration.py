@@ -114,6 +114,25 @@ def test_live_connection(live_odoo):
     assert live_odoo.uid > 0
 
 
+def test_live_login_is_discovered_from_the_key(live_odoo):
+    """Given no login at all, When a client is built from the key alone, Then
+    it authenticates as the key's owner — the fact that makes ODOO_USER
+    optional rather than required.
+
+    A second client on purpose: the module fixture keeps the fast path, so an
+    instance whose key owner sits at uid 60 or higher fails only this test.
+    """
+    keyless = connect(
+        base=os.environ["ODOO_BASE_URL"],
+        db=os.environ["ODOO_DB"],
+        key=os.environ["ODOO_API_KEY"],
+    )
+
+    assert keyless.uid > 0
+    assert keyless.user == live_odoo.user
+    assert keyless.search_count("res.partner", []) > 0
+
+
 def test_live_read_tools(live_odoo):
     """Given a multi-company instance, When the read tools query sale.order,
     Then the counts agree with each other and the rows are the ones asked for.

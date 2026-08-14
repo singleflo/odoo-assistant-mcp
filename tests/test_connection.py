@@ -14,6 +14,13 @@ CREDENTIAL_VARS = (
     "ODOO_API_KEY",
 )
 
+# ODOO_USER is read but not demanded: the key identifies its own owner.
+REQUIRED_VARS = (
+    "ODOO_BASE_URL",
+    "ODOO_DB",
+    "ODOO_API_KEY",
+)
+
 
 @pytest.fixture
 def clean_environment(monkeypatch):
@@ -29,8 +36,9 @@ def test_missing_credentials_are_named_one_by_one(clean_environment):
         server._get_odoo()
 
     message = str(raised.value)
-    for name in CREDENTIAL_VARS:
+    for name in REQUIRED_VARS:
         assert name in message
+    assert "ODOO_USER" not in message
 
 
 def test_api_key_is_required_and_blamed_alone(clean_environment, monkeypatch):
@@ -75,6 +83,23 @@ def test_the_api_key_is_the_secret_that_reaches_the_client(
     monkeypatch.setenv("ODOO_API_KEY", "an-api-key")
 
     assert server._credentials().api_key == "an-api-key"
+
+
+def test_the_login_is_optional_and_discovered_from_the_key(
+    clean_environment, monkeypatch
+):
+    """Given only a URL, a database and a key, When credentials are read, Then
+    the server accepts them: the client discovers the login from the key's
+    owner (`odoo_client._discover_uid`), so requiring ODOO_USER here refuses a
+    startup the transport supports."""
+    monkeypatch.setenv("ODOO_BASE_URL", "http://odoo.invalid:8069")
+    monkeypatch.setenv("ODOO_DB", "testdb")
+    monkeypatch.setenv("ODOO_API_KEY", "an-api-key")
+
+    creds = server._credentials()
+
+    assert creds.user == ""
+    assert creds.db == "testdb"
 
 
 def test_logging_goes_to_stderr_and_stdout_stays_empty():

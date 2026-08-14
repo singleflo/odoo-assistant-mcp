@@ -17,6 +17,7 @@ unlinked — only cancelled — so cleanup follows Odoo's own path, runs from a
 `finally`, and the last statement of the write chain is the query that proves
 no non-cancelled `MCP Test %` artifact is left anywhere on the instance.
 """
+import base64
 import json
 import os
 import re
@@ -25,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from odoo_assistant import server, tools_evolution, tools_read, tools_write
+from odoo_assistant import server, tools_collab, tools_evolution, tools_read, tools_write
 from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
 
@@ -304,3 +305,160 @@ def test_live_list_known_modules_reports_bundled_and_generated(live_odoo, scratc
     assert len(learned) == 1, f"helpdesk not learned: {after}"
     assert learned[0]["generated"] is not None
     assert learned[0]["records"] is not None
+
+
+@needs_write
+def test_live_collab_on_a_self_created_partner(live_odoo, monkeypatch, tmp_path):
+    """Given a partner this test creates itself — whose entire audience is
+    therefore the owner of the API key, the one property that makes every step
+    below incapable of reaching a stranger — When the four collaboration tools
+    run over it as a single lifecycle, Then each effect is proven by a re-read
+    and the instance dispatched nothing to anybody.
+
+    These four had never run against a real instance. Three assertions come
+    from the sources, or from what the instance answered, rather than from the
+    obvious expectation:
+
+      * a fresh partner does NOT have zero followers. Odoo auto-subscribes the
+        creator (`mail_create_nosubscribe` is what would suppress it), so the
+        set starts at exactly one — us. The activity is assigned to that same
+        user, which is why `mail.activity` subscribing its assignee cannot grow
+        the audience and why Odoo skips the assignee notification it would
+        otherwise send;
+      * `download_docs` returns MORE than the attachments. `Documents.download`
+        also dumps every non-empty binary FIELD (documents.py:140-152), and a
+        partner's `avatar_*` are computed to a generated SVG instead of being
+        left empty, so the attachment is one entry among several;
+      * `generate_pdf` on `res.partner` never reaches a wizard. It returns
+        from the attachment-reuse branch (documents.py:182-187) BEFORE the
+        `wizards` lookup at line 189, so `action_send_and_print` — the method
+        the tool gates on — is structurally unreachable here.
+    """
+    name = f"{TEST_PREFIX} {uuid.uuid4().hex[:8]}"
+    partner_id = _created_id(
+        tools_write.create_record("res.partner", {"name": name}, unique_on=["name"])
+    )
+    activity_id = attachment_id = None
+    try:
+        watchers = [["res_model", "=", "res.partner"], ["res_id", "=", partner_id]]
+
+        def followers() -> list[int]:
+            return sorted(
+                row["partner_id"][0]
+                for row in live_odoo.search_read(
+                    "mail.followers", watchers, ["partner_id"]
+                )
+            )
+
+        owner = live_odoo.search_read(
+            "res.users", [["id", "=", live_odoo.uid]], ["partner_id"]
+        )[0]["partner_id"][0]
+        assert followers() == [owner]
+        summary = f"{name} follow-up"
+        scheduled = json.loads(
+            tools_collab.create_activity(
+                "res.partner", partner_id, summary, live_odoo.uid, days=1
+            )
+        )
+        activity_id = scheduled["id"]
+        # The return value is not the proof — the re-read is.
+        pending = live_odoo.search_read(
+            "mail.activity",
+            [["res_model", "=", "res.partner"], ["res_id", "=", partner_id]],
+            ["summary", "user_id"],
+        )
+        assert len(pending) == 1, f"the activity is not on the partner: {pending}"
+        assert pending[0]["summary"] == summary
+        assert pending[0]["user_id"][0] == live_odoo.uid
+        # `mail.activity` subscribes its assignee, which is the only way this
+        # lifecycle could grow the audience — and the assignee is the user who
+        # is already following.
+        assert followers() == [owner]
+
+        told = json.loads(
+            tools_collab.notify_user(
+                "res.partner", partner_id, f"{summary}: internal note",
+                [live_odoo.uid], subtype="note",
+            )
+        )
+        assert told["subtype"] == "note"
+        assert told["audience"]["external"] == []
+        assert told["delivery"]["posted"] is True
+        # The live proof of the claim the whole note path rests on: reading the
+        # audience BEFORE posting is only worth anything if the post itself
+        # cannot enlarge it, and `message_notify` is what makes that so.
+        assert followers() == [owner]
+
+        attachment_id = _created_id(
+            tools_write.create_record(
+                "ir.attachment",
+                {
+                    "name": f"{TEST_PREFIX}.pdf",
+                    "res_model": "res.partner",
+                    "res_id": partner_id,
+                    "mimetype": "application/pdf",
+                    "datas": base64.b64encode(b"%PDF-1.4\n%%EOF\n").decode(),
+                },
+            )
+        )
+        fetched = json.loads(
+            tools_collab.download_docs("res.partner", partner_id, str(tmp_path))
+        )
+        # An empty `skipped` is the assertion that carries weight: a database
+        # restored without its filestore keeps the attachment row and loses the
+        # bytes, and that shows up there rather than as a short `saved` list.
+        assert fetched["skipped"] == []
+        saved = [Path(path) for path in fetched["saved"]]
+        assert saved and all(path.parent == tmp_path for path in saved)
+        document = [path for path in saved if path.name == f"{TEST_PREFIX}.pdf"]
+        assert len(document) == 1, f"the attachment was not saved once: {saved}"
+        assert document[0].read_bytes()[:4] == b"%PDF"
+        # Everything else `saved` carries is a binary FIELD dump of the record
+        # itself, named by `download`, never a second document.
+        dumped = [path for path in saved if path != document[0]]
+        assert dumped, f"no binary field was dumped beside the attachment: {saved}"
+        assert all(
+            path.name.startswith(f"res.partner_{partner_id}_") for path in dumped
+        )
+
+        printed = json.loads(
+            tools_collab.generate_pdf("res.partner", partner_id, str(tmp_path))
+        )
+        rendered = Path(printed["path"])
+        assert rendered.is_file()
+        assert rendered.read_bytes()[:4] == b"%PDF"
+        # The negative proof for the branch named in the docstring: no wizard
+        # ran, so nothing was queued for delivery on this record at all.
+        assert (
+            live_odoo.search_count(
+                "mail.mail",
+                [["res_id", "=", partner_id], ["model", "=", "res.partner"]],
+            )
+            == 0
+        )
+    finally:
+        # Cleanup is destructive by definition, so it runs at the ceiling that
+        # permits it. Everything asserted above ran at the default one.
+        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        if activity_id:
+            tools_write.run_action("mail.activity", "unlink", [activity_id])
+        if attachment_id:
+            tools_write.run_action("ir.attachment", "unlink", [attachment_id])
+        # A partner cannot be unlinked, so the instance's own path is archiving.
+        tools_write.write_record("res.partner", partner_id, {"active": False})
+
+    # `active_test` is off so an archived partner cannot hide the rows this
+    # test is claiming it removed.
+    residue = {"allowed_company_ids": COMPANIES, "active_test": False}
+    assert (
+        live_odoo.search_count(
+            "mail.activity", [["summary", "=like", f"{TEST_PREFIX} %"]], residue
+        )
+        == 0
+    )
+    assert (
+        live_odoo.search_count(
+            "ir.attachment", [["name", "=like", f"{TEST_PREFIX}%"]], residue
+        )
+        == 0
+    )

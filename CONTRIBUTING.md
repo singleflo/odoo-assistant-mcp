@@ -44,7 +44,7 @@ To run tests against a live Odoo instance, you must opt-in by providing the conn
    export ODOO_BASE_URL="https://your-odoo-instance.com"
    export ODOO_API_KEY="your-api-key"
    export ODOO_DB="your-db"
-   export ODOO_USER="your-user"
+    export ODOO_USER="your-user" # Optional: omitted, the login is discovered from the key
    uv run pytest tests/
    ```
 

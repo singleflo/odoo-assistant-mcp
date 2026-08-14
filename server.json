@@ -32,8 +32,8 @@
         },
         {
           "name": "ODOO_USER",
-          "description": "Odoo login username",
-          "isRequired": true,
+          "description": "Odoo login username. Optional: omitted, the login is discovered from the API key.",
+          "isRequired": false,
           "isSecret": false,
           "format": "string"
         },

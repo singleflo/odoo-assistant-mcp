@@ -21,7 +21,7 @@ The server requires the following environment variables to connect to your Odoo 
 
 * `ODOO_BASE_URL`: The base URL of your Odoo instance (e.g., `https://mycompany.odoo.com`).
 * `ODOO_DB`: The database name.
-* `ODOO_USER`: The username or email of the Odoo user.
+* `ODOO_USER`: The username or email of the Odoo user. Optional: if supplied, it is one authentication round trip; if omitted, the login is discovered from the key at the cost of up to 59 extra round trips, and discovery fails if the key owner's uid is 60 or higher. Setting it is recommended.
 * `ODOO_API_KEY`: The Odoo API key — **required** (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted: a key is per-user, scoped and revocable on its own.
 
 Optional configuration:
@@ -260,6 +260,8 @@ hermes mcp add odoo-assistant \
   --env ODOO_MCP_MAX_LEVEL=3 \
   --args run odoo-assistant
 ```
+
+The five examples above set `ODOO_USER` because that is the fast path, but it may be dropped.
 
 ## License
 

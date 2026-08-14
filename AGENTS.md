@@ -61,13 +61,13 @@ Full list: `references/SKILL.md` (8 rules) + `references/writing.md` (12 pattern
 - **`default_get` is where records go missing.** `crm.lead.type` defaults to `'lead'` on an instance whose pipeline is opportunities; `account.move.move_type` defaults to `'entry'`, so a "new invoice" is a raw journal entry. The `required_fields` tool exists to surface this — call it before a create.
 - **Archiving reads like deletion.** `action_set_lost` sets `active=False`; a later plain search returns `[]`. Add `["active", "in", [true, false]]` before concluding a record is gone.
 - **`phone_sanitized` is one value per record**, computed from `mobile` first and `phone` second — not per field. It stays `False`, with no error, when the number has no `+` prefix and the record no `country_id`. Write E.164 yourself.
-- Wrong `ODOO_USER` makes `authenticate()` return `False` rather than raise — it reads like a permission error.
+- Wrong `ODOO_USER` makes `authenticate()` return `False` rather than raise — it reads like a permission error. Omitting it entirely is supported and takes the discovery path (up to 59 probes, fails at uid >= 60).
 - `create()` returns a list, not an int. Methods starting with `_` are always rejected.
 - Idempotency: `Writer.create(..., unique_on=[...])`, chains via `Writer.step()`. A write is done only when a re-read proves it.
 
 ## Live and local testing
 
-- Env: `ODOO_BASE_URL` (no trailing slash), `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY`. **API key only** — passwords were removed deliberately. No defaults, by design.
+- Env: `ODOO_BASE_URL` (no trailing slash), `ODOO_DB`, `ODOO_USER` (optional), `ODOO_API_KEY`. **API key only** — passwords were removed deliberately. No defaults, by design.
 - Write scenarios need `ODOO_MCP_ALLOW_LIVE_WRITE=1`; that variable is test-suite-only and must never appear in host config.
 - Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed). `odoo_client.py` hard-blocks `PRODUCTION_HOSTS`.
 - Cleanup archives rather than deletes — `Writer.can()` refuses partner unlink — so `MCP Test %` residue on the dev instance is expected.

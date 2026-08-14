@@ -1,6 +1,8 @@
 """Server skeleton: credential resolution, logging channel, SDK wiring."""
+import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -119,3 +121,17 @@ def test_server_instance_and_entry_point_are_wired():
 
     assert type(mcp).__name__ == "MCPServer"
     assert callable(main)
+
+
+def test_server_json_marks_the_login_optional():
+    """Given the registry reads server.json to build a host's env prompt, When
+    the login is optional to the server, Then the manifest must say so —
+    otherwise a host refuses to launch without a value it does not need."""
+    manifest = json.loads((Path(__file__).parents[1] / "server.json").read_text())
+    variables = {
+        v["name"]: v for v in manifest["packages"][0]["environmentVariables"]
+    }
+    assert variables["ODOO_USER"]["isRequired"] is False
+    assert variables["ODOO_DB"]["isRequired"] is True
+    assert variables["ODOO_API_KEY"]["isRequired"] is True
+

@@ -105,7 +105,7 @@ The client automatically detects if the native JSON-2 API is available at `/json
 
 ## Tools and Resources
 
-The server exposes 15 tools and 2 resource types:
+The server exposes 19 tools and 2 resource types:
 
 ### Tools
 
@@ -122,8 +122,17 @@ The server exposes 15 tools and 2 resource types:
 11. `create_activity`: Schedule an activity: the only notification that carries a deadline.
 12. `download_docs`: Save every document of a record to disk, chatter files included.
 13. `generate_pdf`: Render the PDF of a record and return where it was saved.
-14. `explore_module`: Discover a module's structure by interrogating the live instance.
-15. `list_known_modules`: List the modules this server has learned: name, generation date, records.
+14. `list_message_targets`: List who can be messaged and where — internal users with presence (online/away/offline) and the caller's open conversations. Ask this before sending.
+15. `read_conversation`: Read a Discuss conversation, newest first.
+16. `send_direct_message`: Send a 1-to-1 Discuss message that appears in the user's chat systray in real time — no email, reaches them whatever their notification setting says.
+17. `send_channel_message`: Post to an existing Discuss channel, refusing a room that holds a non-employee.
+18. `explore_module`: Discover a module's structure by interrogating the live instance.
+19. `list_known_modules`: List the modules this server has learned: name, generation date, records.
+
+Tools 10-11 (`notify_user`, `create_activity`) notify ABOUT a record and land
+in the Inbox bell; tools 14-17 are Discuss conversations that land in the chat
+systray. "Message user X" is the second kind — `send_direct_message`, not
+`notify_user`.
 
 ### Resources
 

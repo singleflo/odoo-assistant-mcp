@@ -1,6 +1,6 @@
 # AGENTS.md — odoo-assistant-mcp
 
-MCP server (stdio) that wraps 9 verified Odoo scripts as **15 tools + 8
+MCP server (stdio) that wraps 9 verified Odoo scripts as **19 tools + 8
 resources**. Shipped and complete; not yet on PyPI, so `uvx odoo-assistant`
 returns 404 until the first tag is pushed.
 
@@ -32,7 +32,7 @@ Protocol check: `npx @modelcontextprotocol/inspector` against the server.
 - **Never rewrite `src/odoo_assistant/odoo_scripts/`.** Those 9 scripts are verified against a live instance and are the source of truth; the server is a thin wrapper importing them. They came from an agent skill that has been retired, so this repo is the canonical copy — `scripts/sync-from-skill.sh` has no upstream left and exits 1. Fix a bug there only with a live test proving it; otherwise adapt the wrapper.
 - Scripts are **flat modules**: each does `sys.path.insert(0, <own dir>)` + `from odoo_client import ...`. Keep that import style working when packaging.
 - SDK: `from mcp.server import MCPServer` (SDK 2.0, pinned `mcp[cli]>=2.0.0,<3`). `MCPServer(...)` defaults `version` to `""` — pass it explicitly or every host displays an empty version.
-- **Module decomposition**: `server.py` stays thin. Tools and resources live in `tools_read.py` / `tools_write.py` / `tools_collab.py` / `tools_evolution.py` / `resources.py`, each exposing `register(mcp)`, wired by `server._register_all()`. Adding a tool means updating the three tests that assert the exact tool set.
+- **Module decomposition**: `server.py` stays thin. Tools and resources live in `tools_read.py` / `tools_write.py` / `tools_collab.py` / `tools_discuss.py` / `tools_evolution.py` / `resources.py`, each exposing `register(mcp)`, wired by `server._register_all()`. Adding a tool means updating the three tests that assert the exact tool set. `tools_collab.py` notifies ABOUT a record (Inbox bell); `tools_discuss.py` is user-to-user conversation (chat systray) — "message X" is the second, and its `channel_get` is the one method the verified `safety_layer.py` was extended to admit (L1).
 - **`explore_module.REF_DIR` redirect** needs the package-qualified import (`from odoo_assistant.odoo_scripts import explore_module`) so the patch is visible to every importer. See `tools_evolution.py`'s docstring.
 - **Wheel bundles `references_public/` only** (scrubbed, generic). `references/` holds the instance-specific set and is excluded.
 - stdio transport: **nothing may reach stdout** but the JSON-RPC stream. Diagnostics go to stderr.

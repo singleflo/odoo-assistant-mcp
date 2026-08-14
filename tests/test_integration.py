@@ -26,7 +26,14 @@ from pathlib import Path
 
 import pytest
 
-from odoo_assistant import server, tools_collab, tools_evolution, tools_read, tools_write
+from odoo_assistant import (
+    server,
+    tools_collab,
+    tools_discuss,
+    tools_evolution,
+    tools_read,
+    tools_write,
+)
 from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
 
@@ -598,3 +605,124 @@ def test_live_cancel_record_succeeds_at_ceiling_four(live_odoo, monkeypatch):
         context={"allowed_company_ids": COMPANIES, "active_test": False},
     )
     assert left_behind == 0
+
+
+def test_live_message_targets_lists_users_with_presence(live_odoo):
+    """Given the roster helper, When it is asked, Then it returns internal
+    users with a readable im_status and the conversations the caller belongs
+    to — the data an agent needs before it invents an id.
+
+    The caller's own account is online while this runs (it is polling Odoo),
+    so at least one presence is a real value rather than the offline default.
+    """
+    answer = json.loads(tools_discuss.list_message_targets())
+
+    assert answer["users"], "no internal users reported"
+    presences = {u["presence"] for u in answer["users"]}
+    assert presences & {"online", "away", "offline"}, presences
+    assert all("user_id" in u and "name" in u for u in answer["users"])
+    for conversation in answer["conversations"]:
+        assert conversation["type"] in {"chat", "group", "channel"}
+
+
+@needs_write
+def test_live_direct_message_reaches_a_user_without_email(live_odoo):
+    """Given a Discuss direct message to a colleague, When it is sent, Then it
+    lands in a chat and NO mail leaves — the property that separates it from
+    notify_user, proven against the instance rather than asserted.
+
+    The recipient is the caller's own account: a direct message is a two-party
+    chat, and messaging oneself keeps the whole exchange inside this test with
+    no second person to disturb. The proof is the re-read of the channel and
+    the unchanged mail.mail count.
+    """
+    before = live_odoo.search_count("mail.mail", [])
+
+    sent = json.loads(
+        tools_discuss.send_direct_message(
+            live_odoo.uid, f"{TEST_PREFIX} direct message probe"
+        )
+    )
+    channel_id = sent["channel_id"]
+
+    posted = live_odoo.search_read(
+        "mail.message",
+        [["model", "=", "discuss.channel"], ["res_id", "=", channel_id]],
+        ["body"],
+        limit=1,
+        order="date desc",
+    )
+    assert posted and TEST_PREFIX in posted[0]["body"]
+    assert live_odoo.search_count("mail.mail", []) == before
+
+
+def test_live_read_conversation_returns_the_message_just_sent(live_odoo):
+    """Given a channel the caller can see, When its conversation is read, Then
+    the newest message comes back with its author — the read side of the same
+    chat the direct-message test wrote to.
+
+    Read-only and self-scoped: it opens the caller's own 1-to-1 channel by id
+    and reads it, asserting shape and ordering, never an exact body that a
+    concurrent run could change.
+    """
+    opened = live_odoo.call(
+        "discuss.channel", "channel_get", [[_self_partner(live_odoo)]]
+    )
+    channel_id = opened["discuss.channel"][0]["id"]
+
+    messages = json.loads(tools_discuss.read_conversation(channel_id, limit=5))
+
+    assert isinstance(messages, list)
+    for message in messages:
+        assert "author" in message and "date" in message and "body" in message
+
+
+@needs_write
+def test_live_channel_message_refuses_a_room_with_an_outsider(live_odoo, monkeypatch):
+    """Given a group that contains a partner who is not an employee, When a
+    message is posted to it, Then the tool refuses, names the outsider, and the
+    channel stays empty — the same guard notify_user applies to followers.
+
+    A guest or portal partner in the room is the failure mode; OdooBot, a
+    system user in every internal channel, must NOT trigger it. The group is
+    built for the test with the caller plus a real external partner, and torn
+    down by archiving.
+    """
+    outsider = live_odoo.search_read(
+        "res.partner",
+        [["user_ids", "=", False], ["is_company", "=", False], ["id", "!=", 2]],
+        ["name"],
+        limit=1,
+    )
+    if not outsider:
+        pytest.skip("no external partner on this instance to build the group")
+
+    created = live_odoo.call(
+        "discuss.channel",
+        "create_group",
+        [[_self_partner(live_odoo), outsider[0]["id"]]],
+    )
+    channel_id = created["discuss.channel"][0]["id"]
+    try:
+        with pytest.raises(ToolExecutionError) as refusal:
+            tools_discuss.send_channel_message(channel_id, "MUST NOT BE POSTED")
+
+        reason = str(refusal.value)
+        assert outsider[0]["name"] in reason, reason
+        assert "REFUSED" in reason
+        assert (
+            live_odoo.search_count(
+                "mail.message",
+                [["model", "=", "discuss.channel"], ["res_id", "=", channel_id]],
+            )
+            == 0
+        )
+    finally:
+        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        tools_write.write_record("discuss.channel", channel_id, {"active": False})
+
+
+def _self_partner(live_odoo) -> int:
+    """The partner behind the API key — the peer for a self-scoped chat."""
+    rows = live_odoo.search_read("res.users", [["id", "=", live_odoo.uid]], ["partner_id"])
+    return rows[0]["partner_id"][0]

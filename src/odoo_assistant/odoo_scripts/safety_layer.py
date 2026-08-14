@@ -42,6 +42,12 @@ WRITE_L1 = {
     # here: the level depends on the subtype, not on the method name.
     "message_post", "message_subscribe", "message_notify",
     "message_unsubscribe",
+    # Discuss: `channel_get` finds the 1-to-1 chat with a partner, creating it
+    # only when none exists — at most one discuss.channel, no business state.
+    # Odoo's own method is used rather than a hand-rolled search+create so the
+    # exact-match SQL and the `_broadcast()` that pushes the channel header
+    # stay Odoo's responsibility.
+    "channel_get",
     # Activities: creating, completing and rescheduling work items.
     "action_feedback", "action_feedback_schedule_next", "action_snooze",
     "action_close_dialog", "activity_schedule",

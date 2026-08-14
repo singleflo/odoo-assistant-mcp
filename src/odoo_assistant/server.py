@@ -35,6 +35,7 @@ from odoo_client import MissingCredentials, Odoo, connect  # noqa: E402  (needs 
 from odoo_assistant import (  # noqa: E402  (cycle: must follow the bootstrap)
     resources,
     tools_collab,
+    tools_discuss,
     tools_evolution,
     tools_read,
     tools_write,
@@ -170,7 +171,7 @@ def _get_odoo() -> Odoo:
 
 
 def _register_all() -> None:
-    """Attach every tool and resource to `mcp`: 15 tools and the `odoo://` set.
+    """Attach every tool and resource to `mcp`: 19 tools and the `odoo://` set.
 
     Order is free. The one coupling worth naming is already settled: importing
     `tools_evolution` points `explore_module.REF_DIR` at the same directory
@@ -179,6 +180,7 @@ def _register_all() -> None:
     tools_read.register(mcp)
     tools_write.register(mcp)
     tools_collab.register(mcp)
+    tools_discuss.register(mcp)
     tools_evolution.register(mcp)
     resources.register(mcp)
 

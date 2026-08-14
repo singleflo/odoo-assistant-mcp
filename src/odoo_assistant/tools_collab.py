@@ -13,8 +13,17 @@ that customer. Measured on one order, same recipients: `mt_note` -> 1 inbox
 notification, 0 emails; `mt_comment` -> 2 notifications, one of them an email
 to the customer. So the audience is read BEFORE anything is posted, the
 default path is `Documents.tell()` (`message_notify`: reaches exactly the
-users named, subscribes nobody, emails nobody), and the comment path is
-refused while an external follower exists unless the caller says `force=True`.
+users named and subscribes nobody), and the comment path is refused while an
+external follower exists unless the caller says `force=True`.
+
+That 0-email figure is a property of the RECIPIENT, not of the subtype. Odoo's
+own `message_notify` docstring says it "pushes notifications on inbox or by
+email depending on the user configuration", and `_notify_thread` calls
+`_notify_thread_by_inbox`, `_notify_thread_by_email` and `_by_web_push` in
+turn. Verified live on both settings of one user: `notification_type='inbox'`
+gave a `mail.notification` of type inbox, status sent, and no `mail.mail`;
+`'email'` gave a `mail.mail`. So a note never reaches anyone you did not name
+— which is the guarantee worth having — but it can still leave by mail.
 
 **The order every tool here keeps**, and why each step sits where it does:
 
@@ -89,7 +98,7 @@ def _external_refusal(model: str, record_id: int, external: list[str]) -> str:
         f"{len(external)} follower(s) are not employees of this instance and "
         f"would receive that email: {', '.join(external)}.\n"
         f"Nothing was posted. Use subtype='note' to reach only the users you "
-        f"named — message_notify touches no follower and emails nobody — or "
+        f"named — message_notify touches no follower at all — or "
         f"call again with force=True if emailing those people is the intent."
     )
 
@@ -109,7 +118,9 @@ def notify_user(
         record_id: id of the record to write on.
         message: the body — plain text or simple HTML.
         user_ids: res.users ids to notify.
-        subtype: "note" reaches exactly those users and emails nobody;
+        subtype: "note" reaches EXACTLY the users you name and nobody else —
+            but each of them through their OWN Odoo notification setting,
+            inbox or email, so it is not a promise that no mail leaves;
             "comment" posts to the chatter and EMAILS every follower,
             customers included. A comment is refused while an external
             follower exists, unless force=True.
@@ -123,7 +134,7 @@ def notify_user(
         case _:
             return ToolOutcome(True, (
                 f"Unknown subtype {subtype!r}. Nothing was posted. Use "
-                f"'note' (internal, nobody emailed) or 'comment' (posts to "
+                f"'note' (only the users you name) or 'comment' (posts to "
                 f"the chatter and emails every follower)."
             )).deliver()
 

@@ -462,3 +462,139 @@ def test_live_collab_on_a_self_created_partner(live_odoo, monkeypatch, tmp_path)
         )
         == 0
     )
+
+
+def test_live_notify_refuses_to_email_an_external_follower(live_odoo):
+    """Given a real sale.order followed by somebody who is not an employee of
+    this instance, When a comment is posted on it, Then the tool refuses,
+    names the person who would have received that email and the `force=True`
+    that would send it anyway — and the record's chatter is unchanged.
+
+    The message count is the assertion that carries the weight. `notify_user`
+    reads the audience BEFORE it posts, and on a live instance the only proof
+    of that ordering is that a refused comment left nothing behind: an audience
+    checked afterwards would have mailed the customer already. This is the one
+    refusal whose failure mode is a stranger's inbox, so `force=True` is never
+    passed anywhere in this suite.
+
+    The target is discovered, never pinned: a hardcoded id rots, and the rule
+    for "external" is the instance's own — copied from `Documents.audience`
+    (documents.py:236-239), a follower is staff only when a non-share
+    `res.users` carries that partner.
+    """
+    followers = live_odoo.search_read(
+        "mail.followers",
+        [["res_model", "=", "sale.order"]],
+        ["res_id", "partner_id"],
+        limit=80,
+    )
+    staff = live_odoo.search_read(
+        "res.users",
+        [
+            ["partner_id", "in", [row["partner_id"][0] for row in followers]],
+            ["share", "=", False],
+        ],
+        ["partner_id"],
+    )
+    internal = {row["partner_id"][0] for row in staff}
+    outsiders = [row for row in followers if row["partner_id"][0] not in internal]
+    if not outsiders:
+        pytest.skip("no sale.order with an external follower on this instance")
+
+    order_id, customer = outsiders[0]["res_id"], outsiders[0]["partner_id"][1]
+    chatter = [["model", "=", "sale.order"], ["res_id", "=", order_id]]
+    before = live_odoo.search_count("mail.message", chatter)
+
+    with pytest.raises(ToolExecutionError) as refusal:
+        tools_collab.notify_user(
+            "sale.order",
+            order_id,
+            "MUST NOT BE POSTED",
+            [live_odoo.uid],
+            subtype="comment",
+        )
+
+    reason = str(refusal.value)
+    assert customer in reason, f"the refusal does not name who it protected: {reason}"
+    assert "force=True" in reason
+    assert live_odoo.search_count("mail.message", chatter) == before
+
+
+def test_live_cancel_record_is_refused_at_the_default_ceiling(live_odoo):
+    """Given the default ceiling, When `cancel_record` is called, Then the real
+    `classify()` puts it out of reach and the refusal names both the level and
+    the `ODOO_MCP_MAX_LEVEL=4` that would allow it.
+
+    `cancel_record` is the tool a host offers for "cancel this". The existing
+    destructive test proves the gate through `run_action`; this holds the same
+    gate through the entry point an agent actually reaches for, which had never
+    been asserted.
+
+    The id does not exist on purpose: the gate has to answer before Odoo is
+    asked anything, and naming a record that could not be found is what proves
+    it did.
+    """
+    with pytest.raises(ToolExecutionError) as refusal:
+        tools_write.cancel_record("sale.order", 999999999)
+    reason = str(refusal.value)
+    assert "L4_DESTRUCTIVE" in reason
+    assert "ODOO_MCP_MAX_LEVEL=4" in reason
+
+
+@needs_write
+def test_live_cancel_record_succeeds_at_ceiling_four(live_odoo, monkeypatch):
+    """Given a confirmed order this test created itself, When the ceiling is
+    raised to 4 and `cancel_record` runs, Then a re-read shows state 'cancel'
+    — and the instance is left with nothing of it that is not cancelled.
+
+    The success path of this tool already runs on every live write test, in
+    their teardown, where nothing asserts what it did. A `cancel_record` that
+    quietly stopped cancelling would leave all of them green and the instance
+    filling with confirmed orders. Same call, this time proved.
+    """
+    order_id = None
+    order_is_cancelled = False
+    name = f"{TEST_PREFIX} {uuid.uuid4().hex[:8]}"
+    partner_id = _created_id(
+        tools_write.create_record("res.partner", {"name": name}, unique_on=["name"])
+    )
+    try:
+        order_id = _created_id(
+            tools_write.create_record(
+                "sale.order", {"partner_id": partner_id, "company_id": ORDER_COMPANY}
+            )
+        )
+        tools_write.run_action("sale.order", "action_confirm", [order_id])
+        confirmed = json.loads(
+            tools_read.read_record("sale.order", order_id, ["name", "state"])
+        )
+        assert confirmed[0]["state"] == "sale"
+
+        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        tools_write.cancel_record("sale.order", order_id)
+        # Recorded before the assertion: a transition is one-way, so a failing
+        # assertion must not send the teardown into a second cancel.
+        order_is_cancelled = True
+        # The return value is not the proof — the re-read is.
+        after = json.loads(
+            tools_read.read_record("sale.order", order_id, ["name", "state"])
+        )
+        assert after[0]["state"] == "cancel"
+    finally:
+        # Cleanup is destructive by definition, so it runs at the ceiling that
+        # permits it — set again here because a failure above may have landed
+        # before the body raised it.
+        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        if order_id and not order_is_cancelled:
+            tools_write.cancel_record("sale.order", order_id)
+        # A partner cannot be unlinked, so the instance's own path is archiving.
+        tools_write.write_record("res.partner", partner_id, {"active": False})
+
+    # `active_test` is off so an archived partner cannot hide a live order and
+    # make this pass for the wrong reason.
+    left_behind = live_odoo.search_count(
+        "sale.order",
+        [["partner_id.name", "=like", f"{TEST_PREFIX} %"], ["state", "!=", "cancel"]],
+        context={"allowed_company_ids": COMPANIES, "active_test": False},
+    )
+    assert left_behind == 0

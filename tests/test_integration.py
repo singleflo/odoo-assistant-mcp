@@ -128,9 +128,12 @@ def test_live_login_is_discovered_from_the_key(live_odoo):
         key=os.environ["ODOO_API_KEY"],
     )
 
-    assert keyless.uid > 0
+    uid = keyless.uid
+    partners = keyless.search_count("res.partner", [])
+
+    assert isinstance(uid, int) and uid > 0
     assert keyless.user == live_odoo.user
-    assert keyless.search_count("res.partner", []) > 0
+    assert isinstance(partners, int) and partners > 0
 
 
 def test_live_read_tools(live_odoo):
@@ -242,3 +245,62 @@ def test_live_explore_module_writes_to_user_dir(live_odoo, scratch_home):
     body = written.read_text()
     assert "helpdesk.ticket" in body
     assert body.count("## NOTES") == 1
+
+
+def test_live_required_fields_surfaces_the_defaulted_trap(live_odoo):
+    """Given `crm.lead.type` is required and defaults to 'lead' on an instance
+    whose pipeline is run as opportunities, When `required_fields` is asked
+    about crm.lead, Then the reply names the field, the default Odoo would
+    apply and how live records actually use it — the comparison that makes a
+    silently misfiled create visible, which is the entire reason this tool
+    exists.
+
+    The reply is prose, not JSON, so it is read back the way an agent reads it:
+    a two-space block per required field, the default and the live distribution
+    indented under it.
+    """
+    reply = tools_read.required_fields("crm.lead")
+    assert reply.startswith("crm.lead — Odoo requires")
+
+    blocks = {
+        block.split()[0]: block for block in re.split(r"\n(?=  \w+  \()", reply)[1:]
+    }
+    assert "type" in blocks, f"required field `type` not reported: {reply}"
+
+    defaulted = re.search(
+        r"Odoo would default to (.+?) — existing records: (.+)", blocks["type"]
+    )
+    assert defaulted, f"no default reported beside `type`: {blocks['type']}"
+    assert defaulted.group(1).strip("'\"") == "lead"
+
+    # Present and non-empty, never an exact figure: this instance is shared and
+    # its pipeline moves, so a pinned count would be a test that rots.
+    usage = dict(re.findall(r"(\w+)=(\d+)", defaulted.group(2)))
+    assert usage, f"no live distribution beside the default: {defaulted.group(2)}"
+    assert sum(int(count) for count in usage.values()) > 0
+
+
+def test_live_list_known_modules_reports_bundled_and_generated(live_odoo, scratch_home):
+    """Given a scratch reference dir that starts empty, When the modules are
+    listed before and after a live generation, Then only the bundled set is
+    known at first and `helpdesk` joins it as 'generated', carrying the stamp
+    and the record count read back out of the document just written."""
+    before = json.loads(tools_evolution.list_known_modules())
+    assert all(
+        set(entry) == {"module", "source", "generated", "records", "path"}
+        for entry in before
+    ), f"unexpected entry shape: {before}"
+    assert [entry for entry in before if entry["source"] == "bundled"]
+    assert [entry for entry in before if entry["source"] == "generated"] == []
+
+    tools_evolution.explore_module("helpdesk", action="generate")
+
+    after = json.loads(tools_evolution.list_known_modules())
+    learned = [
+        entry
+        for entry in after
+        if entry["module"] == "helpdesk" and entry["source"] == "generated"
+    ]
+    assert len(learned) == 1, f"helpdesk not learned: {after}"
+    assert learned[0]["generated"] is not None
+    assert learned[0]["records"] is not None

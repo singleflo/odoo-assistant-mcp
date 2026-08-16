@@ -35,4 +35,4 @@ The server never stores, logs, or transmits these credentials anywhere other tha
 
 ## Reporting a Security Issue
 
-If you discover a security vulnerability in this project, please report it by opening a GitHub issue or contacting the maintainer directly at the repository: https://github.com/crottolo/odoo-assistant-mcp.
+If you discover a security vulnerability in this project, please report it by opening a GitHub issue or contacting the maintainer directly at the repository: https://github.com/singleflo/odoo-assistant-mcp.

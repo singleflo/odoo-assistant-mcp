@@ -11,7 +11,7 @@ This project uses `uv` for Python package management.
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/crottolo/odoo-assistant-mcp.git
+   git clone https://github.com/singleflo/odoo-assistant-mcp.git
    cd odoo-assistant-mcp
    ```
 

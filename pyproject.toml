@@ -29,10 +29,10 @@ dev = ["pytest>=8"]
 odoo-assistant = "odoo_assistant.server:main"
 
 [project.urls]
-Homepage = "https://github.com/crottolo/odoo-assistant-mcp"
-Repository = "https://github.com/crottolo/odoo-assistant-mcp"
-Issues = "https://github.com/crottolo/odoo-assistant-mcp/issues"
-MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.crottolo/odoo-assistant"
+Homepage = "https://github.com/singleflo/odoo-assistant-mcp"
+Repository = "https://github.com/singleflo/odoo-assistant-mcp"
+Issues = "https://github.com/singleflo/odoo-assistant-mcp/issues"
+MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.singleflo/odoo-assistant"
 
 [build-system]
 requires = ["hatchling"]

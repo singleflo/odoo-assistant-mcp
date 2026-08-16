@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.crottolo/odoo-assistant",
+  "name": "io.github.singleflo/odoo-assistant",
   "description": "Odoo virtual employee via MCP: query, create, modify records, workflows, PDFs, and activities.",
   "repository": {
-    "url": "https://github.com/crottolo/odoo-assistant-mcp",
+    "url": "https://github.com/singleflo/odoo-assistant-mcp",
     "source": "github"
   },
   "version": "1.0.0",

@@ -856,7 +856,7 @@ release. It is milestone M7.
 
 ## 9. Repository Structure
 
-### GitHub repository: `crottolo/odoo-assistant-mcp`
+### GitHub repository: `singleflo/odoo-assistant-mcp`
 
 ```
 odoo-assistant/
@@ -920,7 +920,7 @@ odoo-assistant/
     scripts/    ← same code
     references/ ← same docs
 
-crottolo/odoo-assistant-mcp               ← MCP server (PyPI, Registry)
+singleflo/odoo-assistant-mcp               ← MCP server (PyPI, Registry)
     src/odoo_assistant/odoo_scripts/   ← bundled copy of scripts
     references/                  ← bundled copy of refs
 ```
@@ -966,10 +966,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/crottolo/odoo-assistant-mcp"
-Repository = "https://github.com/crottolo/odoo-assistant-mcp"
-Issues = "https://github.com/crottolo/odoo-assistant-mcp/issues"
-MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.crottolo/odoo-assistant"
+Homepage = "https://github.com/singleflo/odoo-assistant-mcp"
+Repository = "https://github.com/singleflo/odoo-assistant-mcp"
+Issues = "https://github.com/singleflo/odoo-assistant-mcp/issues"
+MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.singleflo/odoo-assistant"
 
 [project.scripts]
 odoo-assistant = "odoo_assistant.server:main"
@@ -1038,14 +1038,14 @@ uv publish  # or: twine upload dist/*
 
 #### 11.2 MCP Registry publication
 
-**Namespace:** `io.github.crottolo/odoo-assistant`
+**Namespace:** `io.github.singleflo/odoo-assistant`
 (reverse-DNS, verified via GitHub OAuth)
 
 **Ownership verification for PyPI:**
 The README.md must contain an HTML comment with the server name:
 
 ```markdown
-<!-- mcp-name: io.github.crottolo/odoo-assistant -->
+<!-- mcp-name: io.github.singleflo/odoo-assistant -->
 ```
 
 This string is checked by the Registry against the PyPI package README.
@@ -1055,11 +1055,11 @@ This string is checked by the Registry against the PyPI package README.
 ```json
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.crottolo/odoo-assistant",
+  "name": "io.github.singleflo/odoo-assistant",
   "title": "Odoo MCP",
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows, generate PDFs, manage activities.",
   "repository": {
-    "url": "https://github.com/crottolo/odoo-assistant-mcp",
+    "url": "https://github.com/singleflo/odoo-assistant-mcp",
     "source": "github"
   },
   "version": "1.0.0",
@@ -1439,7 +1439,7 @@ The MCP server logs to stderr (required by stdio spec). The host captures it:
 
 ### M0 — Prototype (1 day)
 
-- [ ] Create `crottolo/odoo-assistant-mcp` GitHub repo
+- [ ] Create `singleflo/odoo-assistant-mcp` GitHub repo
 - [ ] `pyproject.toml` with hatchling
 - [ ] Copy scripts into `src/odoo_assistant/odoo_scripts/`
 - [ ] Write `server.py` with 5 basic tools (search_read, read, count, write, run_action)

@@ -13,7 +13,7 @@ Before pushing the first release tag, you must configure PyPI to trust the GitHu
 2. Navigate to the [PyPI Publishing Management page](https://pypi.org/manage/account/publishing/).
 3. Add a **Pending Publisher** with the following details:
    - **PyPI Project Name**: `odoo-assistant`
-   - **Owner (GitHub Username/Org)**: `crottolo`
+   - **Owner (GitHub Username/Org)**: `singleflo`
    - **Repository Name**: `odoo-assistant-mcp`
    - **Workflow Name**: `publish.yml`
    - **Environment Name**: (Leave blank unless you explicitly configure a GitHub environment for releases)
@@ -24,7 +24,7 @@ Before pushing the first release tag, you must configure PyPI to trust the GitHu
 ## Step 2: GitHub Repository Confirmation
 *Note: This step is listed for completeness and audit trail purposes.*
 
-- The GitHub repository `crottolo/odoo-assistant-mcp` has already been created and is public. No further action is required for repository setup.
+- The GitHub repository `singleflo/odoo-assistant-mcp` has already been created and is public. No further action is required for repository setup.
 
 ---
 
@@ -70,7 +70,7 @@ After the GitHub Actions run completes successfully, verify the release:
 1. **PyPI Verification**: Visit [pypi.org/project/odoo-assistant/](https://pypi.org/project/odoo-assistant/) and verify that the package is live and shows the correct version.
 2. **MCP Registry Verification**: Query the MCP Registry API to verify the server is listed:
    ```bash
-   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.crottolo/odoo-assistant"
+   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.singleflo/odoo-assistant"
    ```
    Verify that the returned JSON contains the server metadata.
 3. **Clean Install Verification**: On a clean machine (or in a temporary environment), verify that the package can be executed directly via `uvx`:

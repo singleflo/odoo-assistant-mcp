@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.crottolo/odoo-assistant -->
+<!-- mcp-name: io.github.singleflo/odoo-assistant -->
 # Odoo Assistant MCP Server
 
 An Odoo virtual employee via the Model Context Protocol (MCP). This server exposes Odoo's business logic, records, and workflows to LLMs, allowing them to query, create, update, and act on Odoo data safely.

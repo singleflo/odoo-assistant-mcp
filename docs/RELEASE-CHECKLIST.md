@@ -1,6 +1,6 @@
 # Release Checklist (User-Only Prerequisites)
 
-This document outlines the manual release prerequisites and verification steps for **Roberto Crotti** to publish the `odoo-assistant` MCP server. 
+This document outlines the manual release prerequisites and verification steps for publishing the `odoo-assistant` MCP server from the `singleflo` organization. Nothing has been deployed to PyPI yet: the package is installable from the GitHub repository only, and every step below is still to do.
 
 These steps require human 2FA, web-UI access, or manual credentials that the automated worker cannot access. **Do not attempt to run these steps via automated agents.**
 

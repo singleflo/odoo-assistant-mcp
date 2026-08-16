@@ -6,15 +6,24 @@ An Odoo virtual employee via the Model Context Protocol (MCP). This server expos
 ## Quickstart
 
 ### 1. Install
-Install the package from PyPI using `uv` or `pip`:
+**The server is not on PyPI yet** — it is installable from the GitHub repository, and the commands below will follow:
+
 ```bash
-uv pip install odoo-assistant
+# run it directly, no install
+uvx --from git+https://github.com/singleflo/odoo-assistant-mcp odoo-assistant
+
+# or install it into an environment
+uv pip install git+https://github.com/singleflo/odoo-assistant-mcp
 ```
 
-Or run it directly using `uvx`:
+Once the first release tag is pushed and Trusted Publishing is configured (see `docs/RELEASE-CHECKLIST.md`), the plain forms will work:
+
 ```bash
+uv pip install odoo-assistant
 uvx odoo-assistant
 ```
+
+Until then, any host example below that writes `uvx odoo-assistant` needs the `--from git+https://github.com/singleflo/odoo-assistant-mcp` form above — or a local clone, `uv run --directory <repo> odoo-assistant`.
 
 ### 2. Configure Environment Variables
 The server requires the following environment variables to connect to your Odoo instance:

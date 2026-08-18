@@ -53,5 +53,24 @@ jobs:
       - name: Authenticate to MCP Registry
         run: ./mcp-publisher login github-oidc
 
+      - name: Wait for PyPI propagation
+        shell: bash
+        run: |
+          VERSION="$(python3 -c "import json; print(json.load(open('server.json'))['packages'][0]['version'])")"
+          URL="https://pypi.org/pypi/odoo-assistant/${VERSION}/json"
+          echo "Waiting for ${URL} to return HTTP 200 (PyPI CDN propagation, MCP Registry issue #553)"
+          for attempt in $(seq 1 10); do
+            CODE="$(curl -s -o /dev/null -w "%{http_code}" "${URL}" || true)"
+            echo "Attempt ${attempt}/10: HTTP ${CODE}"
+            if [ "$CODE" = "200" ]; then
+              echo "odoo-assistant ${VERSION} is live on PyPI."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "ERROR: ${URL} never returned HTTP 200 after 10 attempts 30s apart."
+          echo 'Remedy: re-run only the registry job (`gh run rerun --job <id>`); do NOT bump the version; do NOT re-run the pypi job - the PyPI upload already succeeded.'
+          exit 1
+
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish

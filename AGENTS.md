@@ -1,8 +1,8 @@
 # AGENTS.md — odoo-assistant-mcp
 
 MCP server (stdio) that wraps 9 verified Odoo scripts as **19 tools + 8
-resources**. Shipped and complete; not yet on PyPI, so `uvx odoo-assistant`
-returns 404 until the first tag is pushed.
+resources**. Shipped and complete; published on PyPI as version 0.1.0 and
+installable with `uvx odoo-assistant`.
 
 ## Read before coding
 
@@ -15,7 +15,7 @@ returns 404 until the first tag is pushed.
 ## Commands
 
 ```bash
-uv run pytest                       # 212 tests. addopts already excludes live+wheel
+uv run pytest                       # 223 tests. addopts already excludes live+wheel
 uv build && uv run pytest -m wheel  #   3 tests. needs dist/ AND network (uvx)
 uv run pytest -m live               #   6 tests. needs the env vars below
 ```
@@ -71,7 +71,7 @@ Full list: `references/SKILL.md` (8 rules) + `references/writing.md` (12 pattern
 - Write scenarios need `ODOO_MCP_ALLOW_LIVE_WRITE=1`; that variable is test-suite-only and must never appear in host config.
 - Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed). `odoo_client.py` refuses writes to hosts listed in `ODOO_MCP_PROTECTED_HOSTS` (env, empty by default — no host is hardcoded).
 - Cleanup archives rather than deletes — `Writer.can()` refuses partner unlink — so `MCP Test %` residue on the dev instance is expected.
-- Local host config lives in `.opencode/opencode.json`, **gitignored because it holds a real API key**. It runs the server from source (`uv run --directory <repo> odoo-assistant`) since PyPI has nothing yet, and raises `timeout` from opencode's 5000 ms default, which `instance_overview` exceeds.
+- Local host config lives in `.opencode/opencode.json`, **gitignored because it holds a real API key**. It runs the server from source (`uv run --directory <repo> odoo-assistant`) for development convenience, and raises `timeout` from opencode's 5000 ms default, which `instance_overview` exceeds.
 - Smoke-test a script directly: `python3 src/odoo_assistant/odoo_scripts/query.py --url http://host:8069 --key <API_KEY>`
 
 ## references/

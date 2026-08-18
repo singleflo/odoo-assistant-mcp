@@ -267,7 +267,29 @@ class Documents:
                          "context": self.ctx})
         except OdooExecutedButUnserializable:
             pass
+        self._unescape_last_html(model, res_id, body)
         return self._delivery_report(model, res_id, partner_ids, before)
+
+    def _unescape_last_html(self, model, res_id, body):
+        """Undo the RPC plain-text escaping when `body` was meant as HTML.
+
+        Odoo 17/18 treats a `body` arriving over RPC as plain text and
+        escapes it (only an internal `Markup` passes as HTML, which XML-RPC
+        cannot convey). Measured here: an HTML note posted via
+        `message_notify` landed in the chatter as visible
+        `&lt;p&gt;` source. So: if the caller's body starts with a tag and
+        the stored body got entity-escaped, write the intended HTML straight
+        into `mail.message.body`.
+        """
+        if not (isinstance(body, str) and body.lstrip().startswith("<")):
+            return
+        last = self.o.search_read(
+            "mail.message", [["model", "=", model], ["res_id", "=", res_id]],
+            ["id", "body"], limit=1, order="id desc", context=self.ctx)
+        if last and "&lt;" in (last[0].get("body") or ""):
+            self.o.call("mail.message", "write",
+                        [[last[0]["id"]], {"body": body}],
+                        {"context": self.ctx})
 
     def _partners_of(self, users):
         if not users:
@@ -347,6 +369,7 @@ class Documents:
                         dict(vals, context=self.ctx))
         except OdooExecutedButUnserializable:
             pass          # message_post returns a mail.message recordset
+        self._unescape_last_html(model, res_id, body)
         return self._delivery_report(model, res_id, partner_ids, before)
 
     def mail_works(self):

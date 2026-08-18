@@ -112,31 +112,52 @@ def notify_user(
     subtype: str = "note",
     force: bool = False,
 ) -> str:
-    """Notify users on a record's chatter. Internal by default.
+    """Write a note on a record's chatter and notify the users you name.
+
+    Both subtypes post a message that IS VISIBLE in the record's chatter. The
+    difference is who it reaches beyond the people you name.
 
     Args:
         model: the Odoo model, e.g. "sale.order".
         record_id: id of the record to write on.
-        message: the body — plain text or simple HTML.
-        user_ids: res.users ids to notify.
-        subtype: "note" reaches EXACTLY the users you name and nobody else —
-            but each of them through their OWN Odoo notification setting,
-            inbox or email, so it is not a promise that no mail leaves;
-            "comment" posts to the chatter and EMAILS every follower,
-            customers included. A comment is refused while an external
-            follower exists, unless force=True.
+        message: the body. Send PLAIN TEXT: Odoo escapes anything that arrives
+            over RPC, so "<b>x</b>" is displayed as the literal characters
+            `<b>x</b>`, not as bold — there is no way to pass real markup
+            through this call, and newlines survive but are not turned into
+            line breaks. Write the note as prose.
+        user_ids: res.users ids to notify. They are notified each through
+            their OWN Odoo setting, inbox or email, so naming someone is not a
+            promise that no mail leaves.
+        subtype: where the message lands.
+
+            | subtype   | visible in the chatter | emails a customer |
+            |-----------|------------------------|-------------------|
+            | "note"    | yes, internal users    | never             |
+            | "inbox"   | NO — notification only | never             |
+            | "comment" | yes, everyone          | **YES**           |
+
+            "note" posts `mail.mt_note` and is the default: measured on a real
+            order it produced one inbox notification and zero emails.
+            "inbox" goes through `message_notify`, which Odoo documents as the
+            path for "messages that should not be displayed on a document" —
+            the person is notified, the record keeps no trace. "comment" posts
+            `mail.mt_comment` and is refused while an external follower
+            exists, unless force=True.
         force: post the comment anyway, knowing those people get an email.
     """
     match subtype:
         case "note":
+            method, emails_followers = "message_post", False
+        case "inbox":
             method, emails_followers = "message_notify", False
         case "comment":
             method, emails_followers = "message_post", True
         case _:
             return ToolOutcome(True, (
                 f"Unknown subtype {subtype!r}. Nothing was posted. Use "
-                f"'note' (only the users you name) or 'comment' (posts to "
-                f"the chatter and emails every follower)."
+                f"'note' (internal note, visible in the chatter), 'inbox' "
+                f"(notification only, NOT visible on the record) or 'comment' "
+                f"(visible in the chatter and emails every follower)."
             )).deliver()
 
     decision = gate(model, method, record_id)
@@ -156,10 +177,11 @@ def notify_user(
 
     try:
         delivery = (
-            docs.notify(model, record_id, message, users=user_ids,
-                        subtype="mail.mt_comment")
-            if emails_followers
-            else docs.tell(model, record_id, message, users=user_ids)
+            docs.tell(model, record_id, message, users=user_ids)
+            if subtype == "inbox"
+            else docs.notify(
+                model, record_id, message, users=user_ids,
+                subtype="mail.mt_comment" if emails_followers else "mail.mt_note")
         )
     except Exception as exc:
         return handle_odoo_exception(

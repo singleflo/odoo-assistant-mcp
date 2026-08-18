@@ -131,23 +131,22 @@ def test_missing_credentials_are_mapped_for_every_collab_tool(monkeypatch, tool)
 # --------------------------------------------------------------- notify_user
 def test_a_note_reaches_the_named_user_without_touching_followers(odoo):
     """Given a record with an external follower, When a note is sent,
-    Then message_notify carries the user's partner and no follower is added."""
+    Then the post carries the user's partner and no follower is subscribed."""
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
-    odoo.set_results("sale.order", True, method="message_notify")
+    odoo.set_results("sale.order", True, method="message_post")
 
-    notify_user("sale.order", 42, "<p>checked</p>", [7])
+    notify_user("sale.order", 42, "checked", [7])
 
-    assert call_named(odoo, "message_notify")["kwargs"]["partner_ids"] == [5]
-    assert "message_post" not in methods_called(odoo)
+    assert call_named(odoo, "message_post")["kwargs"]["partner_ids"] == [5]
     assert "message_subscribe" not in methods_called(odoo)
 
 
 def test_a_note_reports_who_was_actually_reached(odoo):
     """Given the same note, Then the result names the audience and the delivery."""
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
-    odoo.set_results("sale.order", True, method="message_notify")
+    odoo.set_results("sale.order", True, method="message_post")
 
-    payload = json.loads(notify_user("sale.order", 42, "<p>checked</p>", [7]))
+    payload = json.loads(notify_user("sale.order", 42, "checked", [7]))
 
     assert payload["subtype"] == "note"
     assert payload["audience"]["external"] == [CUSTOMER[1]]
@@ -466,3 +465,46 @@ def test_register_publishes_the_four_tools():
 
     assert {t.name for t in anyio.run(mcp.list_tools)} == {
         "notify_user", "create_activity", "download_docs", "generate_pdf"}
+
+
+def test_a_note_is_posted_as_an_internal_chatter_note(odoo):
+    """Given a note, When it is sent, Then it is posted with `mail.mt_note` so
+    it is VISIBLE in the record's chatter.
+
+    `message_notify` — what this used to call — creates a `user_notification`,
+    and Odoo's own docstring for it says it is for "messages that should not
+    be displayed on a document". The note landed nowhere the user could see it
+    and the tool reported success. `mt_note` is internal-only: measured on a
+    real order it produced one inbox notification and zero customer emails.
+    """
+    program_chatter(odoo, followers=[ALICE, CUSTOMER])
+    odoo.set_results("sale.order", True, method="message_post")
+
+    notify_user("sale.order", 42, "checked", [7])
+
+    posted = call_named(odoo, "message_post")
+    assert posted["kwargs"]["subtype_xmlid"] == "mail.mt_note"
+    assert posted["kwargs"]["message_type"] == "comment"
+    assert posted["kwargs"]["partner_ids"] == [5]
+    assert "message_notify" not in methods_called(odoo)
+
+
+def test_the_inbox_subtype_notifies_without_writing_on_the_record(odoo):
+    """Given a message meant for a person rather than for the record, When
+    subtype='inbox' is used, Then it goes through message_notify and leaves
+    the chatter untouched.
+
+    This is the case `note` used to serve by accident: Odoo's own docstring
+    for `message_notify` calls it the path for "messages that should not be
+    displayed on a document". Naming it makes the invisibility a choice
+    instead of a surprise.
+    """
+    program_chatter(odoo, followers=[ALICE, CUSTOMER])
+    odoo.set_results("sale.order", True, method="message_notify")
+
+    payload = json.loads(
+        notify_user("sale.order", 42, "ping", [7], subtype="inbox"))
+
+    assert call_named(odoo, "message_notify")["kwargs"]["partner_ids"] == [5]
+    assert "message_post" not in methods_called(odoo)
+    assert payload["subtype"] == "inbox"

@@ -15,7 +15,7 @@ installable with `uvx odoo-assistant`.
 ## Commands
 
 ```bash
-uv run pytest                       # 223 tests. addopts already excludes live+wheel
+uv run pytest                       # 225 tests. addopts already excludes live+wheel
 uv build && uv run pytest -m wheel  #   3 tests. needs dist/ AND network (uvx)
 uv run pytest -m live               #   6 tests. needs the env vars below
 ```

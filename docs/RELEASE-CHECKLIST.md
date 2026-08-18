@@ -1,6 +1,6 @@
 # Release Checklist (User-Only Prerequisites)
 
-This document outlines the manual release prerequisites and verification steps for publishing the `odoo-assistant` MCP server from the `singleflo` organization. Nothing has been deployed to PyPI yet: the package is installable from the GitHub repository only, and every step below is still to do.
+This document outlines the manual release prerequisites and verification steps for publishing the `odoo-assistant` MCP server from the `singleflo` organization. The package is published on PyPI and listed in the MCP Registry; Trusted Publishing is configured, so Step 1 is done once and the steps that repeat for every release start at Step 4.
 
 These steps require human 2FA, web-UI access, or manual credentials that the automated worker cannot access. **Do not attempt to run these steps via automated agents.**
 
@@ -52,12 +52,24 @@ Once PyPI Trusted Publishing is configured, trigger the automated release pipeli
    ```
    Do not use the short `-m` expression containing only `not live`: a command-line `-m` replaces `addopts` instead of narrowing it, silently re-enabling the `wheel` marker suite, which fails on a clean checkout because it needs `dist/`.
 3. Confirm the "Tests" GitHub Actions workflow is green on the exact commit being tagged. For example, `gh run list --workflow=Tests --branch=main --limit=1` must show success, and its commit SHA must match `git rev-parse HEAD`.
-4. Create and push the version tag:
+4. Fetch **every** URL in `[project.urls]` and confirm each one both returns 200 **and** actually resolves to the intended content:
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   python3 -c "import tomllib;[print(v) for v in tomllib.load(open('pyproject.toml','rb'))['project']['urls'].values()]" \
+     | while read -r url; do
+         printf '%s -> %s\n' "$url" "$(curl -sL -o /dev/null -w '%{http_code}' "$url")"
+       done
    ```
-5. This triggers the `.github/workflows/publish.yml` workflow, which will:
+   A 200 is **not** sufficient. Open the response and confirm it names this project: a page can return 200 while silently discarding its query parameters and rendering an unrelated default listing, which is exactly how the 0.1.0 `MCPRegistry` link was mis-diagnosed. Read the body, or load the URL in a browser and look at what renders.
+
+   Do this **before** tagging. `[project.urls]` is baked into the published PyPI metadata and is immutable once a version is released: a broken link can only be corrected by publishing a new version.
+5. Create and push the version tag. It must match the version in `pyproject.toml`
+   and `server.json`, prefixed with `v` — the workflow triggers on `tags: ["v*"]`:
+   ```bash
+   VERSION=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+   git tag "v$VERSION"
+   git push origin "v$VERSION"
+   ```
+6. This triggers the `.github/workflows/publish.yml` workflow, which will:
    - Run the test suite.
    - Build the package.
    - Publish the package to PyPI (using Trusted Publisher OIDC).

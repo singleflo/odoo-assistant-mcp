@@ -1,6 +1,6 @@
 [project]
 name = "odoo-assistant"
-version = "0.1.0"
+version = "0.1.1"
 description = "An Odoo virtual employee via MCP: query, create, modify records, run workflows"
 readme = "README.md"
 license = "MIT"
@@ -32,7 +32,7 @@ odoo-assistant = "odoo_assistant.server:main"
 Homepage = "https://github.com/singleflo/odoo-assistant-mcp"
 Repository = "https://github.com/singleflo/odoo-assistant-mcp"
 Issues = "https://github.com/singleflo/odoo-assistant-mcp/issues"
-MCPRegistry = "https://registry.modelcontextprotocol.io/servers/io.github.singleflo/odoo-assistant"
+MCPRegistry = "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.singleflo%2Fodoo-assistant/versions"
 
 [build-system]
 requires = ["hatchling"]

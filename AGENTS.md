@@ -1,7 +1,7 @@
 # AGENTS.md — odoo-assistant-mcp
 
 MCP server (stdio) that wraps 9 verified Odoo scripts as **19 tools + 8
-resources**. Shipped and complete; published on PyPI as version 0.1.0 and
+resources**. Shipped and complete; published on PyPI as version 0.1.1 and
 installable with `uvx odoo-assistant`.
 
 ## Read before coding

@@ -48,14 +48,16 @@ Once PyPI Trusted Publishing is configured, trigger the automated release pipeli
 1. Ensure the version numbers in `pyproject.toml` and `server.json` are updated and match.
 2. Run the local test suite to verify everything is green:
    ```bash
-   uv run pytest tests/ -m "not live"
+   uv run pytest
    ```
-3. Create and push the version tag:
+   Do not use the short `-m` expression containing only `not live`: a command-line `-m` replaces `addopts` instead of narrowing it, silently re-enabling the `wheel` marker suite, which fails on a clean checkout because it needs `dist/`.
+3. Confirm the "Tests" GitHub Actions workflow is green on the exact commit being tagged. For example, `gh run list --workflow=Tests --branch=main --limit=1` must show success, and its commit SHA must match `git rev-parse HEAD`.
+4. Create and push the version tag:
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   git tag v0.1.0
+   git push origin v0.1.0
    ```
-4. This triggers the `.github/workflows/publish.yml` workflow, which will:
+5. This triggers the `.github/workflows/publish.yml` workflow, which will:
    - Run the test suite.
    - Build the package.
    - Publish the package to PyPI (using Trusted Publisher OIDC).
@@ -73,6 +75,7 @@ After the GitHub Actions run completes successfully, verify the release:
    curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.singleflo/odoo-assistant"
    ```
    Verify that the returned JSON contains the server metadata.
+   PyPI and the MCP Registry can have a short CDN propagation delay after a fresh upload, so the registry can briefly return 404 (see documented MCP Registry issue #553). If the registry job fails immediately after a successful PyPI publish, re-run only the registry job; never bump the version.
 3. **Clean Install Verification**: On a clean machine (or in a temporary environment), verify that the package can be executed directly via `uvx`:
    ```bash
    uvx odoo-assistant

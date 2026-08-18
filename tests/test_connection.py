@@ -1,5 +1,6 @@
 """Server skeleton: credential resolution, logging channel, SDK wiring."""
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -138,6 +139,48 @@ def test_server_json_marks_the_login_optional():
     assert "ODOO_MCP_PROTECTED_HOSTS" in variables
     assert variables["ODOO_API_KEY"]["isRequired"] is True
 
+
+def test_readme_contains_the_registry_name_marker():
+    """Given the registry name in server.json, When README is published, Then
+    its marker must match or the MCP Registry publish fails after PyPI accepts
+    the upload and the version can never be reused."""
+    root = Path(__file__).parents[1]
+    manifest = json.loads((root / "server.json").read_text())
+    expected = f"mcp-name: {manifest['name']}"
+    readme_text = (root / "README.md").read_text()
+
+    assert expected in readme_text, (
+        f"README.md is missing registry marker {expected!r}"
+    )
+
+
+def test_release_versions_are_consistent():
+    """Given the release metadata files, When a version is published, Then
+    all versions must match or the MCP Registry publish fails after PyPI accepts
+    the upload and the version can never be reused."""
+    try:
+        import tomllib
+    except ImportError:
+        pytest.skip("tomllib is required to read pyproject.toml")
+
+    root = Path(__file__).parents[1]
+    manifest = json.loads((root / "server.json").read_text())
+    with (root / "pyproject.toml").open("rb") as pyproject_file:
+        project_version = tomllib.load(pyproject_file)["project"]["version"]
+    # Read the source text to avoid importing package code during metadata checks.
+    init_text = (root / "src/odoo_assistant/__init__.py").read_text()
+    source_version = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']$', init_text, re.MULTILINE)
+    assert source_version is not None, "__version__ is missing from __init__.py"
+
+    versions = {
+        "pyproject.toml project.version": project_version,
+        "server.json version": manifest["version"],
+        "server.json packages[0].version": manifest["packages"][0]["version"],
+        "src/odoo_assistant/__init__.py __version__": source_version.group(1),
+    }
+    assert len(set(versions.values())) == 1, (
+        f"release versions differ: {versions}"
+    )
 
 
 def test_a_multi_database_instance_is_named_at_connect_time(monkeypatch):

@@ -79,8 +79,13 @@ def _credentials() -> _Credentials:
     case a password could serve is Odoo ≤13, which this server declares
     unsupported.
 
-    The database is required — the client raises without it
-    (`odoo_client.py:212`). The **login is not**. Supplied, it costs one
+    The database and the login are both optional. The client discovers the
+    database from the instance itself (`discover_db`): one round trip when
+    exactly one database is served — the common case — and a clear error
+    naming the candidates when there are several, at which point ODOO_DB must
+    name one. Supplied, ODOO_DB skips that probe.
+
+    The **login** is never required. Supplied, it costs one
     `common.authenticate()` round trip. Omitted, `_discover_uid()`
     (`odoo_client.py:250`) reads `res.users.login` for uid 1..59 and keeps the
     one the key answers for, so the login is discovered rather than guessed —
@@ -99,7 +104,6 @@ def _credentials() -> _Credentials:
         name
         for name, value in (
             ("ODOO_BASE_URL", base_url),
-            ("ODOO_DB", db),
             ("ODOO_API_KEY", api_key),
         )
         if not value
@@ -135,11 +139,11 @@ def _get_odoo() -> Odoo:
     """Return the shared client, connecting on first use.
 
     `allow_write` is the client's declaration of intent, and it is the ONLY
-    thing that arms its production guard: `connect()` blocks a
-    `PRODUCTION_HOSTS` base URL with `ProductionWriteBlocked` if and only if
-    `allow_write` is true. Connecting with the default `False` while the
-    server goes on to write through `Writer` disarmed that guard entirely —
-    `create_record` against app.persevida.com would have gone straight
+    thing that arms its protected-host guard: `connect()` blocks a base URL
+    listed in `ODOO_MCP_PROTECTED_HOSTS` with `ProductionWriteBlocked` if and
+    only if `allow_write` is true. Connecting with the default `False` while
+    the server goes on to write through `Writer` disarmed that guard entirely —
+    a `create_record` against a protected host would have gone straight
     through. So the intent must be declared here, truthfully.
 
     "Truthfully" is `max_level() >= 1`: the ceiling already decides whether

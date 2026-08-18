@@ -67,9 +67,9 @@ Full list: `references/SKILL.md` (8 rules) + `references/writing.md` (12 pattern
 
 ## Live and local testing
 
-- Env: `ODOO_BASE_URL` (no trailing slash), `ODOO_DB`, `ODOO_USER` (optional), `ODOO_API_KEY`. **API key only** — passwords were removed deliberately. No defaults, by design.
+- Env: required are `ODOO_BASE_URL` (no trailing slash) and `ODOO_API_KEY` only. `ODOO_DB` is discovered (mandatory only when the instance serves several — the error names them), `ODOO_USER` is discovered from the key. **API key only** — passwords were removed deliberately.
 - Write scenarios need `ODOO_MCP_ALLOW_LIVE_WRITE=1`; that variable is test-suite-only and must never appear in host config.
-- Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed). `odoo_client.py` hard-blocks `PRODUCTION_HOSTS`.
+- Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed). `odoo_client.py` refuses writes to hosts listed in `ODOO_MCP_PROTECTED_HOSTS` (env, empty by default — no host is hardcoded).
 - Cleanup archives rather than deletes — `Writer.can()` refuses partner unlink — so `MCP Test %` residue on the dev instance is expected.
 - Local host config lives in `.opencode/opencode.json`, **gitignored because it holds a real API key**. It runs the server from source (`uv run --directory <repo> odoo-assistant`) since PyPI has nothing yet, and raises `timeout` from opencode's 5000 ms default, which `instance_overview` exceeds.
 - Smoke-test a script directly: `python3 src/odoo_assistant/odoo_scripts/query.py --url http://host:8069 --key <API_KEY>`

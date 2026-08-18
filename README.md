@@ -26,15 +26,16 @@ uvx odoo-assistant
 Until then, any host example below that writes `uvx odoo-assistant` needs the `--from git+https://github.com/singleflo/odoo-assistant-mcp` form above — or a local clone, `uv run --directory <repo> odoo-assistant`.
 
 ### 2. Configure Environment Variables
-The server requires the following environment variables to connect to your Odoo instance:
+Two variables are required; everything else is discovered or has a default:
 
 * `ODOO_BASE_URL`: The base URL of your Odoo instance (e.g., `https://mycompany.odoo.com`).
-* `ODOO_DB`: The database name.
-* `ODOO_USER`: The username or email of the Odoo user. Optional: if supplied, it is one authentication round trip; if omitted, the login is discovered from the key at the cost of up to 59 extra round trips, and discovery fails if the key owner's uid is 60 or higher. Setting it is recommended.
-* `ODOO_API_KEY`: The Odoo API key — **required** (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted: a key is per-user, scoped and revocable on its own.
+* `ODOO_API_KEY`: The Odoo API key (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted: a key is per-user, scoped and revocable on its own.
 
 Optional configuration:
+* `ODOO_DB`: The database name. Discovered automatically when the instance serves exactly one database; required when it serves several — the error names them all.
+* `ODOO_USER`: The login. Discovered from the key at the cost of up to 59 extra round trips; discovery fails if the key owner's uid is 60 or higher. Setting it saves the probe.
 * `ODOO_MCP_MAX_LEVEL`: The highest safety level this server may execute, `0` to `4` (default: `3`). This is how you make the server read-only or let it delete — see [Choosing the ceiling](#choosing-the-ceiling).
+* `ODOO_MCP_PROTECTED_HOSTS`: Comma-separated hosts this server refuses to *write* to (empty by default — no host is baked into the package). A listed host still allows reads; writing needs `ODOO_ALLOW_PROD_WRITE=yes` as a deliberate override.
 
 ## Safety Layer
 
@@ -150,10 +151,11 @@ systray. "Message user X" is the second kind — `send_direct_message`, not
 
 ## Host Configuration Examples
 
-Every example below sets `ODOO_MCP_MAX_LEVEL` explicitly. It is optional — `3` is
-the default — but writing it down is what makes the server's authority visible in
-the file the human owns. Note the **quotes**: environment values are strings, so
-`"3"` is correct and `3` is rejected by most host schemas.
+Every example below carries only what matters: the two required variables, and
+the ceiling — the one setting that decides whether this server can write, made
+visible in the file the human owns. The database and the login are discovered,
+and `3` is the ceiling's default. Note the **quotes**: environment values are
+strings.
 
 ### Claude Desktop
 Add this to your `claude_desktop_config.json`:
@@ -167,8 +169,6 @@ Add this to your `claude_desktop_config.json`:
       ],
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
-        "ODOO_DB": "mycompany",
-        "ODOO_USER": "admin",
         "ODOO_API_KEY": "your-api-key-here",
         "ODOO_MCP_MAX_LEVEL": "3"
       }
@@ -189,8 +189,6 @@ Add this to your `.cursor/mcp.json` or configure it in the Cursor settings UI:
       ],
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
-        "ODOO_DB": "mycompany",
-        "ODOO_USER": "admin",
         "ODOO_API_KEY": "your-api-key-here",
         "ODOO_MCP_MAX_LEVEL": "3"
       }
@@ -211,8 +209,6 @@ Add this to your VS Code `settings.json`:
       ],
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
-        "ODOO_DB": "mycompany",
-        "ODOO_USER": "admin",
         "ODOO_API_KEY": "your-api-key-here",
         "ODOO_MCP_MAX_LEVEL": "3"
       }
@@ -238,8 +234,6 @@ Add this to `opencode.json` or `.opencode/opencode.json` in your project, or to
       "timeout": 120000,
       "environment": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
-        "ODOO_DB": "mycompany",
-        "ODOO_USER": "admin",
         "ODOO_API_KEY": "your-api-key-here",
         "ODOO_MCP_MAX_LEVEL": "3"
       }
@@ -272,14 +266,12 @@ Add the server using the Hermes CLI:
 ```bash
 hermes mcp add odoo-assistant \
   --env ODOO_BASE_URL=https://mycompany.odoo.com \
-  --env ODOO_DB=mycompany \
-  --env ODOO_USER=admin \
   --env ODOO_API_KEY=your-api-key-here \
   --env ODOO_MCP_MAX_LEVEL=3 \
   --args run odoo-assistant
 ```
 
-The five examples above set `ODOO_USER` because that is the fast path, but it may be dropped.
+The examples omit the optional variables. Set `ODOO_DB` when the instance serves several databases, `ODOO_USER` to skip the uid probe, and `ODOO_MCP_MAX_LEVEL` to change the ceiling from its default of `3`.
 
 ## License
 

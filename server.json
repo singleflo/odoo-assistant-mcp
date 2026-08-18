@@ -25,8 +25,8 @@
         },
         {
           "name": "ODOO_DB",
-          "description": "Odoo database name",
-          "isRequired": true,
+          "description": "Odoo database name. Optional: discovered automatically when the instance serves exactly one database; required when it serves several (the error names them).",
+          "isRequired": false,
           "isSecret": false,
           "format": "string"
         },
@@ -47,6 +47,13 @@
         {
           "name": "ODOO_MCP_MAX_LEVEL",
           "description": "Safety ceiling 0-5, default 3 (state transitions allowed, destructive ops blocked). See server_safety.py.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_MCP_PROTECTED_HOSTS",
+          "description": "Comma-separated hosts this server refuses to WRITE to (requires ODOO_ALLOW_PROD_WRITE=yes to override). Empty by default: protection is the operator's opt-in, no host is baked in.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"

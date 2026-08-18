@@ -16,10 +16,10 @@ CREDENTIAL_VARS = (
     "ODOO_API_KEY",
 )
 
-# ODOO_USER is read but not demanded: the key identifies its own owner.
+# ODOO_USER and ODOO_DB are read but not demanded: the key identifies its
+# owner, and the client discovers the database from the instance.
 REQUIRED_VARS = (
     "ODOO_BASE_URL",
-    "ODOO_DB",
     "ODOO_API_KEY",
 )
 
@@ -41,6 +41,7 @@ def test_missing_credentials_are_named_one_by_one(clean_environment):
     for name in REQUIRED_VARS:
         assert name in message
     assert "ODOO_USER" not in message
+    assert "ODOO_DB" not in message
 
 
 def test_api_key_is_required_and_blamed_alone(clean_environment, monkeypatch):
@@ -125,13 +126,38 @@ def test_server_instance_and_entry_point_are_wired():
 
 def test_server_json_marks_the_login_optional():
     """Given the registry reads server.json to build a host's env prompt, When
-    the login is optional to the server, Then the manifest must say so —
-    otherwise a host refuses to launch without a value it does not need."""
+    the login and the database are optional to the server, Then the manifest
+    must say so — otherwise a host refuses to launch without a value it does
+    not need."""
     manifest = json.loads((Path(__file__).parents[1] / "server.json").read_text())
     variables = {
         v["name"]: v for v in manifest["packages"][0]["environmentVariables"]
     }
     assert variables["ODOO_USER"]["isRequired"] is False
-    assert variables["ODOO_DB"]["isRequired"] is True
+    assert variables["ODOO_DB"]["isRequired"] is False
+    assert "ODOO_MCP_PROTECTED_HOSTS" in variables
     assert variables["ODOO_API_KEY"]["isRequired"] is True
 
+
+
+def test_a_multi_database_instance_is_named_at_connect_time(monkeypatch):
+    """Given an instance serving more than one database, When discovery runs,
+    Then the error names every candidate — the moment to choose is the first
+    connection, and "ODB_DB is required" without the names makes the operator
+    go look for a command to run."""
+    import odoo_client
+
+    class _SeveralDatabases:
+        @staticmethod
+        def list():
+            return ["persevida", "persevida_dev18"]
+
+    monkeypatch.setattr(
+        odoo_client, "_xmlrpc_proxy", lambda url, **kw: _SeveralDatabases())
+
+    with pytest.raises(MissingCredentials) as raised:
+        odoo_client.discover_db("http://multi.invalid:8069")
+
+    message = str(raised.value)
+    assert "persevida" in message and "persevida_dev18" in message
+    assert "ODOO_DB" in message

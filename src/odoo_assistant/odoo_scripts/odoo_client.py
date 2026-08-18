@@ -28,7 +28,17 @@ import urllib.request
 import urllib.error
 import xmlrpc.client
 
-PRODUCTION_HOSTS = ("app.persevida.com",)
+def _protected_hosts():
+    """Hosts this deployment refuses to write to, from the environment.
+
+    `ODOO_MCP_PROTECTED_HOSTS`, comma-separated; empty by default. The list is
+    deliberately NOT in the code: a package installed by anyone must work
+    against any instance, so protection is an operator's opt-in per host, not
+    a hostname baked into the source. Read at call time — not import time —
+    so a test (or a supervisor) can change it without a re-import.
+    """
+    raw = os.environ.get("ODOO_MCP_PROTECTED_HOSTS", "")
+    return tuple(h.strip() for h in raw.split(",") if h.strip())
 
 
 def _check_tls():
@@ -377,7 +387,7 @@ class Odoo:
 
 
 def _is_production(url):
-    return any(h in url for h in PRODUCTION_HOSTS)
+    return any(h in url for h in _protected_hosts())
 
 
 def add_connection_args(parser):
@@ -428,6 +438,14 @@ def discover_db(base):
         names = db.list()
         if isinstance(names, list) and len(names) == 1:
             return names[0]
+        if isinstance(names, list) and len(names) > 1:
+            raise MissingCredentials(
+                "This instance serves %d databases, so ODOO_DB must name "
+                "one: %s. Set ODOO_DB to the database you mean to work on."
+                % (len(names), ", ".join(names))
+            )
+    except MissingCredentials:
+        raise
     except Exception:
         pass
 

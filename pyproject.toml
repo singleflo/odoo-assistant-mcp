@@ -44,6 +44,12 @@ packages = ["src/odoo_assistant"]
 [tool.hatch.build.targets.wheel.force-include]
 "references_public" = "odoo_assistant/references"
 
+[tool.hatch.build.targets.sdist]
+# Anchored gitignore-style: each segment matches whole, so `/references` drops
+# the instance-specific tree and spares `references_public/`, which the wheel
+# force-includes above and a rebuild from this sdist needs present.
+exclude = ["/references", "/docs", "/.omo", "/.github", "/.opencode"]
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"

@@ -7,7 +7,7 @@ to know what is INSIDE: volumes, top entities, distributions, and the real
 vocabulary (journals are called "FATT" here — that is how the user will
 refer to them).
 
-Writes to  $ODOO_PROFILE_DIR/<db>.json  (default ~/.hermes/odoo/instances).
+Writes to  $ODOO_PROFILE_DIR/<db>.json  (default: the per-user data dir).
 Never loaded whole into context — read slices with query.py.
 
     python3 census.py            # full census
@@ -22,8 +22,26 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from odoo_client import connect_cli as connect, OdooError  # noqa: E402
 
+def _default_profile_dir():
+    """Per-user data directory for THIS platform.
+
+    "~/.hermes/odoo/instances" named a retired tool, and "~/.local/share" is a
+    Linux answer that on Windows creates a folder literally called "~" beside
+    the process. Duplicated from the package's `paths.py` on purpose: these
+    scripts stay stdlib-only and importable on their own.
+    """
+    home = os.path.expanduser("~")
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+    elif sys.platform == "darwin":
+        base = os.path.join(home, "Library", "Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
+    return os.path.join(base, "odoo-assistant", "instances")
+
+
 PROFILE_DIR = os.path.expanduser(
-    os.environ.get("ODOO_PROFILE_DIR", "~/.hermes/odoo/instances"))
+    os.environ.get("ODOO_PROFILE_DIR") or _default_profile_dir())
 
 
 def profile_path(odoo):

@@ -14,7 +14,7 @@ import pytest
 from mcp.server import MCPServer
 from mcp.types import InputRequiredResult
 
-from odoo_assistant import tools_evolution
+from odoo_assistant import paths, tools_evolution
 from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
 
@@ -74,10 +74,9 @@ def _read(mcp: MCPServer, uri: str) -> str:
 
 def test_the_reference_dir_is_redirected_under_the_user_home():
     """Given the module is imported, When nothing else happens, Then the
-    script writes under the user's data dir — never under site-packages."""
-    assert str(explorer.REF_DIR).startswith(
-        str(Path.home() / ".local" / "share" / "odoo-assistant")
-    )
+    script writes under this platform's per-user data dir — never under
+    site-packages, and never under a POSIX path guessed on Windows."""
+    assert str(explorer.REF_DIR).startswith(str(paths.data_dir()))
 
 
 def test_importing_the_module_creates_no_directory(user_home):

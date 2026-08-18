@@ -25,7 +25,7 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 
-from odoo_assistant import resources, server
+from odoo_assistant import paths, resources, server
 # Package-qualified, unlike the bare bootstrap the sibling modules use: a bare
 # `import explore_module` loads the same file under a SECOND `sys.modules` key,
 # and the redirect below would then be invisible to every qualified importer.
@@ -59,7 +59,7 @@ _VOLUME_ROW = re.compile(r"^\| `[\w.]+` \| (\d+) \|", re.M)
 
 def _redirect_references() -> str:
     """Point the script's output at a writable per-user directory."""
-    explorer.REF_DIR = str(Path.home() / ".local" / "share" / "odoo-assistant" / "references")
+    explorer.REF_DIR = str(paths.data_dir() / "references")
     return explorer.REF_DIR
 
 

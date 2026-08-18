@@ -56,6 +56,7 @@ The 5-6 parameter signatures are the MCP wire contract from PRD §5B, not a
 value object waiting to be extracted.
 """
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -211,7 +212,7 @@ def create_activity(
     return tool_result(activity)
 
 
-def download_docs(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
+def download_docs(model: str, record_id: int, dest_dir: str = "") -> str:
     """Save every document of a record to disk — chatter files included.
 
     Returns {"saved": [paths], "skipped": [[name, why]]}. `skipped` is not
@@ -222,20 +223,22 @@ def download_docs(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
     Args:
         model: the Odoo model, e.g. "account.move".
         record_id: id of the record whose documents to fetch.
-        dest_dir: directory to write the files into.
+        dest_dir: directory to write the files into. Defaults to this
+            platform's temporary directory — "/tmp" does not exist on Windows.
     """
     decision = gate("ir.attachment", "search_read",
                     [["res_model", "=", model], ["res_id", "=", record_id]])
     if not decision.allowed:
         return ToolOutcome(True, decision.reason).deliver()
     try:
-        result = Documents(_odoo()).download(model, record_id, dest_dir)
+        result = Documents(_odoo()).download(
+            model, record_id, dest_dir or tempfile.gettempdir())
     except Exception as exc:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
     return tool_result(result)
 
 
-def generate_pdf(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
+def generate_pdf(model: str, record_id: int, dest_dir: str = "") -> str:
     """Render the PDF of a record and return where it was saved.
 
     An already rendered PDF is reused. Otherwise the model's own print/send
@@ -246,13 +249,15 @@ def generate_pdf(model: str, record_id: int, dest_dir: str = "/tmp") -> str:
     Args:
         model: the Odoo model, e.g. "account.move".
         record_id: id of the record to print.
-        dest_dir: directory to write the PDF into.
+        dest_dir: directory to write the PDF into. Defaults to this platform's
+            temporary directory — "/tmp" does not exist on Windows.
     """
     decision = gate(model, "action_send_and_print", record_id)
     if not decision.allowed:
         return ToolOutcome(True, decision.reason).deliver()
     try:
-        path = Documents(_odoo()).generate_pdf(model, record_id, dest_dir)
+        path = Documents(_odoo()).generate_pdf(
+            model, record_id, dest_dir or tempfile.gettempdir())
     except Exception as exc:
         # The wizard can SEND the document, and no read can tell whether an
         # email left — so this failure names no state rather than a wrong one.

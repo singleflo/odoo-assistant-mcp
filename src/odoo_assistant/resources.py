@@ -26,6 +26,8 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from odoo_assistant import paths
+
 if TYPE_CHECKING:
     from mcp.server import MCPServer
 
@@ -37,7 +39,7 @@ SKILL_FILE = "SKILL.md"
 # Where `explore_module` writes the references it generates for THIS instance.
 # Absent until something has been generated — that is a normal state, not an
 # error, so registration simply finds nothing there.
-USER_REFERENCES_DIR = Path.home() / ".local" / "share" / "odoo-assistant" / "references"
+USER_REFERENCES_DIR = paths.data_dir() / "references"
 
 
 def bundled_references() -> Traversable:

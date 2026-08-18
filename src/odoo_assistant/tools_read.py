@@ -31,7 +31,7 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 
-from odoo_assistant import server
+from odoo_assistant import paths, server
 from odoo_assistant.server_errors import (
     ToolExecutionError,
     handle_odoo_exception,
@@ -201,12 +201,11 @@ def count_records(
 def _redirect_profiles() -> str:
     """Point the instance-profile cache at a writable per-user directory.
 
-    The scripts default to `~/.hermes/odoo/instances`, inherited from the
-    retired Hermes skill: a path that means nothing on anyone else's machine.
-    `ODOO_PROFILE_DIR` still wins when the operator sets it.
+    The scripts resolve the same per-user data directory on their own, so the
+    two entry paths agree; this keeps the MCP server's copy in one place and
+    lets `ODOO_MCP_DATA_DIR` move everything at once.
     """
-    target = os.environ.get("ODOO_PROFILE_DIR") or str(
-        Path.home() / ".local" / "share" / "odoo-assistant" / "instances")
+    target = os.environ.get("ODOO_PROFILE_DIR") or str(paths.data_dir() / "instances")
     census.PROFILE_DIR = target
     query.PROFILE_DIR = target
     return target

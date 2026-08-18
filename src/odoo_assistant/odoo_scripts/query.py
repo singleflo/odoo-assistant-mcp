@@ -14,8 +14,26 @@ import json
 import os
 import sys
 
+def _default_profile_dir():
+    """Per-user data directory for THIS platform.
+
+    "~/.hermes/odoo/instances" named a retired tool, and "~/.local/share" is a
+    Linux answer that on Windows creates a folder literally called "~" beside
+    the process. Duplicated from the package's `paths.py` on purpose: these
+    scripts stay stdlib-only and importable on their own.
+    """
+    home = os.path.expanduser("~")
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+    elif sys.platform == "darwin":
+        base = os.path.join(home, "Library", "Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
+    return os.path.join(base, "odoo-assistant", "instances")
+
+
 PROFILE_DIR = os.path.expanduser(
-    os.environ.get("ODOO_PROFILE_DIR", "~/.hermes/odoo/instances"))
+    os.environ.get("ODOO_PROFILE_DIR") or _default_profile_dir())
 
 
 def load():

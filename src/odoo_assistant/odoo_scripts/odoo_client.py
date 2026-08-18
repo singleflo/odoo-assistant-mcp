@@ -96,21 +96,6 @@ def _ssl_ctx():
         return ssl.create_default_context(cafile=certifi.where())
     except Exception:
         pass
-    # Fall back to known venv locations on this machine
-    import glob
-    for pattern in (
-            "/Users/crotti/.hermes/hermes-agent/venv/lib/*/site-packages",
-            os.path.expanduser("~/.hermes/hermes-agent/venv/lib/*/site-packages"),
-            "/opt/homebrew/lib/python3.*/site-packages",
-    ):
-        for sp in glob.glob(pattern):
-            if sp not in sys.path:
-                sys.path.insert(0, sp)
-    try:
-        import certifi
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        pass
     # Last resort: unverified context (better than crashing)
     return ssl.create_default_context()
 

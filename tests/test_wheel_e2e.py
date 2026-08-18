@@ -41,6 +41,9 @@ DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
 NO_CREDENTIALS = {
     name: "" for name in ("ODOO_BASE_URL", "ODOO_DB", "ODOO_USER", "ODOO_API_KEY")
 }
+# Keep the four-key blanking environment separate: `_credentials()` requires
+# only these two variables, while isolation must still blank every ODOO_* key.
+REQUIRED_CREDENTIALS = {"ODOO_BASE_URL", "ODOO_API_KEY"}
 A_KEY_IS_SET = {**NO_CREDENTIALS, "ODOO_API_KEY": "dummy-key-never-sent-anywhere"}
 
 # The anchor the blame list is parsed from — see `_blamed()`.
@@ -137,13 +140,13 @@ def _blamed(text: str) -> set[str]:
 
 
 def test_the_installed_wheel_reaches_the_credential_check(uncredentialed: WheelSession):
-    """Given the built wheel, When a tool is called uncredentialed, Then it is blamed."""
+    """Given the built wheel, When a tool is called uncredentialed, Then required vars are blamed."""
     assert uncredentialed.call.is_error is True
-    assert _blamed(_text(uncredentialed)) == set(NO_CREDENTIALS)
+    assert _blamed(_text(uncredentialed)) == REQUIRED_CREDENTIALS
 
 
 def test_supplying_the_key_takes_it_off_the_blame_list(with_a_key: WheelSession):
-    """Given a key IS set, When the same call runs, Then only the rest are blamed.
+    """Given a key IS set, When the same call runs, Then only the other required var is blamed.
 
     This is what makes the test above load-bearing. Both sessions fail and both
     texts contain the literal `ODOO_API_KEY`, so the naive assertion cannot
@@ -152,7 +155,7 @@ def test_supplying_the_key_takes_it_off_the_blame_list(with_a_key: WheelSession)
     text = _text(with_a_key)
 
     assert "ODOO_API_KEY" in text
-    assert _blamed(text) == set(NO_CREDENTIALS) - {"ODOO_API_KEY"}
+    assert _blamed(text) == REQUIRED_CREDENTIALS - {"ODOO_API_KEY"}
 
 
 def test_that_failure_reaches_the_wire_as_isError_from_the_artifact(uncredentialed: WheelSession):

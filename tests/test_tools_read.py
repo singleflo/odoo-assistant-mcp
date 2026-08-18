@@ -5,6 +5,7 @@ something was returned — a read tool that quietly drops the company context or
 the limit still returns plausible rows.
 """
 import asyncio
+import json
 
 import pytest
 from mcp.server import MCPServer
@@ -190,30 +191,57 @@ def test_an_unfiltered_account_move_query_is_refused_before_odoo_is_touched(mock
     assert mock_odoo.calls == []
 
 
-def test_instance_overview_reports_the_profile_without_printing(monkeypatch, capsys):
-    """Given a built profile, When asked, Then the report is returned, not printed."""
-    monkeypatch.setattr(tools_read.query, "load", lambda: (PROFILE, "/tmp/testdb.json"))
+def test_instance_overview_reports_the_profile_without_printing(
+    monkeypatch, capsys, tmp_path
+):
+    """Given a profile already cached for the connected instance, When asked,
+    Then the report is returned rather than printed — stdout belongs to the
+    JSON-RPC stream — and the instance is not re-censused."""
+    monkeypatch.setattr(tools_read.census, "PROFILE_DIR", str(tmp_path))
+    monkeypatch.setattr(tools_read.query, "PROFILE_DIR", str(tmp_path))
+    (tmp_path / "testdb.json").write_text(json.dumps(PROFILE))
+
+    class _Connected:
+        db = "testdb"
+        base = "https://testdb.example.com"
+
+    def _must_not_run(odoo):
+        raise AssertionError("a cached profile must not trigger a new census")
+
+    monkeypatch.setattr(tools_read.server, "_get_odoo", lambda: _Connected())
+    monkeypatch.setattr(tools_read.census, "census", _must_not_run)
 
     out = tools_read.instance_overview()
 
     assert "Odoo 18.0 enterprise" in out
     assert "[2] Alpha S.L. (Spain)" in out
     assert "invoices_OUT=377" in out
-    assert "/tmp/testdb.json" in out
+    assert "testdb.json" in out
     assert capsys.readouterr().out == ""
 
 
-def test_instance_overview_without_a_profile_says_how_to_build_one(monkeypatch):
-    """Given no profile, When asked, Then the refusal names census.py."""
-    def no_profile():
-        raise SystemExit(2)
+def test_instance_overview_refresh_rebuilds_a_stale_profile(monkeypatch, tmp_path):
+    """Given a cached profile that no longer matches the instance, When refresh
+    is asked for, Then the profile is rebuilt from Odoo and the new figures are
+    the ones reported — a snapshot served as current is the silent-wrong-answer
+    this whole tool exists to avoid."""
+    monkeypatch.setattr(tools_read.census, "PROFILE_DIR", str(tmp_path))
+    monkeypatch.setattr(tools_read.query, "PROFILE_DIR", str(tmp_path))
+    (tmp_path / "testdb.json").write_text(json.dumps(_profile_named("Stale S.L.")))
 
-    monkeypatch.setattr(tools_read.query, "load", no_profile)
+    class _Connected:
+        db = "testdb"
+        base = "https://testdb.example.com"
 
-    with pytest.raises(ToolExecutionError) as raised:
-        tools_read.instance_overview()
+    monkeypatch.setattr(tools_read.server, "_get_odoo", lambda: _Connected())
+    monkeypatch.setattr(
+        tools_read.census, "census", lambda odoo: _profile_named("Current S.L."))
 
-    assert "census.py" in str(raised.value)
+    out = tools_read.instance_overview(refresh=True)
+
+    assert "Current S.L." in out
+    assert "Stale S.L." not in out
+    assert "Current S.L." in (tmp_path / "testdb.json").read_text()
 
 
 def test_required_fields_prints_the_default_beside_how_records_really_use_it(mock_odoo):
@@ -290,3 +318,49 @@ def test_register_exposes_the_read_tools():
         "search_read", "read_record", "count_records", "instance_overview",
         "required_fields",
     }
+
+
+def _profile_named(company: str) -> dict:
+    """A minimal profile `query.overview` can render, tagged by company."""
+    return {
+        "fingerprint": {
+            "odoo_version": "18.0", "edition": "enterprise",
+            "module_count": 285, "transport": "xmlrpc",
+            "taken_at": "2026-08-13T10:00:00",
+        },
+        "companies": [{"id": 2, "name": company, "country_id": [68, "Spain"]}],
+        "areas": {"accounting": {"invoices_OUT": 1}},
+        "anomalies": {},
+    }
+
+
+def test_instance_overview_profiles_the_connected_instance_not_a_neighbour(
+    monkeypatch, tmp_path
+):
+    """Given another instance already profiled in the shared cache directory,
+    When the overview is asked while connected to a DIFFERENT instance, Then it
+    reports the connected one — never the neighbour's numbers.
+
+    The profile is chosen from the live connection, not from an environment
+    variable: with ODOO_DB unset (it is discovered now) the old lookup fell
+    back to the first file on disk and reported another instance as this one,
+    with no error and a perfectly plausible report.
+    """
+    monkeypatch.setattr(tools_read.census, "PROFILE_DIR", str(tmp_path))
+    monkeypatch.setattr(tools_read.query, "PROFILE_DIR", str(tmp_path))
+    monkeypatch.delenv("ODOO_DB", raising=False)
+    (tmp_path / "beta.json").write_text(json.dumps(_profile_named("Beta S.L.")))
+
+    class _Connected:
+        db = "alpha"
+        base = "https://alpha.example.com"
+
+    monkeypatch.setattr(tools_read.server, "_get_odoo", lambda: _Connected())
+    monkeypatch.setattr(
+        tools_read.census, "census", lambda odoo: _profile_named("Alpha S.L."))
+
+    out = tools_read.instance_overview()
+
+    assert "Alpha S.L." in out, f"did not report the connected instance: {out}"
+    assert "Beta S.L." not in out, f"served a neighbour's profile: {out}"
+    assert (tmp_path / "alpha.json").is_file(), "the built profile was not cached"

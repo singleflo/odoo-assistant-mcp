@@ -24,6 +24,8 @@ nothing, which keeps every tool callable as a plain function in tests.
 """
 import contextlib
 import io
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -41,7 +43,11 @@ from odoo_assistant.server_safety import gate
 # bootstrap `server.py` uses so this module is importable on its own too.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
-import query  # noqa: E402  (needs the bootstrap above)
+# Package-qualified on purpose: `_redirect_profiles()` reassigns a module global
+# on both, and the patch is only visible to other importers if everyone reaches
+# the same module object. Same reasoning as `explore_module.REF_DIR` in
+# tools_evolution.py.
+from odoo_assistant.odoo_scripts import census, query  # noqa: E402
 from odoo_client import Odoo  # noqa: E402
 
 MAX_LIMIT = 200
@@ -50,8 +56,6 @@ DEFAULT_LIMIT = 80
 # The fields `Writer.state_of` reads, plus the name every model carries. Only
 # those a model actually has are asked for — see `_default_fields`.
 STATE_FIELDS = ("display_name", "name", "state", "payment_state", "amount_residual")
-
-CENSUS_SCRIPT = Path(__file__).parent / "odoo_scripts" / "census.py"
 
 PHONE_NOTE = (
     "\n  Phone: this model has `phone_sanitized`, which Odoo computes itself —\n"
@@ -194,26 +198,53 @@ def count_records(
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
-def instance_overview() -> str:
-    """Summarise the connected instance: version, companies, volumes per area,
-    in-house modules, anomalies. This is `query.py` with no arguments.
+def _redirect_profiles() -> str:
+    """Point the instance-profile cache at a writable per-user directory.
 
-    It reads the local profile that `census.py` built, so it costs nothing and
-    already answers most "how many X" questions — including which areas exist
-    at all, so a failing query is never mistaken for a missing module.
+    The scripts default to `~/.hermes/odoo/instances`, inherited from the
+    retired Hermes skill: a path that means nothing on anyone else's machine.
+    `ODOO_PROFILE_DIR` still wins when the operator sets it.
+    """
+    target = os.environ.get("ODOO_PROFILE_DIR") or str(
+        Path.home() / ".local" / "share" / "odoo-assistant" / "instances")
+    census.PROFILE_DIR = target
+    query.PROFILE_DIR = target
+    return target
+
+
+def instance_overview(refresh: bool = False) -> str:
+    """Summarise the connected instance: version, companies, volumes per area,
+    in-house modules, anomalies.
+
+    The profile is built from the instance this server is CONNECTED to, and
+    cached per instance — `census.profile_path()` keys it on the live client,
+    not on an environment variable. That distinction is the whole point: with
+    two instances profiled on one machine, choosing by `ODOO_DB` (which is
+    discovered now, so often unset) once fell through to "the first file on
+    disk" and reported a neighbour's numbers as this instance's, with no error
+    and a perfectly plausible report.
+
+    First call against a new instance builds the profile, which costs a second
+    or so; every later call is free. Pass `refresh=True` after the instance has
+    changed — the report carries the timestamp it was taken.
 
     When drilling into these figures, the two rules that keep them meaningful:
     filter `account.move` by `move_type`, and sum `amount_total_signed`, never
     `amount_total`.
+
+    Args:
+        refresh: rebuild the profile from the instance instead of reusing it.
     """
     try:
-        profile, path = query.load()
-    except SystemExit as exc:  # load() explains itself on stderr, then exits
-        raise ToolExecutionError(
-            f"No instance profile found for this database. Build one with: "
-            f"python3 {CENSUS_SCRIPT} --url <base_url> --key <api_key> "
-            f"(about a second). It is also what `query.py` reads."
-        ) from exc
+        odoo = server._get_odoo()
+        path = Path(census.profile_path(odoo))
+        if refresh or not path.exists():
+            profile = census.census(odoo)
+            path.write_text(json.dumps(profile), encoding="utf-8")
+        else:
+            profile = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — census only reads
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
     # `overview()` prints its report; capturing it is how the verified script is
     # reused verbatim instead of reimplemented, and it keeps the text out of the
     # stdout the JSON-RPC stream owns.
@@ -303,6 +334,7 @@ def required_fields(model: str) -> str:
 
 def register(mcp: MCPServer) -> None:
     """Attach the read tools to `mcp`. Called by server.py, never at import."""
+    _redirect_profiles()
     for tool in (
         search_read,
         read_record,
@@ -311,3 +343,6 @@ def register(mcp: MCPServer) -> None:
         required_fields,
     ):
         mcp.tool()(tool)
+
+
+_redirect_profiles()

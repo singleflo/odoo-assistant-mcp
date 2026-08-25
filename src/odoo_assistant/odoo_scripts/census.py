@@ -74,6 +74,10 @@ def fingerprint(odoo):
 
 
 def has_model(odoo, model):
+    # Verified live: querying an absent model writes an ERROR traceback into
+    # someone else's production log, so establish existence without provoking it.
+    if not odoo.search_count("ir.model", [["model", "=", model]]):
+        return False
     try:
         odoo.search_count(model, [])
         return True
@@ -237,22 +241,27 @@ def census(odoo):
             "helpdesk.team", [], ["name"]), [])
 
     # ---- Subscriptions ----------------------------------------------------
-    subs = _safe(lambda: odoo.search_count(
-        "sale.order", [["subscription_state", "!=", False]], ctx))
-    if subs:
-        out["areas"]["subscriptions"] = {
-            "subscriptions_total_ever": subs,
-            "subscriptions_RUNNING": _safe(lambda: odoo.search_count(
-                "sale.order",
-                [["subscription_state", "in", ["3_progress", "4_paused"]]], ctx_live)),
-            "note": "RUNNING = 3_progress + 4_paused. Total includes churned/renewed.",
-            "by_state": _safe(lambda: [
-                {"state": g.get("subscription_state"),
-                 "count": g.get("__count") or g.get("subscription_state_count")}
-                for g in odoo.read_group(
-                    "sale.order", [["subscription_state", "!=", False]], [],
-                    ["subscription_state"], ctx)], []),
-        }
+    # Verified live: Odoo 16 has no subscription_state; mentioning it writes a
+    # traceback into someone else's production log even when _safe swallows it.
+    sale_fields = (_safe(lambda: odoo.fields_get(
+        "sale.order", [], ["type"]), {}) if has_model(odoo, "sale.order") else {})
+    if "subscription_state" in sale_fields:
+        subs = _safe(lambda: odoo.search_count(
+            "sale.order", [["subscription_state", "!=", False]], ctx))
+        if subs:
+            out["areas"]["subscriptions"] = {
+                "subscriptions_total_ever": subs,
+                "subscriptions_RUNNING": _safe(lambda: odoo.search_count(
+                    "sale.order",
+                    [["subscription_state", "in", ["3_progress", "4_paused"]]], ctx_live)),
+                "note": "RUNNING = 3_progress + 4_paused. Total includes churned/renewed.",
+                "by_state": _safe(lambda: [
+                    {"state": g.get("subscription_state"),
+                     "count": g.get("__count") or g.get("subscription_state_count")}
+                    for g in odoo.read_group(
+                        "sale.order", [["subscription_state", "!=", False]], [],
+                        ["subscription_state"], ctx)], []),
+            }
 
     # ---- Top customers by invoiced amount ---------------------------------
     out["top_customers"] = _safe(lambda: sorted([

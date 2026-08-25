@@ -45,6 +45,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Literal, NamedTuple
 
+from mcp.server.mcpserver.exceptions import ToolError
+
 # The nine Odoo scripts are flat modules imported by bare name; mirror the
 # bootstrap `server.py` uses so this module is importable on its own too.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
@@ -64,12 +66,35 @@ TRUNCATION_NOTICE = "\n... truncated, use limit/offset to narrow the result."
 Phase = Literal["before_mutation", "after_mutation_possible"]
 
 
-class ToolExecutionError(RuntimeError):
+class ToolExecutionError(ToolError):
     """Raised by `ToolOutcome.deliver()` so the SDK returns isError:true.
 
-    Deliberately NOT an `MCPError`: that one would become a JSON-RPC protocol
+    Still deliberately NOT an `MCPError`: that one becomes a JSON-RPC protocol
     error with a numeric code, which the model never sees as tool output.
-    Its `str()` is the whole message the client receives.
+    `ToolError` is the SDK's APPLICATION-level failure and is not an
+    `MCPError` — its bases are `MCPServerError`, `Exception`.
+
+    It has to be this class rather than a plain exception, and the reason is
+    version-dependent. SDK 2.0.0 forwarded any exception's text:
+
+        except Exception as e:
+            raise ToolError(f"Error executing tool {name}: {e}") from e
+
+    SDK 2.1.0 split that in two, and only its own error type keeps the message:
+
+        except (ToolError, ResourceError) as exc:
+            raise ToolError(f"Error executing tool {name}: {exc}") from exc
+        except Exception as exc:
+            # A crash: the exception's own text stays on the server.
+            raise UnexpectedToolError(f"Error executing tool {name}") from exc
+
+    That is a deliberate decision not to leak arbitrary exception text to
+    clients, and inheriting from `RuntimeError` put every one of our messages
+    on the wrong side of it: on 2.1.0 a caller saw "Error executing tool
+    search_read" instead of which credential was missing, which level a refusal
+    needed, or why a guard fired. Measured against the built wheel, which
+    resolves the newest 2.x while `uv.lock` holds development at 2.0.0 — so the
+    unit suite stayed green while every published user lost the messages.
     """
 
 

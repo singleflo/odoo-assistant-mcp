@@ -252,11 +252,15 @@ def test_no_custom_jsonrpc_error_codes_exist():
     # so our exception must not be one and must carry no code.
     assert not hasattr(ToolExecutionError("x"), "error")
     assert not hasattr(ToolExecutionError("x"), "code")
-    # ...and the module cannot reach MCPError at all: it imports no SDK symbol
-    # (the docstring names MCPError to explain the ban, so assert on imports,
-    # never on prose).
+    # This used to forbid EVERY SDK import as a proxy for "cannot reach
+    # MCPError". The proxy outlived its accuracy: SDK 2.1.0 masks the text of
+    # any exception that is not its own `ToolError`, so carrying our message to
+    # the client now REQUIRES importing that one symbol. Assert the rule itself
+    # instead of the proxy — `ToolError`'s bases are `MCPServerError`,
+    # `Exception`, so inheriting it cannot smuggle in a JSON-RPC code.
+    from mcp.shared.exceptions import MCPError
+
+    assert not issubclass(ToolExecutionError, MCPError)
     source = inspect.getsource(server_errors)
     assert "-32" not in source
-    assert "import mcp" not in source
-    assert "from mcp" not in source
     assert "MCPError" not in dir(server_errors)

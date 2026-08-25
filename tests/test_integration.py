@@ -647,7 +647,7 @@ def test_live_direct_message_reaches_a_user_without_email(live_odoo):
 
     posted = live_odoo.search_read(
         "mail.message",
-        [["model", "=", "discuss.channel"], ["res_id", "=", channel_id]],
+        [["model", "=", _channel_model(live_odoo)], ["res_id", "=", channel_id]],
         ["body"],
         limit=1,
         order="date desc",
@@ -665,10 +665,11 @@ def test_live_read_conversation_returns_the_message_just_sent(live_odoo):
     and reads it, asserting shape and ordering, never an exact body that a
     concurrent run could change.
     """
+    channel_model = _channel_model(live_odoo)
     opened = live_odoo.call(
-        "discuss.channel", "channel_get", [[_self_partner(live_odoo)]]
+        channel_model, "channel_get", [[_self_partner(live_odoo)]]
     )
-    channel_id = opened["discuss.channel"][0]["id"]
+    channel_id = opened[channel_model][0]["id"]
 
     messages = json.loads(tools_discuss.read_conversation(channel_id, limit=5))
 
@@ -697,12 +698,13 @@ def test_live_channel_message_refuses_a_room_with_an_outsider(live_odoo, monkeyp
     if not outsider:
         pytest.skip("no external partner on this instance to build the group")
 
+    channel_model = _channel_model(live_odoo)
     created = live_odoo.call(
-        "discuss.channel",
+        channel_model,
         "create_group",
         [[_self_partner(live_odoo), outsider[0]["id"]]],
     )
-    channel_id = created["discuss.channel"][0]["id"]
+    channel_id = created[channel_model][0]["id"]
     try:
         with pytest.raises(ToolExecutionError) as refusal:
             tools_discuss.send_channel_message(channel_id, "MUST NOT BE POSTED")
@@ -713,16 +715,26 @@ def test_live_channel_message_refuses_a_room_with_an_outsider(live_odoo, monkeyp
         assert (
             live_odoo.search_count(
                 "mail.message",
-                [["model", "=", "discuss.channel"], ["res_id", "=", channel_id]],
+                [["model", "=", channel_model], ["res_id", "=", channel_id]],
             )
             == 0
         )
     finally:
         monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
-        tools_write.write_record("discuss.channel", channel_id, {"active": False})
+        tools_write.write_record(channel_model, channel_id, {"active": False})
 
 
 def _self_partner(live_odoo) -> int:
     """The partner behind the API key — the peer for a self-scoped chat."""
     rows = live_odoo.search_read("res.users", [["id", "=", live_odoo.uid]], ["partner_id"])
     return rows[0]["partner_id"][0]
+
+
+def _channel_model(live_odoo) -> str:
+    """The channel model of the instance under test.
+
+    Asked rather than spelled, so this suite is the same proof on Odoo 16
+    (`mail.channel`) as on 17+ (`discuss.channel`). It goes through the tools'
+    own resolver, which shares this client and therefore its cached answer.
+    """
+    return tools_discuss._discuss_models(live_odoo)[0]

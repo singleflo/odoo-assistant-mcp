@@ -56,6 +56,7 @@ class MockOdoo:
             "odoo_version": "18.0",
             "edition": "enterprise",
         }
+        self.uid = self.instance_info["uid"]
 
     # ---------------------------------------------------------- programming
     def set_results(self, model, result, method="search_read"):

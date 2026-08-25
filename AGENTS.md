@@ -58,6 +58,7 @@ Full list: `references/SKILL.md` (8 rules) + `references/writing.md` (12 pattern
 - `account.move` / `account.move.line` without `move_type` mixes invoices, bills and journal entries (3.613 vs 373). `check_guards()` blocks it structurally.
 - Sum `*_signed` fields, never `amount_total` (multi-currency once inflated a total 11,9×).
 - Multi-company: pass `context={"allowed_company_ids": [...]}` or you report one company as the whole business.
+- Verified live on Odoo 16: Discuss uses `mail.channel` / `mail.channel.member`; Odoo 17 renamed them to `discuss.channel` / `discuss.channel.member`. `tools_discuss.py` resolves and caches the pair per connection — never hardcode either generation at a call site.
 - **`default_get` is where records go missing.** `crm.lead.type` defaults to `'lead'` on an instance whose pipeline is opportunities; `account.move.move_type` defaults to `'entry'`, so a "new invoice" is a raw journal entry. The `required_fields` tool exists to surface this — call it before a create.
 - **Archiving reads like deletion.** `action_set_lost` sets `active=False`; a later plain search returns `[]`. Add `["active", "in", [true, false]]` before concluding a record is gone.
 - **`phone_sanitized` is one value per record**, computed from `mobile` first and `phone` second — not per field. It stays `False`, with no error, when the number has no `+` prefix and the record no `country_id`. Write E.164 yourself.

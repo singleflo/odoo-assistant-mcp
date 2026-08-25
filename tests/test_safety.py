@@ -306,12 +306,13 @@ def test_module_exposes_only_the_gate_surface():
     assert {"LEVEL_ORDINALS", "GateResult", "max_level", "gate"} <= public
 
 
-def test_discuss_channel_get_is_a_single_record_write():
+@pytest.mark.parametrize("model", ["mail.channel", "discuss.channel"])
+def test_discuss_channel_get_is_a_single_record_write(model):
     """Given a direct message needs `channel_get` to find or open the 1-to-1
     chat, When the classifier sees it, Then it is L1: the method creates at
-    most one discuss.channel and touches no business state.
+    most one channel and touches no business state.
 
     Unclassified it lands in L5_UNKNOWN, which is refused at every ceiling —
     so without this the direct-message tool cannot run at all.
     """
-    assert classify("discuss.channel", "channel_get", [[[7]]], {}) == "L1_WRITE"
+    assert classify(model, "channel_get", [[[7]]], {}) == "L1_WRITE"

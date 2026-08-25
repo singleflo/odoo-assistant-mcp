@@ -33,6 +33,7 @@ conversations are already open.
 import sys
 from pathlib import Path
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from mcp.server import MCPServer
 
@@ -50,10 +51,12 @@ from odoo_assistant.server_safety import gate  # noqa: E402
 
 from odoo_client import Odoo  # noqa: E402
 
-CHANNEL_MODEL = "discuss.channel"
-MEMBER_MODEL = "discuss.channel.member"
+DISCUSS_CHANNEL_MODEL = "discuss.channel"
+MAIL_CHANNEL_MODEL = "mail.channel"
 USER_LIMIT = 100
 MESSAGE_LIMIT = 30
+
+_MODEL_CACHE: WeakKeyDictionary[Odoo, tuple[str, str]] = WeakKeyDictionary()
 
 
 def _odoo() -> Odoo:
@@ -62,6 +65,34 @@ def _odoo() -> Odoo:
     from odoo_assistant import server
 
     return server._get_odoo()
+
+
+def _discuss_models(odoo: Odoo) -> tuple[str, str]:
+    """The channel and membership model names of THIS instance.
+
+    Odoo 17 renamed `mail.channel` / `mail.channel.member` to
+    `discuss.channel` / `discuss.channel.member`. Verified live on 16.0: only
+    the names moved — `name`, `channel_type`, `channel_member_ids`,
+    `partner_id`, `guest_id`, `channel_id`, `message_unread_counter` and
+    `channel_get` are all there under the old names, so nothing but this
+    lookup is generation-specific.
+
+    The instance is asked (`ir.model`) rather than its version parsed, because
+    the version string is a marketing label and the model table is the fact.
+    Cached per client — one probe per connection, not one per call — and keyed
+    on the client itself so a reconnection never inherits the previous
+    instance's answer.
+    """
+    cached = _MODEL_CACHE.get(odoo)
+    if cached is not None:
+        return cached
+
+    renamed = odoo.search_count(
+        "ir.model", [["model", "=", DISCUSS_CHANNEL_MODEL]])
+    channel_model = DISCUSS_CHANNEL_MODEL if renamed else MAIL_CHANNEL_MODEL
+    models = channel_model, f"{channel_model}.member"
+    _MODEL_CACHE[odoo] = models
+    return models
 
 
 def _rows(payload: object) -> list[dict]:
@@ -99,8 +130,9 @@ def _outsiders(odoo: Odoo, channel_id: int) -> list[str]:
     channel because the bot is in it would refuse them all. It is excluded by
     its stable xml_id `base.partner_root`, not by name.
     """
+    member_model = _discuss_models(odoo)[1]
     members = _rows(odoo.search_read(
-        MEMBER_MODEL, [["channel_id", "=", channel_id]],
+        member_model, [["channel_id", "=", channel_id]],
         ["partner_id", "guest_id"], limit=200))
 
     named: dict[int, str] = {}
@@ -157,6 +189,7 @@ def list_message_targets() -> str:
     """
     try:
         odoo = _odoo()
+        channel_model, member_model = _discuss_models(odoo)
         _gate_or_raise("res.users", "search_read", [])
 
         users = _rows(odoo.search_read(
@@ -164,14 +197,14 @@ def list_message_targets() -> str:
             ["name", "login", "im_status"], limit=USER_LIMIT))
 
         mine = _rows(odoo.search_read(
-            MEMBER_MODEL,
+            member_model,
             [["partner_id", "=", _my_partner_id(odoo)], ["is_pinned", "=", True]],
             ["channel_id", "message_unread_counter"], limit=USER_LIMIT))
         unread = {row["channel_id"][0]: row.get("message_unread_counter", 0)
                   for row in mine if isinstance(row.get("channel_id"), list)}
 
         channels = _rows(odoo.search_read(
-            CHANNEL_MODEL, [["id", "in", list(unread)]],
+            channel_model, [["id", "in", list(unread)]],
             ["name", "channel_type", "member_count"], limit=USER_LIMIT))
 
         return tool_result({
@@ -204,10 +237,11 @@ def read_conversation(channel_id: int, limit: int = MESSAGE_LIMIT) -> str:
     """
     try:
         odoo = _odoo()
+        channel_model = _discuss_models(odoo)[0]
         _gate_or_raise("mail.message", "search_read", [])
         rows = _rows(odoo.search_read(
             "mail.message",
-            [["model", "=", CHANNEL_MODEL], ["res_id", "=", channel_id]],
+            [["model", "=", channel_model], ["res_id", "=", channel_id]],
             ["date", "author_id", "body", "message_type"],
             limit=limit, order="date desc"))
         return tool_result([{
@@ -223,8 +257,9 @@ def read_conversation(channel_id: int, limit: int = MESSAGE_LIMIT) -> str:
 def _post(odoo: Odoo, channel_id: int, message: str) -> object:
     """The one place a Discuss message is written. See the module docstring
     for why `message_type` is spelled out and `partner_ids` is absent."""
-    _gate_or_raise(CHANNEL_MODEL, "message_post", [channel_id])
-    return odoo.call(CHANNEL_MODEL, "message_post", [[channel_id]], {
+    channel_model = _discuss_models(odoo)[0]
+    _gate_or_raise(channel_model, "message_post", [channel_id])
+    return odoo.call(channel_model, "message_post", [[channel_id]], {
         "body": message,
         "message_type": "comment",
         "subtype_xmlid": "mail.mt_comment",
@@ -265,9 +300,10 @@ def send_direct_message(user_id: int, message: str) -> str:
         )).deliver()
 
     try:
-        _gate_or_raise(CHANNEL_MODEL, "channel_get", [[partner[0]]])
-        opened = odoo.call(CHANNEL_MODEL, "channel_get", [[partner[0]]])
-        channels = opened.get(CHANNEL_MODEL) if isinstance(opened, dict) else None
+        channel_model = _discuss_models(odoo)[0]
+        _gate_or_raise(channel_model, "channel_get", [[partner[0]]])
+        opened = odoo.call(channel_model, "channel_get", [[partner[0]]])
+        channels = opened.get(channel_model) if isinstance(opened, dict) else None
         if not channels:
             return ToolOutcome(True, (
                 f"channel_get returned no channel for {recipient['name']}. "
@@ -302,11 +338,12 @@ def send_channel_message(channel_id: int, message: str) -> str:
         message: the body, plain text or simple HTML.
     """
     odoo = _odoo()
-    rows = _rows(odoo.search_read(CHANNEL_MODEL, [["id", "=", channel_id]],
+    channel_model = _discuss_models(odoo)[0]
+    rows = _rows(odoo.search_read(channel_model, [["id", "=", channel_id]],
                                   ["name", "channel_type", "member_count"]))
     if not rows:
         return ToolOutcome(True, (
-            f"No discuss.channel with id {channel_id}. Nothing was posted. "
+            f"No {channel_model} with id {channel_id}. Nothing was posted. "
             f"Call list_message_targets to see the conversations that exist."
         )).deliver()
 

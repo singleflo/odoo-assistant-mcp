@@ -71,8 +71,19 @@ def overview(p):
             if isinstance(v, (int, float)):
                 bits.append(f"{k}={v}")
             elif isinstance(v, dict):
-                bits.append(", ".join(f"{kk}={vv}" for kk, vv in v.items()))
-        print(f"  {area:<15} {'; '.join(bits)[:112]}")
+                bits.extend(f"{kk}={vv}" for kk, vv in v.items())
+        summary = "; ".join(bits)
+        if len(summary) > 112:
+            # The old character cut could leave a bare field name, hiding the
+            # value. Keep the compact cap, but only elide complete fields.
+            shown = []
+            for bit in bits:
+                candidate = "; ".join(shown + [bit])
+                if len(candidate) + 3 > 112:
+                    break
+                shown.append(bit)
+            summary = "; ".join(shown) + "; …"
+        print(f"  {area:<15} {summary}")
     cm = p.get("custom_modules") or []
     if cm:
         print(f"\nIn-house modules: {len(cm)} — authoritative list, never infer "

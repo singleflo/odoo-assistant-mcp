@@ -220,6 +220,44 @@ def test_instance_overview_reports_the_profile_without_printing(
     assert capsys.readouterr().out == ""
 
 
+def test_overview_elides_area_fields_only_at_field_boundaries(capsys):
+    """Given a wide area, When rendered, Then omitted fields are explicit."""
+    profile = {
+        "fingerprint": {
+            "odoo_version": "16.0", "edition": "enterprise",
+            "module_count": 285, "transport": "xmlrpc",
+            "taken_at": "2026-08-13T10:00:00",
+        },
+        "companies": [],
+        "areas": {
+            "accounting": {
+                "move_types": {
+                    "out_invoice": 14857, "in_invoice": 11331,
+                    "out_refund": 573, "in_refund": 498, "entry": 93532,
+                },
+                "invoiced_total_company_currency": 22385318.32,
+                "outstanding_receivable": 168775.73,
+                "payments": 8771,
+                "journals": 36,
+            },
+        },
+    }
+
+    tools_read.query.overview(profile)
+
+    line = next(line for line in capsys.readouterr().out.splitlines()
+                if line.startswith("  accounting"))
+    summary = line.split(maxsplit=1)[1]
+    assert summary.endswith("; …")
+    assert len(summary) <= 112
+    assert "invoiced_total_company_currency=22385318.32" in summary
+    assert all("=" in field for field in summary.removesuffix("; …").split("; "))
+    assert not summary.endswith((
+        "invoiced_total_company_currency", "outstanding_receivable",
+        "payments", "journals",
+    ))
+
+
 def test_instance_overview_refresh_rebuilds_a_stale_profile(monkeypatch, tmp_path):
     """Given a cached profile that no longer matches the instance, When refresh
     is asked for, Then the profile is rebuilt from Odoo and the new figures are

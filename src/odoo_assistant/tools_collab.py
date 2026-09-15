@@ -28,7 +28,7 @@ gave a `mail.notification` of type inbox, status sent, and no `mail.mail`;
 **The order every tool here keeps**, and why each step sits where it does:
 
     decide the plan from the arguments   a bad subtype costs zero Odoo calls
-    gate() the method that will run      a refusal costs zero Odoo calls
+    gate() the method against the lists  a refusal costs zero Odoo calls
     read, then refuse on what was read   the external-follower check
     post inside the only try             what failed there may have landed
 
@@ -42,11 +42,13 @@ Two facts read from the sources rather than assumed:
 
   * The method handed to `gate()` is the one that will ACTUALLY run:
     `message_notify` for a note (documents.py:264), `message_post` for a
-    comment (documents.py:346). Both are L1 in `safety_layer.WRITE_L1` — the
-    level cannot express this danger, because it depends on the subtype and
-    not on the method name. The audience check above is the enforcement.
+    comment (documents.py:346). Both are ordinary writes any default list
+    allows — no list can express this danger, because it depends on the
+    subtype and not on the method name. The audience check above is the
+    enforcement.
   * The document tools gate on the `ir.attachment` query, NOT on
-    `(model, "read")`. `account.move` is a GUARDED_MODEL and `read` is a
+    `(model, "read")`. Reads answer to no list, but the structural guards
+    still read them: `account.move` is a GUARDED_MODEL and `read` a
     guarded method, so `gate("account.move", "read", [5775])` raises the
     move_type SafetyViolation over an id list that carries no domain to
     filter — it would refuse every invoice PDF for a reason that does not
@@ -265,8 +267,9 @@ def generate_pdf(model: str, record_id: int, dest_dir: str = "") -> str:
 
     An already rendered PDF is reused. Otherwise the model's own print/send
     wizard produces it, and that wizard can also SEND the document — which is
-    why this is gated on `action_send_and_print` (L3_STATE_CHANGE) rather
-    than as a plain read.
+    why this is gated on `action_send_and_print` rather than as a plain read.
+    `action_send_and_print` is allowed by default; add it to ODOO_MCP_DENY to
+    refuse PDFs that could trigger the send wizard.
 
     Args:
         model: the Odoo model, e.g. "account.move".

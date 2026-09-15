@@ -2,13 +2,13 @@
 """The four read tools (PRD §5B): search_read, read_record, count_records,
 instance_overview.
 
-The three that query Odoo — `search_read`, `read_record`, `count_records` — are
-L0 in `safety_layer.classify()` and all three go through `gate()`: not for the
-ceiling, which L0 clears at any setting, but for the structural guards `gate()`
-runs alongside it. `account.move` holds customer invoices, vendor bills, credit
-notes AND raw journal entries in one table, so a query without `move_type`
-answers a question nobody asked (3.613 records where the user sees 373). One
-code path per tool means that guard cannot be skipped.
+The three that query Odoo — `search_read`, `read_record`, `count_records` — all
+go through `gate()`, though reads are never subject to the allow/deny lists:
+what applies to them are the structural guards `gate()` runs alongside them.
+`account.move` holds customer invoices, vendor bills, credit notes AND raw
+journal entries in one table, so a query without `move_type` answers a
+question nobody asked (3.613 records where the user sees 373). One code path
+per tool means that guard cannot be skipped.
 
 `instance_overview` is the exception, and it needs no gate: it reads the local
 profile `census.py` wrote and never opens a connection, so there is no call for
@@ -25,7 +25,6 @@ nothing, which keeps every tool callable as a plain function in tests.
 import contextlib
 import io
 import json
-import os
 import sys
 from pathlib import Path
 

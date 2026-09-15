@@ -72,7 +72,9 @@ def test_channel_get_result_is_read_under_the_resolved_model_key(
     """Given `channel_get` answers a dict KEYED BY THE MODEL NAME, When a direct
     message is sent, Then the key read is this instance's own — the lookup that
     silently yields nothing if the key and the call disagree."""
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW", raising=False)
+    monkeypatch.delenv("ODOO_MCP_DENY", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW_UNLINK", raising=False)
     mock_odoo.set_results("ir.model", renamed, method="search_count")
     mock_odoo.set_results("res.users", [
         {"id": 9, "name": "Ada", "partner_id": [12, "Ada"], "share": False},
@@ -95,7 +97,9 @@ def test_channel_get_result_is_read_under_the_resolved_model_key(
 def test_odoo_16_channel_message_uses_mail_channel_members(mock_odoo, monkeypatch):
     """Given an internal Odoo 16 channel, When a message is posted, Then the
     audience check and write use the two legacy Discuss models."""
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW", raising=False)
+    monkeypatch.delenv("ODOO_MCP_DENY", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW_UNLINK", raising=False)
     mock_odoo.set_results("ir.model", 0, method="search_count")
     mock_odoo.set_results("mail.channel", [
         {"id": 44, "name": "Team", "channel_type": "group", "member_count": 1},

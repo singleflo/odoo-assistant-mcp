@@ -8,9 +8,9 @@ never reaches it. Two environment variables decide how much of it runs:
     ODOO_MCP_ALLOW_LIVE_WRITE=1  set -> the write scenarios run too
 
 The second gate exists because a mock can prove a tool *calls* the gate, and
-only a live instance can prove the gate still refuses what the real
-`safety_layer.classify()` classifies. That proof costs a record, so it is not
-something a stray `-m live` should trigger.
+only a live instance can prove the gate still refuses what the deny list
+names. That proof costs a record, so it is not something a stray `-m live`
+should trigger.
 
 Nothing created here survives the run. A confirmed sales order cannot be
 unlinked — only cancelled — so cleanup follows Odoo's own path, runs from a
@@ -87,10 +87,12 @@ def live_odoo():
 
 
 @pytest.fixture(autouse=True)
-def default_ceiling(monkeypatch):
-    """Given: no ceiling override, so every gate below runs at the default the
-    server documents (L3 allowed, destructive refused)."""
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+def default_lists(monkeypatch):
+    """Given: no list override, so every gate below runs at the defaults the
+    server documents (writes allowed, the deny list and `unlink` refused)."""
+    monkeypatch.delenv("ODOO_MCP_ALLOW", raising=False)
+    monkeypatch.delenv("ODOO_MCP_DENY", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW_UNLINK", raising=False)
 
 
 @pytest.fixture
@@ -191,8 +193,8 @@ def test_live_account_move_requires_move_type(live_odoo):
 
 @needs_write
 def test_live_safety_blocks_destructive_action(live_odoo):
-    """Given the default ceiling, When a cancel is attempted, Then the real
-    `classify()` puts it out of reach and the refusal says what would allow it.
+    """Given the default deny list, When a cancel is attempted, Then the gate
+    puts it out of reach and the refusal says what would allow it.
 
     The id does not exist on purpose: the gate answers before Odoo is asked
     anything, so which record was named never enters into it.
@@ -200,8 +202,8 @@ def test_live_safety_blocks_destructive_action(live_odoo):
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.run_action("sale.order", "action_cancel", [999999999])
     reason = str(refusal.value)
-    assert "L4_DESTRUCTIVE" in reason
-    assert "ODOO_MCP_MAX_LEVEL=4" in reason
+    assert "action_cancel" in reason
+    assert "ODOO_MCP_DENY" in reason
 
 
 @needs_write
@@ -225,9 +227,11 @@ def test_live_write_chain(live_odoo, monkeypatch):
         after = json.loads(tools_read.read_record("sale.order", order_id, ["name", "state"]))
         assert after[0]["state"] == "sale"
     finally:
-        # Cleanup is destructive by definition, so it runs at the ceiling that
-        # permits it. Everything asserted above ran at the default one.
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        # Cleanup cancels and archives, both in the default deny list. A value
+        # SET on ODOO_MCP_DENY replaces that default, so "unlink" alone lets
+        # the two through while deletion stays locked. Everything asserted
+        # above ran at the default list.
+        monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
         if order_id:
             tools_write.cancel_record("sale.order", order_id)
         tools_write.write_record("res.partner", partner_id, {"active": False})
@@ -444,9 +448,12 @@ def test_live_collab_on_a_self_created_partner(live_odoo, monkeypatch, tmp_path)
             == 0
         )
     finally:
-        # Cleanup is destructive by definition, so it runs at the ceiling that
-        # permits it. Everything asserted above ran at the default one.
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        # Cleanup deletes rows and archives a partner. Setting ODOO_MCP_DENY
+        # replaces the default list, so `archive` passes; `unlink` is never
+        # granted by a list and needs its own switch. Everything asserted
+        # above ran at the default list.
+        monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
+        monkeypatch.setenv("ODOO_MCP_ALLOW_UNLINK", "yes")
         if activity_id:
             tools_write.run_action("mail.activity", "unlink", [activity_id])
         if attachment_id:
@@ -527,10 +534,10 @@ def test_live_notify_refuses_to_email_an_external_follower(live_odoo):
     assert live_odoo.search_count("mail.message", chatter) == before
 
 
-def test_live_cancel_record_is_refused_at_the_default_ceiling(live_odoo):
-    """Given the default ceiling, When `cancel_record` is called, Then the real
-    `classify()` puts it out of reach and the refusal names both the level and
-    the `ODOO_MCP_MAX_LEVEL=4` that would allow it.
+def test_live_cancel_record_is_refused_by_the_default_deny_list(live_odoo):
+    """Given the default deny list, When `cancel_record` is called, Then the
+    gate puts it out of reach and the refusal names both the matching entry
+    and the `ODOO_MCP_DENY` that holds it.
 
     `cancel_record` is the tool a host offers for "cancel this". The existing
     destructive test proves the gate through `run_action`; this holds the same
@@ -544,15 +551,17 @@ def test_live_cancel_record_is_refused_at_the_default_ceiling(live_odoo):
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.cancel_record("sale.order", 999999999)
     reason = str(refusal.value)
-    assert "L4_DESTRUCTIVE" in reason
-    assert "ODOO_MCP_MAX_LEVEL=4" in reason
+    assert "action_cancel" in reason
+    assert "ODOO_MCP_DENY" in reason
 
 
 @needs_write
-def test_live_cancel_record_succeeds_at_ceiling_four(live_odoo, monkeypatch):
-    """Given a confirmed order this test created itself, When the ceiling is
-    raised to 4 and `cancel_record` runs, Then a re-read shows state 'cancel'
-    — and the instance is left with nothing of it that is not cancelled.
+def test_live_cancel_record_succeeds_when_the_deny_list_is_trimmed(live_odoo,
+                                                                   monkeypatch):
+    """Given a confirmed order this test created itself, When the deny list is
+    trimmed to `unlink` and `cancel_record` runs, Then a re-read shows state
+    'cancel' — and the instance is left with nothing of it that is not
+    cancelled.
 
     The success path of this tool already runs on every live write test, in
     their teardown, where nothing asserts what it did. A `cancel_record` that
@@ -577,7 +586,7 @@ def test_live_cancel_record_succeeds_at_ceiling_four(live_odoo, monkeypatch):
         )
         assert confirmed[0]["state"] == "sale"
 
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
         tools_write.cancel_record("sale.order", order_id)
         # Recorded before the assertion: a transition is one-way, so a failing
         # assertion must not send the teardown into a second cancel.
@@ -588,10 +597,10 @@ def test_live_cancel_record_succeeds_at_ceiling_four(live_odoo, monkeypatch):
         )
         assert after[0]["state"] == "cancel"
     finally:
-        # Cleanup is destructive by definition, so it runs at the ceiling that
-        # permits it — set again here because a failure above may have landed
-        # before the body raised it.
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        # Cleanup cancels and archives, so it runs with a deny list that
+        # permits both — set again here because a failure above may have
+        # landed before the body raised it.
+        monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
         if order_id and not order_is_cancelled:
             tools_write.cancel_record("sale.order", order_id)
         # A partner cannot be unlinked, so the instance's own path is archiving.
@@ -720,7 +729,9 @@ def test_live_channel_message_refuses_a_room_with_an_outsider(live_odoo, monkeyp
             == 0
         )
     finally:
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+        # Archiving the channel is in the default deny list; a value set on
+        # ODOO_MCP_DENY replaces that default, so "unlink" alone lets it pass.
+        monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
         tools_write.write_record(channel_model, channel_id, {"active": False})
 
 

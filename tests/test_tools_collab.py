@@ -65,9 +65,11 @@ class PostingOdoo(MockOdoo):
 
 
 @pytest.fixture(autouse=True)
-def default_ceiling(monkeypatch):
-    """Given: the ceiling a host did not configure — the L3 default."""
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+def default_lists(monkeypatch):
+    """Given: the lists a host did not configure — the documented defaults."""
+    monkeypatch.delenv("ODOO_MCP_ALLOW", raising=False)
+    monkeypatch.delenv("ODOO_MCP_DENY", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW_UNLINK", raising=False)
 
 
 @pytest.fixture
@@ -218,40 +220,45 @@ def test_an_unknown_subtype_posts_nothing(odoo):
     assert odoo.calls == []
 
 
-def test_a_read_only_ceiling_refuses_even_the_safe_note(odoo, monkeypatch):
-    """Given ODOO_MCP_MAX_LEVEL=0, When a note is sent, Then it is refused as L1."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "0")
+def test_a_read_only_allow_refuses_even_the_safe_note(odoo, monkeypatch):
+    """Given ODOO_MCP_ALLOW=none, When a note is sent, Then it is refused as
+    read-only."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "none")
     program_chatter(odoo, followers=[ALICE])
 
     with pytest.raises(ToolExecutionError) as refused:
         notify_user("sale.order", 42, "<p>hi</p>", [7])
 
-    assert "L1_WRITE" in str(refused.value)
+    assert "read-only" in str(refused.value)
     assert "message_notify" not in methods_called(odoo)
 
 
-@pytest.mark.parametrize(("ceiling", "run", "level"), [
-    ("0", lambda: notify_user("sale.order", 42, "<p>hi</p>", [7]), "L1_WRITE"),
-    ("0", lambda: create_activity("crm.lead", 11, "Call back", 7), "L1_WRITE"),
-    ("2", lambda: generate_pdf("account.move", 5775, "/tmp"), "L3_STATE_CHANGE"),
+@pytest.mark.parametrize(("variable", "value", "run", "reason"), [
+    ("ODOO_MCP_ALLOW", "none",
+     lambda: notify_user("sale.order", 42, "<p>hi</p>", [7]), "read-only"),
+    ("ODOO_MCP_ALLOW", "none",
+     lambda: create_activity("crm.lead", 11, "Call back", 7), "read-only"),
+    ("ODOO_MCP_DENY", "action_send_and_print",
+     lambda: generate_pdf("account.move", 5775, "/tmp"),
+     "refused by ODOO_MCP_DENY, entry 'action_send_and_print'"),
 ], ids=["notify_user", "create_activity", "generate_pdf"])
 def test_a_blocked_gate_refuses_in_its_own_words_and_opens_no_connection(
-        odoo, monkeypatch, ceiling, run, level):
-    """Given a ceiling that blocks the tool, When it runs, Then the gate's own
-    reason is what the caller reads and the client was never used.
+        odoo, monkeypatch, variable, value, run, reason):
+    """Given a list setting that blocks the tool, When it runs, Then the gate's
+    own reason is what the caller reads and the client was never used.
 
     Both halves matter. A refusal re-mapped to "UNCERTAIN: may or may not have
     been applied" turns "nothing was touched" into "something might have been",
     and an empty call log is the only proof that a blocked server really is a
     blocked server — `notify_user` used to read the audience before deciding.
     """
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", ceiling)
+    monkeypatch.setenv(variable, value)
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
 
     with pytest.raises(ToolExecutionError) as refused:
         run()
 
-    assert level in str(refused.value)
+    assert reason in str(refused.value)
     assert "UNCERTAIN" not in str(refused.value)
     assert odoo.calls == []
 
@@ -440,17 +447,18 @@ def test_generate_pdf_returns_the_path_it_wrote(odoo, tmp_path):
     assert "action_send_and_print" not in methods_called(odoo)
 
 
-def test_generate_pdf_is_refused_below_the_state_change_ceiling(odoo, tmp_path,
+def test_generate_pdf_is_refused_when_the_send_wizard_is_denied(odoo, tmp_path,
                                                                 monkeypatch):
-    """Given ODOO_MCP_MAX_LEVEL=2, When a PDF is generated, Then it is refused as
-    L3 — the print wizard can also SEND the document — and nothing is read."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "2")
+    """Given ODOO_MCP_DENY=action_send_and_print, When a PDF is generated, Then
+    it is refused — the print wizard can also SEND the document — and nothing
+    is read."""
+    monkeypatch.setenv("ODOO_MCP_DENY", "action_send_and_print")
 
     with pytest.raises(ToolExecutionError) as refused:
         generate_pdf("account.move", 5775, str(tmp_path))
 
-    assert "L3_STATE_CHANGE" in str(refused.value)
-    assert "ODOO_MCP_MAX_LEVEL=3" in str(refused.value)
+    assert "ODOO_MCP_DENY" in str(refused.value)
+    assert "action_send_and_print" in str(refused.value)
     assert odoo.calls == []
 
 

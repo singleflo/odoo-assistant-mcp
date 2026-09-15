@@ -127,3 +127,5 @@ Anything non-zero means another round.
 ---
 
 ## NOTES — hand-written, preserved across regenerations
+
+Since 0.2.0 the MCP server refuses `unlink` unless ODOO_MCP_ALLOW_UNLINK=yes; the L4 wording above is the CLI scripts' classifier.

@@ -6,8 +6,8 @@ tenant), the code exchange — by SUBPROCESSING scripts/remote_token.py, the
 same script humans run, so the flow logic is reused and never duplicated.
 With the minted bearer tokens it opens real MCP sessions over Streamable
 HTTP and asserts the deployed surface: nineteen tools, counts that answer
-real numbers, the read-policy refusal, the policy DIFFERENCE between two
-tenants on the same deployment, and the PDF contract.
+real numbers, the read-policy refusal, shared-tenant policy promotion, and
+the PDF contract.
 
 Environment:
 
@@ -124,11 +124,14 @@ def test_bare_post_to_mcp_is_401_naming_the_resource_metadata():
 
 
 # ------------------------------------------------------- the tokened flow
-def _mint(policy: str) -> str:
+def _mint(policy: str, *, api_key: str | None = None) -> str:
     """One access token from scripts/remote_token.py for the given policy."""
+    env = os.environ.copy()
+    if api_key is not None:
+        env["ODOO_REMOTE_TEST_API_KEY"] = api_key
     proc = subprocess.run(
         [sys.executable, str(_TOKEN_SCRIPT), "--policy", policy],
-        env=os.environ, capture_output=True, text=True, timeout=120)
+        env=env, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, (
         f"scripts/remote_token.py ({policy}) failed:\n"
         f"{proc.stdout}\n{proc.stderr}")
@@ -153,6 +156,15 @@ def standard_token() -> str:
         pytest.skip("wrong-key sentinel run: only the failure-path test"
                     " executes")
     return _mint("standard")
+
+
+@pytest.fixture(scope="module")
+def second_key_token() -> str:
+    """A read token for the optional isolated second Odoo API key."""
+    api_key = os.environ.get("ODOO_REMOTE_TEST_API_KEY_2")
+    if not api_key:
+        pytest.skip("set ODOO_REMOTE_TEST_API_KEY_2 to test tenant isolation")
+    return _mint("read", api_key=api_key)
 
 
 @asynccontextmanager
@@ -214,6 +226,8 @@ def test_count_records_over_the_whole_instance_answers_more_than_zero(token):
 
 
 def test_write_record_is_refused_under_the_read_policy(token):
+    # Keep this before any test requesting standard_token: that fixture promotes
+    # the shared tenant before its test body runs.
     if POLICY != "read":
         pytest.skip("the hosted write refusal is asserted only under the"
                     " read policy; nothing is ever written to the test Odoo")
@@ -228,33 +242,37 @@ def test_write_record_is_refused_under_the_read_policy(token):
     assert "read-only" in _text_of(result)
 
 
-def test_two_tenants_on_one_deployment_enforce_their_own_policy(
+def test_reconsent_promotes_the_shared_tenant_policy(
         token, standard_token):
     if POLICY != "read":
         pytest.skip("tenant A must hold the read policy; run with"
                     " ODOO_REMOTE_TEST_POLICY=read (the default)")
 
-    # SAFE BY CONSTRUCTION: res.partner id 0 does not exist, so under
-    # "standard" Odoo itself refuses the write on the nonexistent id before
-    # any field could change, and under "read" the gate refuses first.
-    # Either way nothing is written; the point is that the POLICY decides.
+    # SAFE BY CONSTRUCTION: res.partner id 0 does not exist, so Odoo refuses
+    # the write before any field could change.
+    # Design fact: policy is per-tenant keyed by (url, API key); re-consenting
+    # is how a user upgrades, and earlier tokens follow the current policy.
     async def action(client: Client):
         return await client.call_tool("write_record", {
             "model": "res.partner", "record_id": 0,
             "values": {"name": "must never land"}})
 
-    refused = _over_mcp(token, action)
-    assert refused.is_error
-    assert "read-only" in _text_of(refused), (
-        "tenant A (read) must be refused by the gate with the read-only"
-        " reason")
-
-    past_gate = _over_mcp(standard_token, action)
+    past_gate = _over_mcp(token, action)
     assert past_gate.is_error
     text = _text_of(past_gate)
-    assert "read-only" not in text, (
-        "tenant B (standard) must get past the gate and fail as an Odoo"
-        " error on the nonexistent id, not as the policy refusal")
+    assert "read-only" not in text
+
+
+def test_second_key_mints_an_isolated_read_tenant(
+        standard_token, second_key_token):
+    async def action(client: Client):
+        return await client.call_tool("write_record", {
+            "model": "res.partner", "record_id": 0,
+            "values": {"name": "must never land"}})
+
+    refused = _over_mcp(second_key_token, action)
+    assert refused.is_error
+    assert "read-only" in _text_of(refused)
 
 
 def test_generate_pdf_on_a_record_without_one_or_a_real_download(

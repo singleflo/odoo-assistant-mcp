@@ -22,11 +22,15 @@ classifiers = [
 ]
 dependencies = ["mcp[cli]>=2.0.0,<3"]
 
+[project.optional-dependencies]
+remote = ["uvicorn>=0.30", "cryptography>=42", "httpx>=0.27"]
+
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]
 odoo-assistant = "odoo_assistant.server:main"
+odoo-assistant-remote = "odoo_assistant.remote.app:main"
 
 [project.urls]
 Homepage = "https://github.com/singleflo/odoo-assistant-mcp"
@@ -61,5 +65,6 @@ testpaths = ["tests"]
 markers = [
     "live: requires a live Odoo instance (needs ODOO_BASE_URL)",
     "wheel: drives the built artifact in dist/ (needs `uv build` and network for uvx)",
+    "remote_live: drives the deployed remote endpoint (needs ODOO_REMOTE_PUBLIC_URL and ODOO_REMOTE_TEST_TENANT_*)",
 ]
-addopts = "-m 'not live and not wheel'"
+addopts = "-m 'not live and not wheel and not remote_live'"

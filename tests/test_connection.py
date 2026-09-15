@@ -1,5 +1,6 @@
 """Server skeleton: credential resolution, logging channel, SDK wiring."""
 import json
+import os
 import re
 import subprocess
 import sys
@@ -115,6 +116,25 @@ def test_logging_goes_to_stderr_and_stdout_stays_empty():
 
     assert result.stdout == ""
     assert "probe-marker" in result.stderr
+
+
+def test_legacy_ceiling_variable_refuses_startup():
+    """Given a process started with the removed ODOO_MCP_MAX_LEVEL, When
+    main() runs, Then it exits non-zero and stderr names the replacement —
+    silently ignoring a stale `0` that used to mean read-only would turn a
+    server the operator configured read-only into a writing one."""
+    result = subprocess.run(
+        [sys.executable, "-c", "from odoo_assistant.server import main; main()"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "ODOO_MCP_MAX_LEVEL": "0"},
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+    )
+
+    assert result.returncode != 0
+    assert "ODOO_MCP_ALLOW" in result.stderr
+    assert result.stdout == ""  # stdio transport: stdout is JSON-RPC only
 
 
 def test_server_instance_and_entry_point_are_wired():

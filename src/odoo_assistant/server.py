@@ -16,6 +16,7 @@ and startup, and no business logic of its own.
 import logging
 import os
 import sys
+import threading
 from importlib.metadata import PackageNotFoundError, version as _package_version
 from pathlib import Path
 from typing import NamedTuple
@@ -40,7 +41,7 @@ from odoo_assistant import (  # noqa: E402  (cycle: must follow the bootstrap)
     tools_read,
     tools_write,
 )
-from odoo_assistant.server_safety import max_level  # noqa: E402
+from odoo_assistant.server_safety import refuse_legacy_environment  # noqa: E402
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -58,6 +59,7 @@ except PackageNotFoundError:  # a source tree that was never installed
 mcp = MCPServer("odoo-assistant", version=_VERSION)
 
 _odoo_instance: Odoo | None = None
+_odoo_lock = threading.Lock()
 
 
 class _Credentials(NamedTuple):
@@ -138,40 +140,48 @@ def _detect_version(odoo: Odoo) -> dict[str, object]:
 def _get_odoo() -> Odoo:
     """Return the shared client, connecting on first use.
 
-    `allow_write` is the client's declaration of intent, and it is the ONLY
-    thing that arms its protected-host guard: `connect()` blocks a base URL
-    listed in `ODOO_MCP_PROTECTED_HOSTS` with `ProductionWriteBlocked` if and
-    only if `allow_write` is true. Connecting with the default `False` while
-    the server goes on to write through `Writer` disarmed that guard entirely —
-    a `create_record` against a protected host would have gone straight
-    through. So the intent must be declared here, truthfully.
+    The client's `connect()` takes a write-intent flag that arms its
+    protected-host guard, and this server passes nothing: whether a call may
+    run is decided per call by the gate — read-only is `ODOO_MCP_ALLOW=none`,
+    enforced by `server_safety.gate` before anything reaches Odoo — so the
+    connection has nothing to declare. `ProductionWriteBlocked` stays a
+    CLI-script behaviour; the server never arms it.
 
-    "Truthfully" is `max_level() >= 1`: the ceiling already decides whether
-    this process may execute anything above L0_READ, so it is the honest
-    answer to "can this server write at all". A server pinned to
-    ODOO_MCP_MAX_LEVEL=0 never writes, declares no write intent, and keeps
-    read-only access to a production instance — a hardcoded `True` would have
-    broken that legitimate case, since the guard raises at connect time,
-    before any tool has a chance to be read-only. `ODOO_ALLOW_PROD_WRITE=yes`
-    remains the script's own documented, deliberate escape hatch.
+    Thread-safe because `main()` warms the connection up in a background
+    thread: a tool call arriving mid-connect waits on `_odoo_lock` for the
+    SAME client instead of opening a second connection.
     """
     global _odoo_instance
-    if _odoo_instance is None:
-        creds = _credentials()
-        _odoo_instance = connect(
-            allow_write=max_level() >= 1,
-            base=creds.base_url,
-            db=creds.db,
-            user=creds.user,
-            key=creds.api_key,
-        )
-        logger.info(
-            "Connected to %s (db=%s, Odoo %s)",
-            creds.base_url,
-            creds.db,
-            _detect_version(_odoo_instance)["serie"],
-        )
-    return _odoo_instance
+    with _odoo_lock:
+        if _odoo_instance is None:
+            creds = _credentials()
+            _odoo_instance = connect(
+                base=creds.base_url,
+                db=creds.db,
+                user=creds.user,
+                key=creds.api_key,
+            )
+            logger.info(
+                "Connected to %s (db=%s, Odoo %s)",
+                creds.base_url,
+                creds.db,
+                _detect_version(_odoo_instance)["serie"],
+            )
+        return _odoo_instance
+
+
+def _warm_up() -> None:
+    """Connect in the background so the first tool call does not pay for it.
+
+    The catch is broad on purpose: missing credentials, an unreachable host,
+    TLS — none of them may take the server down, because a host that launched
+    us without credentials still gets a running server whose tools explain
+    exactly which variable is missing when called.
+    """
+    try:
+        _get_odoo()
+    except Exception as exc:
+        logger.warning("Startup connection failed: %s — tools will retry and report", exc)
 
 
 def _register_all() -> None:
@@ -191,8 +201,15 @@ def _register_all() -> None:
 
 def main() -> None:
     """Entry point of the `odoo-assistant` console script."""
+    # A removed variable in the environment refuses startup (RuntimeError
+    # propagates: non-zero exit, traceback on stderr) — a stale read-only
+    # ceiling must never become a writing server by being ignored.
+    refuse_legacy_environment()
     logger.info("Starting odoo-assistant MCP server on stdio")
     _register_all()
+    # Daemon and never awaited: the connect can cost up to 59 uid probes,
+    # and the host's initialize handshake must be answered first.
+    threading.Thread(target=_warm_up, daemon=True).start()
     mcp.run(transport="stdio")
 
 

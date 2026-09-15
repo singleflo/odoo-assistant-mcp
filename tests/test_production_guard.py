@@ -1,19 +1,18 @@
-"""The protected-host guard, as armed by `server._get_odoo()`.
+"""The protected-host guard is a CLI-script behaviour the server never arms.
 
-The list of protected hosts lives in the ENVIRONMENT, not in the code:
-`ODOO_MCP_PROTECTED_HOSTS`, comma-separated, empty by default. A generic
-install therefore works against any instance — an operator opts a host into
-protection by naming it, which is the only way a host anyone installs against
-can end up on a list the package ships.
-
-`odoo_client.connect()` refuses a listed base URL with
-`ProductionWriteBlocked` — but only when it is told a write is intended:
+`odoo_client.connect()` refuses a base URL listed in ODOO_MCP_PROTECTED_HOSTS
+with `ProductionWriteBlocked` — but only when the CALLER declares write intent:
 
     if allow_write and _is_production(base): ...
 
-So the guard is not something the client applies to us; it is something we
-arm, and connecting without `allow_write` silently disarms it while the
-server keeps writing through `Writer`. These tests pin the arming.
+Since 0.2.0 the server never declares it: the safety ceiling that `_get_odoo()`
+used to read for its answer is gone, read-only is `ODOO_MCP_ALLOW=none` and is
+enforced per call by the gate in `server_safety`, so the connection has nothing
+to declare and the guard cannot fire on the server's behalf. The gate refuses
+(with a reason an agent can act on) where the old arming produced a second,
+weaker authority that fired before any tool could be read-only.
+`ProductionWriteBlocked` stays for the nine CLI scripts, which pass
+`allow_write=True` deliberately.
 
 No test here touches the network. The guard sits above the `Odoo(...)`
 construction, and every case that gets PAST the guard would stop at the
@@ -45,77 +44,65 @@ class _StubOdoo:
 
 
 @pytest.fixture
-def connecting_to(monkeypatch):
-    """Given: credentials for a chosen instance, no cached client, no network,
-    and no protected list unless a test names one."""
-    monkeypatch.setattr(odoo_client, "Odoo", _StubOdoo)
-    monkeypatch.setattr(server, "_odoo_instance", None)
-    monkeypatch.delenv("ODOO_ALLOW_PROD_WRITE", raising=False)
-    monkeypatch.delenv("ODOO_MCP_PROTECTED_HOSTS", raising=False)
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+def stubbed_client(monkeypatch):
+    """Given: the `Odoo` constructor stubbed, working credentials in the
+    environment, and no protected list unless a test names one — so
+    `connect()` runs for real and only the guard decides."""
 
-    def _configure(base_url, protected=""):
+    def _with_credentials(base_url):
+        monkeypatch.setattr(odoo_client, "Odoo", _StubOdoo)
+        monkeypatch.delenv("ODOO_MCP_PROTECTED_HOSTS", raising=False)
+        monkeypatch.delenv("ODOO_ALLOW_PROD_WRITE", raising=False)
         monkeypatch.setenv("ODOO_BASE_URL", base_url)
         monkeypatch.setenv("ODOO_DB", "mycompany")
         monkeypatch.setenv("ODOO_USER", "tester")
         monkeypatch.setenv("ODOO_API_KEY", "test-key")
-        if protected:
-            monkeypatch.setenv("ODOO_MCP_PROTECTED_HOSTS", protected)
 
-    return _configure
+    return _with_credentials
 
 
-def test_no_host_is_protected_unless_the_operator_names_it(connecting_to):
-    """Given a fresh install with no ODOO_MCP_PROTECTED_HOSTS, When a writing
-    server connects anywhere, Then nothing refuses it — the package ships no
-    host list of its own, so any instance a user installs against works."""
-    connecting_to(MY_COMPANY_URL)
-
-    odoo = server._get_odoo()
-
-    assert odoo.base == MY_COMPANY_URL
-
-
-def test_a_host_named_in_the_environment_is_blocked(connecting_to):
-    """Given the operator protected their own host, When a writing server
-    points at it, Then connecting is refused and the error names the host."""
-    connecting_to(MY_COMPANY_URL, protected="odoo.mycompany.com")
+def test_the_list_matches_a_bare_hostname_inside_any_url(stubbed_client, monkeypatch):
+    """Given a protected entry naming a bare hostname, When a CLI script
+    connects with declared write intent to any URL carrying it, Then
+    ProductionWriteBlocked is raised naming the host — the entry need not
+    repeat the scheme or port (`_is_production` matches on `host in url`).
+    ODOO_ALLOW_PROD_WRITE=yes stays the script's own deliberate escape hatch."""
+    stubbed_client("https://erp.mycompany.com:443")
+    monkeypatch.setenv("ODOO_MCP_PROTECTED_HOSTS", "erp.mycompany.com")
 
     with pytest.raises(ProductionWriteBlocked) as raised:
-        server._get_odoo()
+        odoo_client.connect(
+            allow_write=True,
+            base="https://erp.mycompany.com:443",
+            key="test-key",
+            db="mycompany",
+            user="tester",
+        )
 
-    assert MY_COMPANY_URL in str(raised.value)
+    assert "erp.mycompany.com" in str(raised.value)
 
-
-def test_the_documented_escape_hatch_lets_a_protected_host_through(
-    connecting_to, monkeypatch
-):
-    """ODOO_ALLOW_PROD_WRITE=yes is a deliberate, out-of-band override."""
-    connecting_to(MY_COMPANY_URL, protected="odoo.mycompany.com")
     monkeypatch.setenv("ODOO_ALLOW_PROD_WRITE", "yes")
 
+    odoo = odoo_client.connect(
+        allow_write=True,
+        base="https://erp.mycompany.com:443",
+        key="test-key",
+        db="mycompany",
+        user="tester",
+    )
+
+    assert isinstance(odoo, _StubOdoo)
+
+
+def test_the_server_connects_without_arming_the_guard(stubbed_client, monkeypatch):
+    """Given the operator's own host on the protected list, When the server
+    connects, Then it still gets its client: the guard fires only for a
+    caller that declares write intent, and `_get_odoo()` no longer declares
+    any — read-only is ODOO_MCP_ALLOW=none, enforced per call by the gate."""
+    stubbed_client(MY_COMPANY_URL)
+    monkeypatch.setenv("ODOO_MCP_PROTECTED_HOSTS", "odoo.mycompany.com")
+    monkeypatch.setattr(server, "_odoo_instance", None)
+
     odoo = server._get_odoo()
 
     assert odoo.base == MY_COMPANY_URL
-
-
-def test_a_read_only_server_may_still_reach_a_protected_host(
-    connecting_to, monkeypatch
-):
-    """ODOO_MCP_MAX_LEVEL=0 writes nothing, so it declares no write intent."""
-    connecting_to(MY_COMPANY_URL, protected="odoo.mycompany.com")
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "0")
-
-    odoo = server._get_odoo()
-
-    assert odoo.base == MY_COMPANY_URL
-
-
-def test_the_list_matches_a_bare_hostname_inside_any_url(connecting_to):
-    """Given the guard predates on `host in url`, When a protected entry
-    names a bare hostname, Then any URL carrying it is refused — the entry
-    need not repeat the scheme or port."""
-    connecting_to("https://erp.mycompany.com:443", protected="erp.mycompany.com")
-
-    with pytest.raises(ProductionWriteBlocked):
-        server._get_odoo()

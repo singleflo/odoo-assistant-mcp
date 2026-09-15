@@ -19,7 +19,9 @@
         "category": "Business & Operations",
         "websiteURL": "https://github.com/singleflo/odoo-assistant-mcp",
         "privacyPolicyURL": "https://mcp.singleflo.com/privacy",
-        "termsOfServiceURL": "https://mcp.singleflo.com/terms"
+        "termsOfServiceURL": "https://mcp.singleflo.com/terms",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
       }
     }
   }

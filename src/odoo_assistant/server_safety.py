@@ -1,31 +1,53 @@
 #!/usr/bin/env python3
 """The gate every tool call passes through before it reaches Odoo.
 
-`safety_layer.classify()` answers what an operation DOES (L0-L5). This module
-answers whether THIS server may do it, by comparing that answer against a
-ceiling read from the environment. Nothing here decides a level: no tool is
-ever tagged "L3" in code, because the level of `run_action` depends on the
-method string the caller passed, and only the classifier knows it.
+Until 0.1.x this gate judged a call by CLASSIFYING its effect onto a numbered
+scale and comparing the number against a ceiling. The scale answered "what
+does this do", but the question an operator actually has is "may it run" — and
+people answer that in method names, not ordinals: "never cancel orders", "no
+mass mail", "read-only". Nobody could explain in a minute which number allowed
+`action_confirm` but refused `unlink`. So the ceiling is gone, and two
+operator-owned lists of Odoo method names replace it — deny is a list of names
+a human can read in a config file, which is where the decision was always
+meant to live. All three variables are read from the process environment at
+CALL time, so a host-config edit is the whole story:
 
-Three rules the wrapper exists to keep:
+  * ODOO_MCP_ALLOW   what may run. Unset (or empty) means `*` — every method
+                     not denied. The single value `none` makes the server
+                     read-only. Anything else is a comma-separated list of
+                     `method` (any model) or `model:method` (one model).
+  * ODOO_MCP_DENY    what may not. Unset (or empty) means DEFAULT_DENY below;
+                     a value set REPLACES the default entirely — that is how
+                     an operator re-enables `action_cancel` (ODOO_MCP_DENY=
+                     unlink).
+  * ODOO_MCP_ALLOW_UNLINK  the only key that can grant `unlink`, because
+                     deletion is the one action that cannot be undone, and a
+                     name in a comma-separated list must never be enough to
+                     grant it.
 
-  * The classifier is fed `execute_kw`'s POSITIONAL shape — `[ids]`, `[vals]`
-    or `[ids, vals]`. Batch detection and archive detection both read `args[0]`
-    and `args[1]`; hand them a dict and they quietly report a harmless L1 for a
-    600-record archive. (`collaboration.py::_guard` does exactly that. Not our
-    bug to fix there — the scripts are verified sources — but ours never to
-    inherit, which `tests/test_safety.py` pins.)
-  * `classify()` does NOT call `check_guards()`; `safe_call()` calls both. A
-    wrapper that only classified would let an unfiltered `account.move` query
-    through the front door the guard was built to close.
-  * Both L5 variants are refused whatever the ceiling says. `safe_call()`
-    rejects them unconditionally, so a gate that allowed them would promise
-    something the enforcement point below it refuses.
+Matching is EXACT string equality on the whole entry. No prefix, no substring:
+`action_cancel` never matches `button_cancel`, `action_send` never matches
+`action_send_and_print` — a human read and approved these exact names, and a
+looser match would let lookalikes through that human never saw. Deny is
+checked before allow, so an entry on both lists refuses.
+
+Three rules the wrapper keeps from `safety_layer.py`, unchanged:
+
+  * Reads (READ_METHODS) are never subject to the lists — a read has no effect
+    for a list to govern. The `account.move` structural guard still applies to
+    them, because a meaningless read is its own hazard (3.613 mixed records).
+  * The detectors are fed `execute_kw`'s POSITIONAL shape — `[ids]`, `[vals]`
+    or `[ids, vals]`. Archive detection reads the dicts inside `args`; hand it
+    a dict and it quietly reports a harmless write for a 600-record archive.
+  * `write` with `active: False` and `action_archive` both carry the virtual
+    name `archive` into the lists, so denying `archive` refuses hiding records
+    however they are spelled. `create` gets no such virtual name — creating an
+    inactive record hides nothing that existed.
 
 An allowed decision IS the standing consent the scripts ask for: the gate's
-`allowed` field is the enforcement decision; it does not get passed downstream
-because Writer has no such parameter — gate IS the sole enforcement point. The
-ceiling is where the human granted that consent, once, out of band.
+`allowed` field is the enforcement decision; nothing is passed downstream
+because Writer has no such parameter — gate IS the sole enforcement point.
+The lists are where the human granted that consent, once, out of band.
 """
 import os
 import sys
@@ -36,51 +58,85 @@ from typing import Any, NamedTuple
 # each other by bare name, from the repo and from an installed wheel alike.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
-from safety_layer import SafetyViolation, check_guards, classify  # noqa: E402
+from safety_layer import (  # noqa: E402
+    READ_METHODS,
+    SafetyViolation,
+    _is_archiving,
+    check_guards,
+)
 
-LEVEL_ORDINALS = {
-    "L0_READ": 0,
-    "L1_WRITE": 1,
-    "L2_BATCH": 2,
-    "L3_STATE_CHANGE": 3,
-    "L4_DESTRUCTIVE": 4,
-    "L5_UNKNOWN": 5,
-    "L5_PRIVATE": 5,
-}
-
-# L3 lets the agent confirm orders and post invoices — the work it is here for.
-# L4 (unlink, cancel, archive) and L5 stay behind an explicit opt-in.
-DEFAULT_MAX_LEVEL = 3
+# The six names 0.1.x refused at its default ceiling, plus one deliberate
+# addition: `mailing.mailing:action_send`. Under the old default-deny it was
+# an unclassified method and therefore refused; the wildcard would now allow
+# it, and one call there can email an entire customer base. The entry is
+# model-qualified because `action_send` on other models (evolution's test
+# wizard) is harmless and must keep working.
+DEFAULT_DENY = frozenset({
+    "unlink", "archive", "action_cancel", "button_cancel",
+    "action_reverse", "action_draft", "mailing.mailing:action_send",
+})
 
 
 class GateResult(NamedTuple):
     """`allowed` is the enforcement decision for the call it permits."""
 
     allowed: bool
-    level: str
     reason: str
 
 
-def max_level() -> int:
-    """The highest level this server may execute, from ODOO_MCP_MAX_LEVEL.
+def allowed_methods() -> set[str] | str:
+    """The ODOO_MCP_ALLOW list: `"*"`, `"none"`, or the set of entries.
 
-    An explicitly invalid authorization ceiling refuses startup rather than
-    silently enabling the write-capable default.
+    Read at call time — the environment is the operator's config file, and a
+    value that changes after import must still take effect.
     """
-    raw = os.environ.get("ODOO_MCP_MAX_LEVEL", "")
-    if raw == "":
-        return DEFAULT_MAX_LEVEL
-    try:
-        level = int(raw)
-    except ValueError as error:
-        raise RuntimeError(
-            f"invalid ODOO_MCP_MAX_LEVEL={raw!r}; expected an integer from 0 to 5"
-        ) from error
-    if not 0 <= level <= 5:
-        raise RuntimeError(
-            f"invalid ODOO_MCP_MAX_LEVEL={raw!r}; expected an integer from 0 to 5"
-        )
-    return level
+    raw = os.environ.get("ODOO_MCP_ALLOW", "")
+    if raw == "none":
+        return "none"
+    if raw in ("", "*"):
+        return "*"
+    return _entries(raw)
+
+
+def denied_methods() -> set[str]:
+    """The ODOO_MCP_DENY list, DEFAULT_DENY when unset or empty.
+
+    A set value REPLACES the default rather than extending it: the operator
+    wrote a whole list, and a refusal they cannot see in their own file would
+    be a name nobody read or approved.
+    """
+    raw = os.environ.get("ODOO_MCP_DENY", "")
+    return set(DEFAULT_DENY) if raw == "" else _entries(raw)
+
+
+def unlink_allowed() -> bool:
+    """Whether ODOO_MCP_ALLOW_UNLINK grants deletion. Read at call time."""
+    return os.environ.get("ODOO_MCP_ALLOW_UNLINK", "").lower() in ("yes", "true", "1")
+
+
+def refuse_legacy_environment() -> None:
+    """Refuse to start while the removed ceiling variable is still set.
+
+    Any value counts — including a stale `0` that used to mean read-only:
+    silently ignoring it would turn a server the operator configured
+    read-only into a writing one. An empty string counts as unset (the XDG
+    convention `paths._from_env` follows). Called once at startup by
+    `server.main`; nothing in this module raises at import time.
+    """
+    if os.environ.get("ODOO_MCP_MAX_LEVEL", "") == "":
+        return
+    raise RuntimeError(
+        "ODOO_MCP_MAX_LEVEL is no longer supported: the safety ceiling is "
+        "gone. Set ODOO_MCP_ALLOW, ODOO_MCP_DENY and ODOO_MCP_ALLOW_UNLINK "
+        "instead — see README, 'What the agent may do'.")
+
+
+def _entries(raw: str) -> set[str]:
+    """Split a comma-separated list, trimming spaces and dropping empties.
+
+    Odoo names are case-sensitive, so entries are kept exactly as written.
+    """
+    return {entry.strip() for entry in raw.split(",") if entry.strip()}
 
 
 def _positional_args(ids: Any, values: Any) -> list[Any]:
@@ -99,44 +155,68 @@ def _positional_args(ids: Any, values: Any) -> list[Any]:
 
 
 def gate(model: str, method: str, ids: Any = None, values: Any = None) -> GateResult:
-    """Classify `model.method` for real, then judge it against the ceiling.
+    """Decide whether THIS server may call `model.method`, and say why.
 
-    `ids` carries the record ids for a write or an action, and the domain for a
-    read — both live in the same first `execute_kw` slot, which is what the
-    structural guards read.
+    `ids` carries the record ids for a write or an action, and the domain for
+    a read — both live in the same first `execute_kw` slot, which is what the
+    structural guards read. The reason strings are written for an agent that
+    has to stop and explain: each names the call, the entry involved and the
+    variable that would change the answer.
     """
     args = _positional_args(ids, values)
-    level = classify(model, method, args, {})
 
-    if level == "L5_PRIVATE":
-        return GateResult(False, level, (
+    if method.startswith("_"):
+        return GateResult(False, (
             f"{model}.{method}: private method. Odoo rejects every method "
-            "starting with '_' (check_method_name), so no ceiling can allow "
-            "it. Use the public wizard instead."))
-    if level == "L5_UNKNOWN":
-        return GateResult(False, level, (
-            f"{model}.{method}: not in the L0-L4 whitelist, so its effect is "
-            "unknown and it is refused by default deny. If it is legitimate, "
-            "add it to WRITE_L1/L3/L4 in safety_layer.py — in the code, "
-            "reviewed, never approved ad-hoc at runtime."))
-    if level not in LEVEL_ORDINALS:
-        return GateResult(False, level, (
-            f"{model}.{method}: safety_layer.py returned {level}, which this "
-            "gate has no ordinal for. Refused by default deny until "
-            "LEVEL_ORDINALS is updated."))
+            "starting with '_' (check_method_name), so no list can allow it. "
+            "Use the public wizard instead."))
 
-    try:
-        check_guards(model, method, args, {})
-    except SafetyViolation as violation:
-        return GateResult(False, level, str(violation))
+    if method in READ_METHODS:
+        try:
+            check_guards(model, method, args, {})
+        except SafetyViolation as violation:
+            return GateResult(False, str(violation))
+        return GateResult(True, (
+            f"{model}.{method} is a read — reads are never subject to the "
+            "allow/deny lists."))
 
-    ordinal, ceiling = LEVEL_ORDINALS[level], max_level()
-    if ordinal > ceiling:
-        return GateResult(False, level, (
-            f"{model}.{method} is {level} (ordinal {ordinal}), above this "
-            f"server's ceiling ODOO_MCP_MAX_LEVEL={ceiling}. Refused. Say what "
-            "the call would change and let the user decide: allowing it means "
-            f"restarting the server with ODOO_MCP_MAX_LEVEL={ordinal}."))
-    return GateResult(True, level, (
-        f"{model}.{method} is {level} (ordinal {ordinal}), within "
-        f"ODOO_MCP_MAX_LEVEL={ceiling}."))
+    names = {method, f"{model}:{method}"}
+    if method == "action_archive" or (
+            method == "write" and _is_archiving(method, args, {})):
+        names |= {"archive", f"{model}:archive"}
+
+    if method == "unlink":
+        if unlink_allowed():
+            return GateResult(True, (
+                f"{model}.unlink is allowed by ODOO_MCP_ALLOW_UNLINK."))
+        return GateResult(False, (
+            f"{model}.unlink: deletion is the one action that cannot be "
+            "undone. It is granted only by ODOO_MCP_ALLOW_UNLINK=yes; the "
+            "ODOO_MCP_ALLOW and ODOO_MCP_DENY lists can never grant it."))
+
+    denied = names & denied_methods()
+    if denied:
+        return GateResult(False, (
+            f"{model}.{method}: refused by ODOO_MCP_DENY, entry "
+            f"'{sorted(denied)[0]}'. Remove that entry from the variable to "
+            "allow the call — a value set on ODOO_MCP_DENY replaces the "
+            "default list entirely."))
+
+    allowed = allowed_methods()
+    if not isinstance(allowed, set):
+        if allowed == "none":
+            return GateResult(False, (
+                f"{model}.{method}: this is a read-only server "
+                "(ODOO_MCP_ALLOW=none). Remove the variable, or set "
+                "ODOO_MCP_ALLOW to the entries you want."))
+        return GateResult(True, (
+            f"{model}.{method} is allowed: ODOO_MCP_ALLOW=* and no "
+            "ODOO_MCP_DENY entry matches."))   # the other sentinel, "*"
+    permitted = names & allowed
+    if permitted:
+        return GateResult(True, (
+            f"{model}.{method} is allowed by ODOO_MCP_ALLOW entry "
+            f"'{sorted(permitted)[0]}'."))
+    return GateResult(False, (
+        f"{model}.{method}: not in ODOO_MCP_ALLOW. Add '{method}' (any "
+        f"model) or '{model}:{method}' (this model only) to the variable."))

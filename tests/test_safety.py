@@ -1,318 +1,404 @@
-"""The gate between a tool call and Odoo: every level is computed, never assumed.
+"""The gate between a tool call and Odoo: two lists, read fresh on every call.
 
-These tests call the REAL `classify()` from `safety_layer.py` — it is pure
-logic with no Odoo I/O, so no double is needed and none is used. Whatever the
-gate reports here is what the shipped classifier really answers.
+These tests call the REAL `gate()` — it is pure logic with no Odoo I/O, so no
+double is needed and none is used. The only input is the environment, which is
+exactly the surface an operator configures, so every test states its variables
+in the Given and the refusal text it expects in the Then.
 
 Two properties are worth more than the individual cases:
 
-  * `LEVEL_ORDINALS` is checked against the level literals found IN the source
-    of `classify()`, so a level added to `safety_layer.py` tomorrow fails this
-    suite instead of silently landing in the "unknown, therefore blocked" bin.
-  * The argument shape is checked by its OBSERVABLE effect (a 6-id write is
-    L2_BATCH, an `active: False` write is L4_DESTRUCTIVE). Both detections are
-    positional: pass a dict where `execute_kw` expects `[ids, vals]` and they
-    quietly stop firing, which is the bug `collaboration.py::_guard` has and
-    the one `test_dict_shaped_args_*` pins so this wrapper never inherits it.
+  * Matching is EXACT. A prefix or substring match would let
+    `action_send_and_print` ride in on an `action_send` entry the operator
+    never wrote, so the paired tests — `mailing.mailing` denied, the evolution
+    wizard allowed — pin both directions of the same exactness.
+  * The argument shape is checked by its OBSERVABLE effect (`active: False`
+    through the `values` PARAMETER refuses the call). The archive detector
+    reads `args` positionally, so a dict smuggled past `_positional_args`
+    would quietly re-allow archiving as a harmless write — the bug
+    `collaboration.py::_guard` has, pinned here so this wrapper never
+    inherits it.
 """
-import inspect
-import re
-
 import pytest
 
 from odoo_assistant import server_safety
-from odoo_assistant.server_safety import DEFAULT_MAX_LEVEL, LEVEL_ORDINALS, gate, max_level
-
-from safety_layer import BATCH_THRESHOLD, classify  # noqa: E402  (conftest bootstrap)
+from odoo_assistant.server_safety import (
+    DEFAULT_DENY,
+    GateResult,
+    allowed_methods,
+    denied_methods,
+    gate,
+    refuse_legacy_environment,
+    unlink_allowed,
+)
 
 
 @pytest.fixture(autouse=True)
-def default_ceiling(monkeypatch):
-    """Given: no ODOO_MCP_MAX_LEVEL in the environment, unless a test sets one.
+def clean_lists(monkeypatch):
+    """Given none of the gate's variables in the environment, unless a test sets one.
 
-    `max_level()` reads the variable at call time, so a leaked value from the
-    developer's shell would silently rewrite every expectation below.
+    All three helpers read the environment at call time, so a value leaked
+    from the developer's shell would silently rewrite every expectation below.
+    ODOO_MCP_MAX_LEVEL is deleted too: it is the removed ceiling variable and
+    its presence now means a startup refusal, not a gate input.
     """
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+    for name in ("ODOO_MCP_ALLOW", "ODOO_MCP_DENY",
+                 "ODOO_MCP_ALLOW_UNLINK", "ODOO_MCP_MAX_LEVEL"):
+        monkeypatch.delenv(name, raising=False)
 
 
-# --------------------------------------------------------------- the ordinals
-def test_ordinals_cover_every_level_classify_can_return():
-    """Given the real classify(), When its source is scanned for level literals,
-    Then LEVEL_ORDINALS knows exactly those and no others."""
-    returned = set(re.findall(r'return "(L\d_[A-Z_]+)"', inspect.getsource(classify)))
+# --------------------------------------------------------------- the defaults
+def test_write_is_allowed_by_default():
+    """Given no variables at all, When a one-record write is gated,
+    Then it is allowed — the wildcard default keeps the server useful."""
+    decision = gate("res.partner", "write", [1], {"name": "ACME"})
 
-    assert returned == set(LEVEL_ORDINALS)
-
-
-def test_ordinals_are_ordered_by_severity():
-    """Given the ordinal table, When read in order, Then it ranks L0 < L1 < L2 < L3 < L4,
-    with both L5 variants sharing the top rank."""
-    assert [LEVEL_ORDINALS[name] for name in
-            ("L0_READ", "L1_WRITE", "L2_BATCH", "L3_STATE_CHANGE", "L4_DESTRUCTIVE")
-            ] == [0, 1, 2, 3, 4]
-    assert LEVEL_ORDINALS["L5_UNKNOWN"] == LEVEL_ORDINALS["L5_PRIVATE"] == 5
+    assert decision.allowed is True
 
 
-# ------------------------------------------------------- classify, real shapes
-def test_batch_write_is_l2():
-    """Given 6 ids (threshold is 5), When a write is classified, Then it is L2_BATCH."""
-    ids = list(range(1, BATCH_THRESHOLD + 2))
-
-    assert classify("sale.order", "write", [ids, {}], {}) == "L2_BATCH"
-
-
-def test_single_write_is_l1():
-    """Given 1 id, When a write is classified, Then it is L1_WRITE."""
-    assert classify("sale.order", "write", [[1], {}], {}) == "L1_WRITE"
-
-
-def test_write_at_the_threshold_is_still_l1():
-    """Given exactly 5 ids, When a write is classified, Then it stays L1_WRITE —
-    the rule is `> BATCH_THRESHOLD`, not `>=`."""
-    ids = list(range(1, BATCH_THRESHOLD + 1))
-
-    assert classify("sale.order", "write", [ids, {}], {}) == "L1_WRITE"
-
-
-def test_archiving_write_is_l4():
-    """Given values that set active False, When a write is classified,
-    Then it is L4_DESTRUCTIVE — classification is by effect, not by method name."""
-    assert classify("res.partner", "write", [[1], {"active": False}], {}) == "L4_DESTRUCTIVE"
-
-
-# --------------------------------------------------------------- max_level()
-def test_max_level_defaults_to_three():
-    """Given no environment variable, When max_level() is read, Then it is 3."""
-    assert max_level() == DEFAULT_MAX_LEVEL
-
-
-def test_max_level_defaults_when_empty(monkeypatch):
-    """Given an empty ceiling, When max_level() is read, Then it uses the default."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "")
-
-    assert max_level() == DEFAULT_MAX_LEVEL
-
-
-@pytest.mark.parametrize(("raw", "expected"), [(str(level), level) for level in range(6)])
-def test_max_level_reads_a_valid_ceiling(monkeypatch, raw, expected):
-    """Given a numeric ODOO_MCP_MAX_LEVEL, When max_level() is read, Then it wins."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
-
-    assert max_level() == expected
-
-
-@pytest.mark.parametrize("raw", ["O", "abc", "3.5", "-1", "6"])
-def test_max_level_rejects_invalid_configured_values(monkeypatch, raw):
-    """Given an invalid configured ceiling, When read, Then startup is refused."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
-
-    with pytest.raises(RuntimeError, match=rf"{re.escape(raw)}.*0.*5"):
-        max_level()
-
-
-# --------------------------------------------------------------------- gate()
-def test_state_change_is_allowed_at_the_default_ceiling():
-    """Given the default ceiling of 3, When action_confirm on 1 id is gated,
-    Then it is allowed as L3_STATE_CHANGE — allowed IS the confirmed=True signal."""
+def test_state_change_is_allowed_by_default():
+    """Given no variables, When action_confirm is gated, Then it is allowed —
+    confirming orders is the work the agent is here for."""
     decision = gate("sale.order", "action_confirm", [1])
 
     assert decision.allowed is True
-    assert decision.level == "L3_STATE_CHANGE"
 
 
-def test_cancel_is_blocked_at_the_default_ceiling():
-    """Given the default ceiling of 3, When action_cancel is gated,
-    Then it is refused, and the refusal names the level and the way out."""
-    decision = gate("sale.order", "action_cancel", [1])
-
-    assert decision.allowed is False
-    assert decision.level == "L4_DESTRUCTIVE"
-    assert "L4_DESTRUCTIVE" in decision.reason
-    assert "ODOO_MCP_MAX_LEVEL" in decision.reason
-    assert "4" in decision.reason          # the value that would unblock it
-
-
-def test_a_raised_ceiling_unblocks_the_destructive_call(monkeypatch):
-    """Given ODOO_MCP_MAX_LEVEL=4, When unlink is gated, Then it is allowed —
-    the refusal text of the previous test is actionable, not decorative."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
-
+def test_unlink_is_refused_by_default():
+    """Given no variables, When unlink is gated, Then it is refused and the
+    refusal names the one switch that can grant it."""
     decision = gate("res.partner", "unlink", [1])
 
-    assert decision.allowed is True
-    assert decision.level == "L4_DESTRUCTIVE"
+    assert decision.allowed is False
+    assert "ODOO_MCP_ALLOW_UNLINK=yes" in decision.reason
 
 
-def test_a_lowered_ceiling_blocks_the_state_change(monkeypatch):
-    """Given ODOO_MCP_MAX_LEVEL=1, When action_confirm is gated, Then it is refused."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "1")
-
-    decision = gate("sale.order", "action_confirm", [1])
+@pytest.mark.parametrize("method", [
+    "action_cancel", "button_cancel", "action_reverse", "action_draft"])
+def test_destructive_actions_are_denied_by_default(method):
+    """Given the default deny list, When a destructive action is gated,
+    Then it is refused and the refusal names ODOO_MCP_DENY and the entry."""
+    decision = gate("sale.order", method, [1])
 
     assert decision.allowed is False
-    assert decision.level == "L3_STATE_CHANGE"
+    assert "ODOO_MCP_DENY" in decision.reason
+    assert method in decision.reason
 
 
-def test_batch_write_passes_the_default_ceiling_but_single_write_survives_a_low_one(monkeypatch):
-    """Given a 6-id write, When gated at 3 then at 1, Then L2_BATCH passes the
-    first and fails the second — the count is what moved, not the method."""
-    ids = list(range(1, BATCH_THRESHOLD + 2))
+def test_action_archive_is_denied_by_default():
+    """Given the default deny list, When action_archive is gated, Then it is
+    refused through its virtual `archive` name — archiving reads like deletion."""
+    decision = gate("res.partner", "action_archive", [1])
 
-    permissive = gate("sale.order", "write", ids, {"note": "x"})
-    assert permissive.allowed is True
-    assert permissive.level == "L2_BATCH"
-
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "1")
-    restricted = gate("sale.order", "write", ids, {"note": "x"})
-    assert restricted.allowed is False
-    assert restricted.level == "L2_BATCH"
-    assert gate("sale.order", "write", [1], {"note": "x"}).allowed is True
+    assert decision.allowed is False
+    assert "ODOO_MCP_DENY" in decision.reason
 
 
-def test_archiving_write_is_blocked_at_the_default_ceiling():
-    """Given values that set active False, When the write is gated,
-    Then it is refused as L4_DESTRUCTIVE even though the method is `write`."""
+def test_archiving_write_is_denied_by_default():
+    """Given values that set active False, When the write is gated, Then it is
+    refused as `archive` even though the method itself is `write` —
+    classification by effect lives on as a virtual name."""
     decision = gate("res.partner", "write", [1], {"active": False})
 
     assert decision.allowed is False
-    assert decision.level == "L4_DESTRUCTIVE"
+    assert "ODOO_MCP_DENY" in decision.reason
 
 
-@pytest.mark.parametrize("ceiling", [None, "0", "3", "5", "9", "99"])
-def test_private_methods_are_refused_at_every_ceiling(monkeypatch, ceiling):
-    """Given any ODOO_MCP_MAX_LEVEL, When a `_`-prefixed method is gated,
-    Then it is refused: Odoo rejects private methods, so no ceiling can buy them."""
-    if ceiling is not None:
-        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", ceiling)
+def test_mass_mailing_send_is_denied_by_default_but_not_on_other_models():
+    """Given the default deny list, When `action_send` is gated per model,
+    Then `mailing.mailing` is refused by its model-qualified entry while the
+    same method on evolution's test wizard passes — one deliberate default
+    denial, exact by model, not a ban on the method name."""
+    denied = gate("mailing.mailing", "action_send", [1])
+    assert denied.allowed is False
+    assert "mailing.mailing:action_send" in denied.reason
+    assert "ODOO_MCP_DENY" in denied.reason
+
+    assert gate("evolution.send.test.wizard", "action_send", [1]).allowed is True
+
+
+def test_unknown_method_passes_under_the_wildcard():
+    """Given no variables, When a method no whitelist ever knew is gated,
+    Then it is allowed — `*` means every method not denied; refusing what
+    nobody classified was 0.1.x's rule and it is gone by design."""
+    decision = gate("evolution.chat", "send_message_from_ui", [1])
+
+    assert decision.allowed is True
+
+
+# --------------------------------------------------------- the lists, exactly
+def test_a_model_qualified_deny_refuses_exactly_that_pair(monkeypatch):
+    """Given DENY=evolution.chat:send_message_from_ui, When the bare method is
+    gated on other models, Then only the named pair is refused — the model
+    qualifier is part of the entry and matching is exact."""
+    monkeypatch.setenv("ODOO_MCP_DENY", "evolution.chat:send_message_from_ui")
+
+    refused = gate("evolution.chat", "send_message_from_ui", [1])
+    assert refused.allowed is False
+    assert "evolution.chat:send_message_from_ui" in refused.reason
+
+    assert gate("res.partner", "send_message_from_ui", [1]).allowed is True
+
+
+def test_deny_matching_is_exact_whole_entry(monkeypatch):
+    """Given DENY=action_send, When action_send_and_print is gated, Then it is
+    allowed — a prefix or substring match would refuse a method the operator
+    never wrote, and the send-and-print flow must keep working by default."""
+    monkeypatch.setenv("ODOO_MCP_DENY", "action_send")
+
+    assert gate("sale.order", "action_send_and_print", [1]).allowed is True
+
+
+def test_a_set_deny_list_replaces_the_default(monkeypatch):
+    """Given DENY=unlink, When action_cancel is gated, Then it passes — the
+    operator's list REPLACES the default, which is how an entry is re-enabled.
+    Unlink itself stays refused: only the dedicated switch can grant it."""
+    monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
+
+    assert gate("sale.order", "action_cancel", [1]).allowed is True
+
+    refused = gate("res.partner", "unlink", [1])
+    assert refused.allowed is False
+    assert "ODOO_MCP_ALLOW_UNLINK" in refused.reason
+
+
+def test_allow_none_makes_the_server_read_only(monkeypatch):
+    """Given ALLOW=none, When create and search_read are gated, Then the write
+    is refused naming the read-only setting and the read still passes."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "none")
+
+    refused = gate("res.partner", "create", None, {"name": "ACME"})
+    assert refused.allowed is False
+    assert "read-only" in refused.reason
+    assert "ODOO_MCP_ALLOW=none" in refused.reason
+
+    assert gate("res.partner", "search_read", []).allowed is True
+
+
+def test_an_allow_set_refuses_whatever_it_does_not_list(monkeypatch):
+    """Given ALLOW=create,write, When action_confirm is gated, Then it is
+    refused naming ODOO_MCP_ALLOW, while both listed methods pass."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "create,write")
+
+    assert gate("res.partner", "create", None, {"name": "ACME"}).allowed is True
+    assert gate("res.partner", "write", [1], {"name": "ACME"}).allowed is True
+
+    refused = gate("sale.order", "action_confirm", [1])
+    assert refused.allowed is False
+    assert "ODOO_MCP_ALLOW" in refused.reason
+
+
+def test_entries_with_spaces_around_commas_are_trimmed(monkeypatch):
+    """Given lists written with slack — ' create , write ' and
+    ' action_cancel , unlink ' — When the same calls are gated as with tight
+    lists, Then the behaviour is identical: a human edits these in a config
+    file, and spaces must neither widen nor narrow what they approved."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", " create , write ")
+    monkeypatch.setenv("ODOO_MCP_DENY", " action_cancel , unlink ")
+
+    assert gate("res.partner", "create", None, {"name": "ACME"}).allowed is True
+    assert gate("res.partner", "write", [1], {"note": "x"}).allowed is True
+    assert gate("sale.order", "action_confirm", [1]).allowed is False
+
+    cancelled = gate("sale.order", "action_cancel", [1])
+    assert cancelled.allowed is False
+    assert "'action_cancel'" in cancelled.reason
+
+
+def test_reads_are_never_subject_to_the_lists(monkeypatch):
+    """Given a deny entry naming a read method AND ALLOW=none, When that read
+    is gated, Then it still passes — the lists govern effects and a read has
+    none, so reads are decided before either list is consulted."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "none")
+    monkeypatch.setenv("ODOO_MCP_DENY", "search_read")
+
+    assert gate("sale.order", "search_read", []).allowed is True
+
+
+# -------------------------------------------------------- the unlink hard stop
+def test_allow_unlink_yes_grants_unlink(monkeypatch):
+    """Given ODOO_MCP_ALLOW_UNLINK=yes, When unlink is gated, Then it passes —
+    the dedicated switch is the only key."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW_UNLINK", "yes")
+
+    assert gate("res.partner", "unlink", [1]).allowed is True
+
+
+def test_unlink_switch_reads_only_its_explicit_spellings(monkeypatch):
+    """Given each spelling an operator might type, When unlink_allowed() is
+    read, Then exactly yes/true/1 (any case) is True and everything else is
+    False — 'on' or 'y' must not half-count as consent to delete."""
+    for raw, expected in [("yes", True), ("TRUE", True), ("1", True),
+                          ("no", False), ("y", False), ("", False)]:
+        monkeypatch.setenv("ODOO_MCP_ALLOW_UNLINK", raw)
+        assert unlink_allowed() is expected
+
+
+def test_an_allow_entry_cannot_grant_unlink(monkeypatch):
+    """Given ALLOW=unlink — the entry an optimistic agent would try — When
+    unlink is gated, Then it is still refused: only the dedicated variable
+    decides, and the refusal says so."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "unlink")
+
+    decision = gate("res.partner", "unlink", [1])
+
+    assert decision.allowed is False
+    assert "ODOO_MCP_ALLOW_UNLINK" in decision.reason
+
+
+def test_unlink_is_decided_before_the_lists(monkeypatch):
+    """Given ALLOW=none AND unlink not granted, When unlink is gated, Then the
+    refusal names ODOO_MCP_ALLOW_UNLINK and not the read-only setting — the
+    hardcoded guard answers before any list could."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "none")
+
+    decision = gate("res.partner", "unlink", [1])
+
+    assert decision.allowed is False
+    assert "ODOO_MCP_ALLOW_UNLINK" in decision.reason
+    assert "read-only" not in decision.reason
+
+
+def test_deny_set_to_empty_still_means_the_default(monkeypatch):
+    """Given ALLOW=* and DENY explicitly set to the empty string, When unlink
+    is gated, Then it is still refused — empty means unset (the XDG
+    convention), so an explicit blank cannot wipe the default deny list."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "*")
+    monkeypatch.setenv("ODOO_MCP_DENY", "")
+
+    decision = gate("res.partner", "unlink", [1])
+
+    assert decision.allowed is False
+    assert "ODOO_MCP_ALLOW_UNLINK" in decision.reason
+
+
+# --------------------------------------------------------- what no list can buy
+@pytest.mark.parametrize("allow", ["*", "_create_invoices,write"])
+def test_private_methods_are_refused_whatever_the_lists_say(monkeypatch, allow):
+    """Given any allow list — even one naming the private method — When a
+    `_`-prefixed method is gated, Then it is refused: Odoo rejects private
+    methods (check_method_name), so no configuration can buy them."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", allow)
 
     decision = gate("account.move", "_create_invoices", [1])
 
     assert decision.allowed is False
-    assert decision.level == "L5_PRIVATE"
-    assert "ODOO_MCP_MAX_LEVEL" not in decision.reason   # raising it would not help
+    assert "check_method_name" in decision.reason
+    assert "ODOO_MCP" not in decision.reason   # no variable would help
 
 
-@pytest.mark.parametrize("ceiling", ["5", "99"])
-def test_unknown_methods_are_refused_at_every_ceiling(monkeypatch, ceiling):
-    """Given a method in no whitelist, When gated even above its own ordinal,
-    Then it stays refused — `safe_call` rejects L5_UNKNOWN unconditionally, and a
-    gate that promised otherwise would be lying to the tool layer."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", ceiling)
+# ------------------------------------------------ the shape the gate receives
+def test_values_parameter_with_active_false_is_detected():
+    """Given `active: False` through the `values` parameter, with and without
+    ids, When the write is gated, Then both shapes are refused —
+    `_positional_args` must land the values dict where the archive detector
+    reads it (`args`), and a dict-shaped regression would quietly re-allow it
+    as a harmless write."""
+    without_ids = gate("res.partner", "write", None, {"active": False})
+    with_ids = gate("res.partner", "write", [1], {"active": False})
 
-    decision = gate("sale.order", "action_do_whatever", [1])
-
-    assert decision.allowed is False
-    assert decision.level == "L5_UNKNOWN"
-    assert "safety_layer.py" in decision.reason          # where to whitelist it
-
-
-def test_an_unmapped_level_is_refused_by_default_deny(monkeypatch):
-    """Given a level safety_layer.py could grow tomorrow, When gated, Then it is
-    refused — an unknown severity must not become a KeyError inside a tool call,
-    nor slip through because its ordinal defaulted to something permissive."""
-    monkeypatch.setattr(server_safety, "classify", lambda *_a, **_kw: "L6_FUTURE")
-
-    decision = gate("sale.order", "write", [1], {"note": "x"})
-
-    assert decision.allowed is False
-    assert decision.level == "L6_FUTURE"
-    assert "LEVEL_ORDINALS" in decision.reason
+    assert without_ids.allowed is False
+    assert with_ids.allowed is False
+    assert "archive" in with_ids.reason
 
 
-def test_reads_are_allowed_at_the_floor(monkeypatch):
-    """Given the strictest ceiling of 0, When a search_read is gated, Then it passes."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "0")
-
-    decision = gate("sale.order", "search_read", [["state", "=", "sale"]])
-
-    assert decision.allowed is True
-    assert decision.level == "L0_READ"
+def test_a_bare_int_id_behaves_as_a_one_element_list():
+    """Given a single int instead of a list, When gated, Then it behaves as
+    [id] — `Writer.write`/`Writer.act` normalise the same way, and the gate
+    must agree with what actually reaches Odoo."""
+    assert gate("sale.order", "action_confirm", 1) == gate("sale.order", "action_confirm", [1])
 
 
-# ----------------------------------------------------------- structural guards
-def test_account_move_without_move_type_is_refused_through_the_gate():
-    """Given an account.move read with no move_type filter, When gated,
-    Then the structural guard refuses it — wrapping classify() must not step
-    around check_guards(), which classify() itself never calls."""
+# --------------------------------------------------------- the structural guard
+def test_account_move_read_without_move_type_is_refused():
+    """Given an account.move read with no move_type filter, When gated, Then
+    the structural guard refuses it — reads bypass the lists but not
+    check_guards, which keeps 3.613 mixed records from becoming one number."""
     decision = gate("account.move", "search_count", [["state", "=", "posted"]])
 
     assert decision.allowed is False
-    assert decision.level == "L0_READ"                   # harmless level, meaningless query
     assert "move_type" in decision.reason
 
 
-def test_account_move_with_move_type_passes_the_gate():
+def test_account_move_read_with_move_type_passes():
     """Given the same read WITH the filter, When gated, Then it is allowed."""
     decision = gate("account.move", "search_read", [["move_type", "=", "out_invoice"]])
 
     assert decision.allowed is True
 
 
-def test_account_move_line_guard_reaches_through_the_related_field():
-    """Given an unfiltered account.move.line read, When gated, Then it is refused
-    for `move_id.move_type` — the second guarded model is wired too."""
-    decision = gate("account.move.line", "search_read", [])
-
-    assert decision.allowed is False
-    assert "move_type" in decision.reason
-
-
-# --------------------------------------------- the shape the wrapper must keep
-def test_dict_shaped_args_silently_disable_batch_detection():
-    """Given the dict-shaped args used by collaboration.py::_guard, When a 6-id
-    write is classified, Then batch detection does NOT fire.
-
-    This is the pre-existing bug, pinned here as the reason `gate()` builds a
-    positional `[ids, vals]` list: a dict never reaches `args[0]`, so the count
-    silently collapses to 1.
-    """
-    ids = list(range(1, BATCH_THRESHOLD + 2))
-
-    assert classify("sale.order", "write", {"ids": ids}, {}) == "L1_WRITE"
-    assert classify("sale.order", "write", [ids, {}], {}) == "L2_BATCH"
+# -------------------------------------------------------------- the surface
+def test_gate_result_carries_only_allowed_and_reason():
+    """Given the module, When the GateResult fields are listed, Then they are
+    exactly `allowed` and `reason` — the old `level` field had no consumer,
+    and a decision is a boolean plus a sentence an agent can relay."""
+    assert GateResult._fields == ("allowed", "reason")
 
 
-def test_dict_shaped_args_silently_disable_archive_detection():
-    """Given the same dict shape, When an `active: False` write is classified,
-    Then archiving does NOT fire (iterating a dict yields its keys, not the dict),
-    while the positional shape correctly reports L4_DESTRUCTIVE."""
-    assert classify("res.partner", "write", {"active": False}, {}) == "L1_WRITE"
-
-    assert gate("res.partner", "write", [1], {"active": False}).level == "L4_DESTRUCTIVE"
-
-
-def test_gate_accepts_a_bare_id_like_the_writer_does():
-    """Given a single int instead of a list, When gated, Then it behaves as [id] —
-    `Writer.write`/`Writer.act` normalise the same way, and a bare int reaching
-    `_count_targets` unnormalised would report 1 target by accident, not by rule."""
-    assert gate("sale.order", "action_confirm", 1) == gate("sale.order", "action_confirm", [1])
-
-
-def test_gate_handles_a_create_with_no_ids():
-    """Given a create (values, no ids), When gated, Then the values land in the
-    `execute_kw` `[vals]` slot and it is L1_WRITE."""
-    decision = gate("res.partner", "create", None, {"name": "ACME"})
-
-    assert decision.allowed is True
-    assert decision.level == "L1_WRITE"
-
-
-def test_module_exposes_only_the_gate_surface():
-    """Given the module, When its public names are listed, Then they are the three
-    the tool layer is meant to use — levels are computed, never exported per tool."""
+def test_module_exposes_only_the_new_gate_surface():
+    """Given the module, When its public names are listed, Then the two-list
+    API is there and every ceiling name is gone — importing `max_level` must
+    fail loudly in server.py's migration, not keep a zombie alive."""
     public = {name for name in vars(server_safety) if not name.startswith("_")}
 
-    assert {"LEVEL_ORDINALS", "GateResult", "max_level", "gate"} <= public
+    assert {"DEFAULT_DENY", "GateResult", "gate", "allowed_methods",
+            "denied_methods", "unlink_allowed",
+            "refuse_legacy_environment"} <= public
+    assert not hasattr(server_safety, "max_level")
+    assert not hasattr(server_safety, "LEVEL_ORDINALS")
+    assert not hasattr(server_safety, "DEFAULT_MAX_LEVEL")
 
 
-@pytest.mark.parametrize("model", ["mail.channel", "discuss.channel"])
-def test_discuss_channel_get_is_a_single_record_write(model):
-    """Given a direct message needs `channel_get` to find or open the 1-to-1
-    chat, When the classifier sees it, Then it is L1: the method creates at
-    most one channel and touches no business state.
+# ----------------------------------------------------- parsing and startup
+def test_allowed_methods_parses_wildcard_none_and_sets(monkeypatch):
+    """Given each shape ODOO_MCP_ALLOW can take, When allowed_methods() is
+    read, Then unset and empty both mean `*` (empty means unset, the XDG
+    convention), the literal `none` is the read-only sentinel, and anything
+    else is the entry set with case preserved."""
+    assert allowed_methods() == "*"
 
-    Unclassified it lands in L5_UNKNOWN, which is refused at every ceiling —
-    so without this the direct-message tool cannot run at all.
-    """
-    assert classify(model, "channel_get", [[[7]]], {}) == "L1_WRITE"
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "")
+    assert allowed_methods() == "*"
+
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "*")
+    assert allowed_methods() == "*"
+
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "none")
+    assert allowed_methods() == "none"
+
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "create,Write")
+    assert allowed_methods() == {"create", "Write"}
+
+
+def test_denied_methods_default_and_replacement(monkeypatch):
+    """Given ODOO_MCP_DENY unset and then set, When denied_methods() is read,
+    Then unset means DEFAULT_DENY and a value replaces it wholesale."""
+    assert denied_methods() == set(DEFAULT_DENY)
+
+    monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
+    assert denied_methods() == {"unlink"}
+
+
+def test_refuse_legacy_environment_names_the_replacements(monkeypatch):
+    """Given ODOO_MCP_MAX_LEVEL=3 — any value counts — When the legacy check
+    runs, Then startup is refused and the message names all three replacement
+    variables."""
+    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "3")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        refuse_legacy_environment()
+
+    message = str(excinfo.value)
+    assert "ODOO_MCP_ALLOW" in message
+    assert "ODOO_MCP_DENY" in message
+    assert "ODOO_MCP_ALLOW_UNLINK" in message
+
+
+@pytest.mark.parametrize("raw", [None, ""])
+def test_refuse_legacy_environment_ignores_unset_and_empty(monkeypatch, raw):
+    """Given the variable absent (the fixture deleted it) or set to the empty
+    string — empty means unset, `paths._from_env`'s convention — When the
+    legacy check runs, Then it returns None and startup proceeds."""
+    if raw is not None:
+        monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", raw)
+
+    assert refuse_legacy_environment() is None

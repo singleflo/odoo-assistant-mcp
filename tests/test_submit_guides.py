@@ -3,7 +3,6 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from pathlib import Path
-import pytest
 
 DOSSIER_PATH = Path("docs/listing/README.md")
 SUBMIT_CLAUDE_PATH = Path("docs/listing/SUBMIT-CLAUDE.md")

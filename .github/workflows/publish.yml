@@ -23,7 +23,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra remote
 
       - name: Run unit tests (excluding live and wheel — wheel needs a built artifact)
         run: uv run pytest tests/ -m 'not live and not wheel and not remote_live'

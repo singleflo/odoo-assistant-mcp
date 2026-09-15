@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "odoo-assistant": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["odoo-assistant"],
+      "env": {
+        "ODOO_BASE_URL": "${ODOO_BASE_URL}",
+        "ODOO_API_KEY": "${ODOO_API_KEY}",
+        "ODOO_DB": "${ODOO_DB}"
+      }
+    }
+  }
+}

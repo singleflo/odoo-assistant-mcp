@@ -1,0 +1,10 @@
+{
+  "name": "odoo-assistant",
+  "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
+  "version": "0.2.0",
+  "author": {
+    "name": "Roberto Crotti",
+    "email": "bo@fl1.cz"
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -53,7 +53,7 @@ packages = ["src/odoo_assistant"]
 # Anchored gitignore-style: each segment matches whole, so `/references` drops
 # the instance-specific tree and spares `references_public/`, which the wheel
 # force-includes above and a rebuild from this sdist needs present.
-exclude = ["/references", "/docs", "/.omo", "/.github", "/.opencode"]
+exclude = ["/references", "/docs", "/.omo", "/.github", "/.opencode", "/plugins", "/.claude-plugin", "/.agents"]
 
 [tool.pyright]
 venvPath = "."

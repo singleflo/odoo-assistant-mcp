@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": ["odoo-assistant"],
+      "env": {
+        "ODOO_BASE_URL": "${ODOO_BASE_URL}",
+        "ODOO_API_KEY": "${ODOO_API_KEY}",
+        "ODOO_DB": "${ODOO_DB:-}"
+      }
+    }
+  }
+}

@@ -28,6 +28,12 @@ because both manifests start the server with `uvx odoo-assistant`.
 Then check `/mcp` shows the server. The marketplace and the plugin share the
 name `odoo-assistant`, hence the `@odoo-assistant` suffix.
 
+## Support
+
+The Agent Plugins 1.0.0 manifest schema has no support field, so support
+requests go to the issue tracker:
+https://github.com/singleflo/odoo-assistant-mcp/issues
+
 ## Codex
 
 ```bash

@@ -109,10 +109,16 @@ def register(mcp: MCPServer) -> None:
     global _mcp
     _mcp = mcp
     _redirect_references()
+    # explore_module writes a persistent reference document to disk (and
+    # re-running it rewrites the same file), so MCP semantics make it a
+    # non-read-only, idempotent write; list_known_modules stays a pure read.
+    writes_reference = ToolAnnotations(
+        read_only_hint=False, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
     reads = ToolAnnotations(
         read_only_hint=True, destructive_hint=False, idempotent_hint=True,
         open_world_hint=True)
-    mcp.add_tool(explore_module, title="Explore a module", annotations=reads)
+    mcp.add_tool(explore_module, title="Explore a module", annotations=writes_reference)
     mcp.add_tool(list_known_modules, title="List known modules", annotations=reads)
 
 

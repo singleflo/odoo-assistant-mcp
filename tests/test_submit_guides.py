@@ -1,4 +1,6 @@
 import re
+import socket
+import urllib.parse
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -7,6 +9,20 @@ import pytest
 DOSSIER_PATH = Path("docs/listing/README.md")
 SUBMIT_CLAUDE_PATH = Path("docs/listing/SUBMIT-CLAUDE.md")
 SUBMIT_OPENAI_PATH = Path("docs/listing/SUBMIT-OPENAI.md")
+
+# Dossier sections each store asks about directly: EVERY guide must carry
+# them, checked per guide — concatenating the guides would let one guide
+# cover for the other and hide an unfinished submission.
+PER_GUIDE_SECTIONS = ("Country availability",)
+
+# The hosted server is not deployed yet. A DNS failure for it is the
+# expected state until deploy: attempted on every run, recorded as
+# EXPECTED-PENDING-DEPLOY, never silently skipped.
+EXPECTED_PENDING_HOSTS = ("mcp.singleflo.com",)
+
+
+def _guide_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
 def test_submit_guides_exist():
@@ -19,13 +35,23 @@ def test_dossier_section_coverage():
     h2_sections = re.findall(r"^##\s+(.+)$", dossier_text, re.MULTILINE)
     assert h2_sections, "No ## sections found in dossier"
 
-    claude_text = SUBMIT_CLAUDE_PATH.read_text(encoding="utf-8") if SUBMIT_CLAUDE_PATH.is_file() else ""
-    openai_text = SUBMIT_OPENAI_PATH.read_text(encoding="utf-8") if SUBMIT_OPENAI_PATH.is_file() else ""
-    combined_guides = claude_text + "\n" + openai_text
+    # Per-guide check for the sections both stores ask about.
+    missing_per_guide = []
+    for section in PER_GUIDE_SECTIONS:
+        assert section in h2_sections, f"{section!r} is not a dossier ## section"
+        for path in (SUBMIT_CLAUDE_PATH, SUBMIT_OPENAI_PATH):
+            if not re.search(re.escape(section), _guide_text(path), re.IGNORECASE):
+                missing_per_guide.append(f"{path} misses {section!r}")
+    assert not missing_per_guide, (
+        f"Store-relevant dossier sections missing from guides: {missing_per_guide}")
+
+    # Genuinely shared sections: each must be referenced in at least one guide.
+    combined_guides = (
+        _guide_text(SUBMIT_CLAUDE_PATH) + "\n" + _guide_text(SUBMIT_OPENAI_PATH)
+    )
 
     unreferenced = []
     for section in h2_sections:
-        # Match exact section name (case-insensitive) in at least one guide
         if not re.search(re.escape(section), combined_guides, re.IGNORECASE):
             unreferenced.append(section)
 
@@ -33,9 +59,9 @@ def test_dossier_section_coverage():
 
 
 def test_guides_urls_liveness():
-    claude_text = SUBMIT_CLAUDE_PATH.read_text(encoding="utf-8") if SUBMIT_CLAUDE_PATH.is_file() else ""
-    openai_text = SUBMIT_OPENAI_PATH.read_text(encoding="utf-8") if SUBMIT_OPENAI_PATH.is_file() else ""
-    combined_text = claude_text + "\n" + openai_text
+    combined_text = (
+        _guide_text(SUBMIT_CLAUDE_PATH) + "\n" + _guide_text(SUBMIT_OPENAI_PATH)
+    )
 
     # Match URLs stopping at space, closing paren/bracket, or trailing backtick
     raw_urls = set(re.findall(r"https?://[^\s\)>\]\",`]+", combined_text))
@@ -44,11 +70,9 @@ def test_guides_urls_liveness():
     assert urls, "No URLs found in submission guides"
 
     failed_urls = []
+    pending_deploy = []
     for url in urls:
-        # Skip mcp.singleflo.com, singleflo.com domain URLs or portal pages that may be login-gated/403/offline
-        if "singleflo.com" in url:
-            continue
-
+        host = urllib.parse.urlparse(url).netloc
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "Mozilla/5.0 (Python submission guide validator)"}
@@ -64,6 +88,17 @@ def test_guides_urls_liveness():
                 continue
             failed_urls.append(f"{url} -> HTTPError {e.code}")
         except Exception as e:
-            failed_urls.append(f"{url} -> Exception {e}")
+            reason = getattr(e, "reason", None)
+            if host in EXPECTED_PENDING_HOSTS and isinstance(reason, socket.gaierror):
+                pending_deploy.append(
+                    f"{url} -> DNS failure ({reason}) — EXPECTED-PENDING-DEPLOY: "
+                    f"the hosted server is not live yet")
+            else:
+                failed_urls.append(f"{url} -> Exception {e}")
 
-    assert not failed_urls, f"URL liveness check failed for: {failed_urls}"
+    assert not failed_urls, (
+        f"URL liveness check failed for: {failed_urls}"
+        + (f" | EXPECTED-PENDING-DEPLOY (not failures): {pending_deploy}"
+           if pending_deploy else ""))
+    if pending_deploy:
+        print("EXPECTED-PENDING-DEPLOY (not failures):", pending_deploy)

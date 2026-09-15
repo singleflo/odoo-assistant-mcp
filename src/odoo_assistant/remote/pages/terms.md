@@ -25,7 +25,7 @@ You are solely responsible for:
 
 Our hosted remote server acts as an operational bridge to execute authorized Odoo actions requested by your client host. 
 
-Please note that our hosted bridge is structured to respect your configured safety settings. By design, database record deletion capabilities (`unlink` operations) are disabled through the hosted route unless explicit server-side administrative flags permit them. You remain responsible for reviewing and controlling actions issued by connected AI assistants.
+Please note that our hosted bridge is structured to respect your configured safety settings. Database record deletion capabilities (`unlink` operations) are never available through the hosted route — no administrative flag can change this, as the safety gate refuses deletion for every connected tenant. The only deletion path in this project is a local install running on your own machine, where you as the operator have deliberately set `ODOO_MCP_ALLOW_UNLINK=yes`. You remain responsible for reviewing and controlling actions issued by connected AI assistants.
 
 ## Limitation of Liability
 

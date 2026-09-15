@@ -175,7 +175,7 @@ than from a bounded workspace owned by the publisher.
 | `search_read` | yes | no | yes | Fetches and returns the records matching a domain; nothing it runs can change data, and the answer comes from the customer's own Odoo instance. |
 | `read_record` | yes | no | yes | Returns one record's named fields; a pure read whose values depend on the connected instance. |
 | `count_records` | yes | no | yes | Returns how many records match a domain; a pure read with no side effect. |
-| `instance_overview` | yes | no | yes | Reads version, companies, per-area volumes and installed modules to summarise the instance; it changes nothing. |
+| `instance_overview` | yes | no | yes | Reads version, companies, per-area volumes and installed modules to summarise the instance; its only local artifact is a rebuildable internal cache, so it stays read-only. |
 | `required_fields` | yes | no | yes | Asks `fields_get`, `default_get` and existing records what a create would demand; metadata reads only. |
 | `create_record` | no | no | yes | Creates a new record, so it is not read-only, but it overwrites and deletes nothing, and with `unique_on` it reuses an existing match instead of duplicating. |
 | `write_record` | no | yes | yes | Overwrites field values on an existing record, so the previous values are lost — destructive even though no record is removed. |
@@ -183,13 +183,13 @@ than from a bounded workspace owned by the publisher.
 | `cancel_record` | no | yes | yes | Cancels a record through `action_cancel`, ending its draft or open state. |
 | `notify_user` | no | no | yes | Posts a new note on a record's chatter and notifies the users named; the record itself is untouched. |
 | `create_activity` | no | no | yes | Schedules a new activity record with a deadline; existing data is untouched. |
-| `download_docs` | yes | no | yes | Reads a record's documents and saves them to the disk of the machine running the server; Odoo data is unchanged. |
+| `download_docs` | no | no | yes | Saves every document of a record as a delivered file on the machine running the server — a durable artifact outside Odoo, so it is not read-only; re-running it reproduces the same files and changes no existing data. |
 | `generate_pdf` | no | no | yes | Renders a record's report through Odoo's print wizard, which can have side effects such as sending mail, so it is not read-only, though the record itself is unchanged. |
 | `list_message_targets` | yes | no | yes | Reads who can be messaged and where, presence included; a pure read. |
 | `read_conversation` | yes | no | yes | Returns the messages of one conversation, newest first; nothing is sent or altered. |
 | `send_direct_message` | no | no | yes | Posts a new 1-to-1 message, an additive write that alters no existing record. |
 | `send_channel_message` | no | no | yes | Posts a new message to an existing channel, an additive write only. |
-| `explore_module` | yes | no | yes | Interrogates the live instance read-only and writes the generated reference files to local disk only. |
+| `explore_module` | no | no | yes | Interrogates the live instance and writes a persistent reference document to disk — a durable artifact, so it is not read-only; regenerating rewrites the same document, and nothing existing is destroyed. |
 | `list_known_modules` | yes | no | yes | Lists the module references this server has already generated, from local files. |
 
 ## Test cases

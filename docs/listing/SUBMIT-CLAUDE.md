@@ -40,6 +40,7 @@ The portal walks through sequential steps. Fill each field using the values from
 - **Documentation URL**: `https://github.com/singleflo/odoo-assistant-mcp` (from dossier section `URLs` -> `Documentation URL`).
 - **Privacy Policy URL**: `https://mcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
 - **Support Contact / URL**: `https://github.com/singleflo/odoo-assistant-mcp/issues` (from dossier section `URLs` -> `Support URL`).
+- **Country availability**: `worldwide` (from dossier section `Country availability` — the portal asks where the connector is available).
 - **Icon**: Upload `docs/listing/icon.png` (from dossier section `Icon`, 512x512 flat PNG).
 - **URL Slug**: Set the listing URL slug.
   > **Warning:** The URL slug is permanent once published and cannot be changed later.

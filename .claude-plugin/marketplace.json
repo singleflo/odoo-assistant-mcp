@@ -2,8 +2,7 @@
   "name": "odoo-assistant",
   "description": "Odoo Assistant: query, create and act on Odoo records from Claude Code",
   "owner": {
-    "name": "Roberto Crotti",
-    "email": "bo@fl1.cz"
+    "name": "Roberto Crotti"
   },
   "plugins": [
     {

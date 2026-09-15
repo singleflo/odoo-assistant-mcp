@@ -6,15 +6,18 @@ We operate with strict data minimization principles. Our service functions as an
 
 ## What We Store
 
-To maintain an active connection and handle authorization securely, our remote server stores a minimal set of operational data in an encrypted database.
+To maintain an active connection and handle authorization securely, our remote server stores a small set of operational data in a SQLite database on our server. The database file itself is not encrypted; specific sensitive fields are encrypted individually, as detailed below.
 
 | Category | Description | Storage Method & TTL |
 | --- | --- | --- |
-| Odoo URL | The base URL of your target Odoo instance | Stored encrypted in SQLite database |
+| Odoo URL | The base URL of your target Odoo instance. This is connection metadata, not a secret. | Stored in plaintext in the SQLite database |
+| Odoo Database Name | The name of the database your connection targets on that instance. Also connection metadata. | Stored in plaintext in the SQLite database |
 | Odoo API Credentials | The Odoo API key provided during authorization (account passwords are never accepted) | Encrypted with Fernet (AES-128-CBC + HMAC-SHA256, via the cryptography package) |
+| OAuth Client Records | The dynamic client registration records created when your AI host connects through OAuth 2.1 | Encrypted with Fernet (AES-128-CBC + HMAC-SHA256, via the cryptography package) |
 | Policy Selection | The execution policy selected during consent (read-only vs full access) | Stored in SQLite database |
 | Hashed Tokens | Cryptographic hashes of OAuth 2.1 authorization codes, access tokens, and refresh tokens | Hashed using SHA-256 (raw tokens are never stored) |
 | Tenant References | Generated internal identifiers linking your OAuth subject to your connection settings | Stored in SQLite database |
+| Generated References | Module reference documents produced by the exploration tool at your request | Stored as files on disk; kept until your tenant is deleted |
 | Temporary Files | Files explicitly downloaded or generated during active tool executions | Stored in temporary storage with a strict 15-minute Time-To-Live (TTL) |
 
 ## What We Never Store
@@ -31,9 +34,10 @@ We enforce strict data retention rules to ensure connection details and tokens a
 
 * **Temporary Files**: Automatically deleted after 15 minutes.
 * **Access Tokens**: Short-lived tokens expiring after 1 hour.
-* **Refresh Tokens**: Expire after 30 days of inactivity.
-* **Revocation & Disconnection**: Your stored Odoo connection configuration and credentials are deleted immediately when the last token for that connection is revoked. Disconnecting the integration in your host application (such as Claude or ChatGPT) revokes your tokens and purges your Odoo credentials.
-* **Idle Purge**: Any connection record remaining without active use for 90 days is automatically purged from our database.
+* **Refresh Tokens**: Expire after 30 days.
+* **Generated References**: Kept until your tenant is deleted.
+* **Revocation & Disconnection**: When the last token family for your connection is revoked — which is what disconnecting the integration in your host application (such as Claude or ChatGPT) triggers — the tenant row holding your Odoo connection configuration and credentials is deleted.
+* **Idle Purge**: A sweep at server startup removes tenant rows that have been idle for 90 days.
 
 ## How to Revoke Access
 

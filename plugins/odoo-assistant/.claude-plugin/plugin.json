@@ -3,8 +3,7 @@
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
   "version": "0.3.0",
   "author": {
-    "name": "Roberto Crotti",
-    "email": "bo@fl1.cz"
+    "name": "Roberto Crotti"
   },
   "mcpServers": "./.mcp.json"
 }

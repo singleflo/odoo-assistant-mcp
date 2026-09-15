@@ -57,6 +57,8 @@ Two facts read from the sources rather than assumed:
 The 5-6 parameter signatures are the MCP wire contract from PRD §5B, not a
 value object waiting to be extracted.
 """
+import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -68,6 +70,8 @@ from mcp.types import ToolAnnotations
 # bare name, from the repo and from an installed wheel alike.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
+from odoo_assistant import paths, tenant  # noqa: E402
+from odoo_assistant.remote import files  # noqa: E402
 from odoo_assistant.server_errors import (  # noqa: E402
     ToolOutcome,
     handle_odoo_exception,
@@ -104,6 +108,23 @@ def _external_refusal(model: str, record_id: int, external: list[str]) -> str:
         f"named — message_notify touches no follower at all — or "
         f"call again with force=True if emailing those people is the intent."
     )
+
+
+def _public_url() -> str:
+    """The origin file links are served from; the remote server requires it."""
+    return os.environ.get("ODOO_REMOTE_PUBLIC_URL", "")
+
+
+def _tenant_dir(subject: str) -> Path:
+    """A fresh per-call work directory inside the tenant's files area.
+
+    Under `data_dir()/files/<subject>/tmp` rather than the system temp so
+    everything a tenant produces sits in one operator-chosen place, wiped
+    with the data directory and never shared between tenants.
+    """
+    root = paths.data_dir() / "files" / subject / "tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(dir=root))
 
 
 def notify_user(
@@ -244,6 +265,9 @@ def download_docs(model: str, record_id: int, dest_dir: str = "") -> str:
     rows and loses the bytes, and an empty result would read exactly like
     "this record has no attachments".
 
+    On the hosted server the result is a download link valid for 15 minutes;
+    `dest_dir` is ignored there.
+
     Args:
         model: the Odoo model, e.g. "account.move".
         record_id: id of the record whose documents to fetch.
@@ -254,6 +278,21 @@ def download_docs(model: str, record_id: int, dest_dir: str = "") -> str:
                     [["res_model", "=", model], ["res_id", "=", record_id]])
     if not decision.allowed:
         return ToolOutcome(True, decision.reason).deliver()
+    bound = tenant.current()
+    if bound is not None:
+        work = _tenant_dir(bound.subject)
+        try:
+            result = Documents(_odoo()).download(model, record_id, str(work))
+        except Exception as exc:
+            shutil.rmtree(work, ignore_errors=True)
+            return handle_odoo_exception(
+                exc, phase="before_mutation").deliver()
+        links = [
+            files.publish(Path(saved), bound.subject,
+                          public_url=_public_url())
+            for saved in result["saved"]]
+        shutil.rmtree(work, ignore_errors=True)
+        return tool_result({"files": links, "skipped": result["skipped"]})
     try:
         result = Documents(_odoo()).download(
             model, record_id, dest_dir or tempfile.gettempdir())
@@ -271,6 +310,9 @@ def generate_pdf(model: str, record_id: int, dest_dir: str = "") -> str:
     `action_send_and_print` is allowed by default; add it to ODOO_MCP_DENY to
     refuse PDFs that could trigger the send wizard.
 
+    On the hosted server the result is a download link valid for 15 minutes;
+    `dest_dir` is ignored there.
+
     Args:
         model: the Odoo model, e.g. "account.move".
         record_id: id of the record to print.
@@ -280,14 +322,27 @@ def generate_pdf(model: str, record_id: int, dest_dir: str = "") -> str:
     decision = gate(model, "action_send_and_print", record_id)
     if not decision.allowed:
         return ToolOutcome(True, decision.reason).deliver()
+    bound = tenant.current()
+    if bound is None:
+        try:
+            path = Documents(_odoo()).generate_pdf(
+                model, record_id, dest_dir or tempfile.gettempdir())
+        except Exception as exc:
+            # The wizard can SEND the document, and no read can tell whether
+            # an email left — so this failure names no state, not a wrong one.
+            return handle_odoo_exception(
+                exc, phase="after_mutation_possible").deliver()
+        return tool_result({"path": path})
+    work = _tenant_dir(bound.subject)
     try:
-        path = Documents(_odoo()).generate_pdf(
-            model, record_id, dest_dir or tempfile.gettempdir())
+        path = Documents(_odoo()).generate_pdf(model, record_id, str(work))
     except Exception as exc:
-        # The wizard can SEND the document, and no read can tell whether an
-        # email left — so this failure names no state rather than a wrong one.
-        return handle_odoo_exception(exc, phase="after_mutation_possible").deliver()
-    return tool_result({"path": path})
+        shutil.rmtree(work, ignore_errors=True)
+        return handle_odoo_exception(
+            exc, phase="after_mutation_possible").deliver()
+    link = files.publish(Path(path), bound.subject, public_url=_public_url())
+    shutil.rmtree(work, ignore_errors=True)
+    return tool_result(link)
 
 
 def register(mcp: MCPServer) -> None:

@@ -259,16 +259,20 @@ def test_unlink_is_decided_before_the_lists(monkeypatch):
 
 
 def test_deny_set_to_empty_still_means_the_default(monkeypatch):
-    """Given ALLOW=* and DENY explicitly set to the empty string, When unlink
-    is gated, Then it is still refused — empty means unset (the XDG
-    convention), so an explicit blank cannot wipe the default deny list."""
+    """Given ALLOW=* and DENY explicitly set to the empty string, When the
+    deny list is read and a default-denied method is gated, Then the list is
+    still the default — empty means unset (the XDG convention), so an
+    explicit blank cannot wipe the default deny list."""
     monkeypatch.setenv("ODOO_MCP_ALLOW", "*")
     monkeypatch.setenv("ODOO_MCP_DENY", "")
 
-    decision = gate("res.partner", "unlink", [1])
+    assert denied_methods() == set(DEFAULT_DENY)
+
+    decision = gate("sale.order", "action_cancel", [1])
 
     assert decision.allowed is False
-    assert "ODOO_MCP_ALLOW_UNLINK" in decision.reason
+    assert "ODOO_MCP_DENY" in decision.reason
+    assert "action_cancel" in decision.reason
 
 
 # --------------------------------------------------------- what no list can buy

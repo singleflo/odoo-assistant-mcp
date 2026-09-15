@@ -41,7 +41,7 @@ uv pip install git+https://github.com/singleflo/odoo-assistant-mcp
 * `ODOO_USER`: Never mandatory. Omitted, the client probes `res.users` for uid 1 to 59 and keeps the one the key answers for. This adds up to 59 extra round trips on the first call, and it fails outright if the key owner's uid is 60 or higher. Setting it removes that cost. It must be the login (e.g. `jane@mycompany.com`), and a wrong value makes Odoo's `authenticate()` return False rather than raise — which reads like a permission error.
 * `ODOO_MCP_ALLOW`: Optional, default `*` — every method the deny list does not refuse. The single value `none` makes the server read-only, which is what you want when pointing an agent at live company data for reading. Anything else is a comma-separated list of method names. See "What the agent may do" below.
 * `ODOO_MCP_DENY`: Optional. Unset, it is the default deny list — `unlink`, `archive`, `action_cancel`, `button_cancel`, `action_reverse`, `action_draft`, `mailing.mailing:action_send`. A value you set replaces that list entirely. See "What the agent may do" below.
-* `ODOO_MCP_ALLOW_UNLINK`: Optional, off by default. `yes` is the only thing that grants `unlink`; no entry on either list can. See "What the agent may do" below.
+* `ODOO_MCP_ALLOW_UNLINK`: Optional, off by default. `yes`, `true` or `1` (any case) grants `unlink`; no entry on either list can. See "What the agent may do" below.
 * `ODOO_MCP_DATA_DIR`: Optional. Where this server keeps everything it writes, the instance profiles included. It defaults to the platform's own data directory — `%LOCALAPPDATA%\odoo-assistant` on Windows, `~/Library/Application Support/odoo-assistant` on macOS, and `$XDG_DATA_HOME/odoo-assistant` (else `~/.local/share/odoo-assistant`) elsewhere.
 
 ## What the agent may do
@@ -76,9 +76,9 @@ and leaves `action_send` working everywhere else.
 Four rules sit outside the lists:
 
 * **`unlink` is decided before both of them.** No value of `ODOO_MCP_ALLOW` or
-  `ODOO_MCP_DENY` can ever grant deletion; only `ODOO_MCP_ALLOW_UNLINK=yes`
-  does. Deletion is the one action that cannot be undone, and a name in a
-  comma-separated list must never be enough to grant it.
+  `ODOO_MCP_DENY` can ever grant deletion; only `ODOO_MCP_ALLOW_UNLINK` does —
+  `yes`, `true` or `1`, any case. Deletion is the one action that cannot be
+  undone, and a name in a comma-separated list must never be enough to grant it.
 * **`archive` is a virtual name.** Both `action_archive` and a `write` carrying
   `active: False` carry it into the lists, so denying `archive` refuses hiding
   records however they are spelled.

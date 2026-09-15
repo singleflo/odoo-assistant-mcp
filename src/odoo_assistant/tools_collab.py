@@ -60,9 +60,9 @@ value object waiting to be extracted.
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 # Same bootstrap as server.py: the nine scripts are flat modules imported by
 # bare name, from the repo and from an installed wheel alike.
@@ -297,7 +297,19 @@ def register(mcp: MCPServer) -> None:
     so the plain functions above stay directly callable — by the consolidated
     server and by the tests alike.
     """
-    tools: tuple[Any, ...] = (
-        notify_user, create_activity, download_docs, generate_pdf)
-    for tool in tools:
-        mcp.tool()(tool)
+    # download_docs only saves files to disk, so it reads; generate_pdf runs a
+    # print wizard that can SEND the document, so it is not read-only.
+    people = ToolAnnotations(
+        read_only_hint=False, destructive_hint=False, idempotent_hint=False,
+        open_world_hint=True)
+    reads = ToolAnnotations(
+        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
+    pdf = ToolAnnotations(
+        read_only_hint=False, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
+    mcp.add_tool(notify_user, title="Notify users on a record", annotations=people)
+    mcp.add_tool(create_activity, title="Schedule an activity", annotations=people)
+    mcp.add_tool(
+        download_docs, title="Download a record's documents", annotations=reads)
+    mcp.add_tool(generate_pdf, title="Generate a record's PDF", annotations=pdf)

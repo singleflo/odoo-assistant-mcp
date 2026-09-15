@@ -32,10 +32,10 @@ conversations are already open.
 """
 import sys
 from pathlib import Path
-from typing import Any
 from weakref import WeakKeyDictionary
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 # Same bootstrap as server.py: the nine scripts are flat modules imported by
 # bare name, from the repo and from an installed wheel alike.
@@ -372,8 +372,14 @@ def send_channel_message(channel_id: int, message: str) -> str:
 
 def register(mcp: MCPServer) -> None:
     """Register the four Discuss tools on `mcp`."""
-    tools: tuple[Any, ...] = (
-        list_message_targets, read_conversation,
-        send_direct_message, send_channel_message)
-    for tool in tools:
-        mcp.tool()(tool)
+    reads = ToolAnnotations(
+        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
+    posting = ToolAnnotations(
+        read_only_hint=False, destructive_hint=False, idempotent_hint=False,
+        open_world_hint=True)
+    mcp.add_tool(list_message_targets, title="List message targets", annotations=reads)
+    mcp.add_tool(read_conversation, title="Read a conversation", annotations=reads)
+    mcp.add_tool(
+        send_direct_message, title="Send a direct message", annotations=posting)
+    mcp.add_tool(send_channel_message, title="Post to a channel", annotations=posting)

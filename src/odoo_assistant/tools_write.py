@@ -220,7 +220,7 @@ def register(mcp: MCPServer) -> None:
         read_only_hint=False, destructive_hint=True, idempotent_hint=False,
         open_world_hint=True)
 
-    mcp.add_tool(create_record, annotations=additive)
-    mcp.add_tool(write_record, annotations=overwriting)
-    mcp.add_tool(run_action, annotations=transition)
-    mcp.add_tool(cancel_record, annotations=transition)
+    mcp.add_tool(create_record, title="Create a record", annotations=additive)
+    mcp.add_tool(write_record, title="Update a record", annotations=overwriting)
+    mcp.add_tool(run_action, title="Run a workflow action", annotations=transition)
+    mcp.add_tool(cancel_record, title="Cancel a record", annotations=transition)

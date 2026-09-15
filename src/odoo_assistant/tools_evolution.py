@@ -24,6 +24,7 @@ import re
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 from odoo_assistant import paths, resources, server
 # Package-qualified, unlike the bare bootstrap the sibling modules use: a bare
@@ -108,8 +109,11 @@ def register(mcp: MCPServer) -> None:
     global _mcp
     _mcp = mcp
     _redirect_references()
-    mcp.tool()(explore_module)
-    mcp.tool()(list_known_modules)
+    reads = ToolAnnotations(
+        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
+    mcp.add_tool(explore_module, title="Explore a module", annotations=reads)
+    mcp.add_tool(list_known_modules, title="List known modules", annotations=reads)
 
 
 def _explore(module_name: str, action: str, models: str) -> ToolOutcome:

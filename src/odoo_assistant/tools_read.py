@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 from odoo_assistant import paths, server
 from odoo_assistant.server_errors import (
@@ -336,14 +337,15 @@ def required_fields(model: str) -> str:
 def register(mcp: MCPServer) -> None:
     """Attach the read tools to `mcp`. Called by server.py, never at import."""
     _redirect_profiles()
-    for tool in (
-        search_read,
-        read_record,
-        count_records,
-        instance_overview,
-        required_fields,
-    ):
-        mcp.tool()(tool)
+    reads = ToolAnnotations(
+        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+        open_world_hint=True)
+    mcp.add_tool(search_read, title="Search records", annotations=reads)
+    mcp.add_tool(read_record, title="Read a record", annotations=reads)
+    mcp.add_tool(count_records, title="Count records", annotations=reads)
+    mcp.add_tool(instance_overview, title="Instance overview", annotations=reads)
+    mcp.add_tool(
+        required_fields, title="Required fields for create", annotations=reads)
 
 
 _redirect_profiles()

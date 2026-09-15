@@ -1,6 +1,5 @@
 import os
 import re
-import pytest
 
 DOC_PATH = os.path.join(os.path.dirname(__file__), "..", "docs", "listing", "OTHER-DIRECTORIES.md")
 

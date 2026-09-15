@@ -84,6 +84,18 @@ def test_guides_urls_liveness():
             # 403 / 401 login-gated URLs are accepted for portals (e.g., claude.ai / platform.openai.com)
             if e.code in (403, 401):
                 continue
+            # The OpenAI domain-challenge route 404s BY DESIGN until the
+            # operator pastes the token OpenAI issues at submission time
+            # (ODOO_REMOTE_OPENAI_CHALLENGE in the host's environment);
+            # configured, the same URL answers 200 with that token.
+            if (e.code == 404
+                    and url.rstrip("/").endswith(
+                        "/.well-known/openai-apps-challenge")):
+                pending_deploy.append(
+                    f"{url} -> 404 — EXPECTED-UNTIL-CONFIGURED: "
+                    f"ODOO_REMOTE_OPENAI_CHALLENGE is unset; it gets its"
+                    f" value when OpenAI issues the challenge token")
+                continue
             failed_urls.append(f"{url} -> HTTPError {e.code}")
         except Exception as e:
             # Every way a not-yet-deployed host can fail BEFORE answering HTTP

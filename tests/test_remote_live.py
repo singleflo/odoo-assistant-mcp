@@ -50,6 +50,7 @@ import anyio
 import httpx
 import importlib.metadata
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
@@ -242,8 +243,7 @@ def test_write_record_is_refused_under_the_read_policy(token):
     assert "read-only" in _text_of(result)
 
 
-def test_reconsent_promotes_the_shared_tenant_policy(
-        token, standard_token):
+def test_reconsent_promotes_the_shared_tenant_policy():
     if POLICY != "read":
         pytest.skip("tenant A must hold the read policy; run with"
                     " ODOO_REMOTE_TEST_POLICY=read (the default)")
@@ -252,15 +252,29 @@ def test_reconsent_promotes_the_shared_tenant_policy(
     # the write before any field could change.
     # Design fact: policy is per-tenant keyed by (url, API key); re-consenting
     # is how a user upgrades, and earlier tokens follow the current policy.
+    # Measured on the first real run: minting the standard token as a FIXTURE
+    # promoted the shared tenant before this body ran, so the refusal below
+    # was being asserted against a tenant that was already standard — the
+    # server was right and the test self-defeating. Both consents now happen
+    # inside the body, in the order a user would live them.
     async def action(client: Client):
         return await client.call_tool("write_record", {
             "model": "res.partner", "record_id": 0,
             "values": {"name": "must never land"}})
 
-    past_gate = _over_mcp(token, action)
-    assert past_gate.is_error
-    text = _text_of(past_gate)
-    assert "read-only" not in text
+    read_token = _mint("read")
+    refused = _over_mcp(read_token, action)
+    assert refused.is_error
+    assert "read-only" in _text_of(refused)
+
+    _mint("standard")  # the re-consent that promotes the shared tenant
+    # The EARLIER token follows the promotion. Whether Odoo then reports
+    # "not changed" or a missing record for id 0 is Odoo's business; what this
+    # pins is that the gate no longer refuses it as read-only.
+    promoted = _over_mcp(read_token, action)
+    assert "read-only" not in _text_of(promoted), (
+        f"the re-consent did not promote the earlier token:\n"
+        f"{_text_of(promoted)}")
 
 
 def test_second_key_mints_an_isolated_read_tenant(
@@ -289,9 +303,13 @@ def test_generate_pdf_on_a_record_without_one_or_a_real_download(
         result = _over_mcp(standard_token, fetch)
         assert not result.is_error
         text = _text_of(result)
-        at = text.find("/files/")
-        assert at != -1, f"no /files/ URL in the result:\n{text}"
-        url = text[at:].split()[0].rstrip(").,]'\"")
+        # The contract is an ABSOLUTE link: a chat client must be able to
+        # click it knowing nothing but this text. The first real run caught
+        # this test chopping the scheme and host off by searching for
+        # "/files/" — which handed httpx a bare path no client can request.
+        match = re.search(r"https?://\S+/files/\S+", text)
+        assert match, f"no absolute /files/ URL in the result:\n{text}"
+        url = match.group(0).rstrip(").,]'\"")
         head = httpx.head(url, timeout=_TIMEOUT)
         assert head.status_code == 200
         assert head.headers["content-type"] == "application/pdf"

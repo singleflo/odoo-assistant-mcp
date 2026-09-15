@@ -1,0 +1,57 @@
+=== RED RUN (fix-d, round 2) — 2026-09-15T19:55:32Z ===
+$ ODOO_MCP_DATA_DIR=<scratch> uv run pytest tests/test_paths.py tests/test_remote_files.py tests/test_remote_app.py tests/test_remote_consent.py -q
+
+store = <odoo_assistant.remote.store.Store object at 0x10b8e6a90>
+provider = <tests.test_remote_consent.FakeProvider object at 0x10b8e6cd0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b8e4150>
+
+    def test_a_hanging_verification_is_terminated_and_the_request_answers(
+            store, provider, monkeypatch):
+        """Given a verifier child that never answers, When the deadline passes,
+        Then the REQUEST answers the timeout page promptly AND no process
+        survives the helper — the cancelled-thread version left a worker blocked
+        on the socket forever."""
+        monkeypatch.setattr(consent, "_VERIFY_TIMEOUT", 0.2)
+>       monkeypatch.setattr(consent, "_verify_entry", _hang_entry)
+E       AttributeError: <module 'odoo_assistant.remote.consent' from '/Users/crotti/VSC/TOOLS/odoo-assistant-mcp/src/odoo_assistant/remote/consent.py'> has no attribute '_verify_entry'
+
+tests/test_remote_consent.py:352: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_paths.py::test_a_module_override_points_every_resolution_at_one_root
+FAILED tests/test_remote_files.py::test_purge_tenant_artifacts_removes_both_the_files_and_references_trees
+FAILED tests/test_remote_files.py::test_purge_tenant_artifacts_refuses_an_escaping_subject
+FAILED tests/test_remote_app.py::test_one_data_root_build_app_publish_and_tenant_tmp_share_it
+FAILED tests/test_remote_app.py::test_revoking_the_last_token_purges_files_and_references
+FAILED tests/test_remote_app.py::test_the_retention_sweep_runs_periodically_not_only_at_startup
+FAILED tests/test_remote_app.py::test_startup_sweep_purges_an_idle_tenants_artifacts
+FAILED tests/test_remote_consent.py::test_a_hanging_verification_is_terminated_and_the_request_answers
+ERROR tests/test_remote_consent.py::test_happy_path_stores_an_encrypted_tenant_and_redirects_with_a_code
+ERROR tests/test_remote_consent.py::test_a_second_consent_with_the_same_url_and_key_reuses_the_subject
+ERROR tests/test_remote_consent.py::test_a_wrong_key_re_renders_the_error_and_stores_nothing
+ERROR tests/test_remote_consent.py::test_the_odoo_error_text_is_rendered_escaped
+ERROR tests/test_remote_consent.py::test_a_failed_attempt_never_echoes_the_api_key
+ERROR tests/test_remote_consent.py::test_missing_fields_re_render_the_form - ...
+ERROR tests/test_remote_consent.py::test_plain_http_to_a_remote_host_is_rejected
+ERROR tests/test_remote_consent.py::test_private_addresses_are_refused_before_any_connection[169.254.169.254]
+ERROR tests/test_remote_consent.py::test_private_addresses_are_refused_before_any_connection[10.0.0.5]
+ERROR tests/test_remote_consent.py::test_private_addresses_are_refused_before_any_connection[100.64.0.1]
+ERROR tests/test_remote_consent.py::test_allow_private_targets_admits_the_private_address
+ERROR tests/test_remote_consent.py::test_localhost_http_is_accepted_for_a_server_on_this_machine
+ERROR tests/test_remote_consent.py::test_an_oversized_body_answers_413 - Attr...
+ERROR tests/test_remote_consent.py::test_an_expired_or_unknown_req_answers_400
+8 failed, 32 passed, 14 errors in 0.60s
+
+=== GREEN RUN — 2026-09-15T20:22:34Z ===
+$ uv run pytest tests/test_paths.py tests/test_remote_files.py tests/test_remote_app.py tests/test_remote_consent.py -q
+......................................................                   [100%]
+54 passed in 1.36s
+
+$ uv run pytest -q   (twice, isolation check)
+353 passed, 32 deselected in 4.26s
+353 passed, 32 deselected in 4.20s
+
+red/green pairs:
+  F2#1 terminable verification: 1 fail (missing _verify_entry) -> consent file 15/15 green
+  F2#2 purge_tenant_artifacts:  2 fails (missing fn)           -> files file green incl. revoke + idle tests
+  F2#3 periodic sweep:          2 fails (missing SWEEP_SECONDS/hang) -> app file green, suite x2 stable
+  F2#4 one data root:           1 fail + paths override fail   -> both green

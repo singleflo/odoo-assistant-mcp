@@ -42,6 +42,7 @@ any `ODOO_BASE_URL` / `ODOO_API_KEY` / `ODOO_DB` / `ODOO_USER` is set.
 # hosted-server assembly (routes, settings, middleware, lifespan) and forbids
 # new siblings under remote/; the constraint documentation above is mandated.
 """
+import anyio
 import html
 import logging
 import os
@@ -103,6 +104,8 @@ _HEADING = re.compile(r"(#{1,4})\s+(.*)")
 _BULLET = re.compile(r"[-*]\s+(.*)")
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+logger = logging.getLogger(__name__)
 
 
 def _refuse_shared_odoo_env() -> None:
@@ -270,12 +273,45 @@ def _landing_page(settings: RemoteSettings) -> Response:
         "</body></html>")
 
 
+# How often the retention promises are re-swept, in seconds — cited by
+# REMOTE.md-style deployment docs.
+SWEEP_SECONDS = 3600
+
+
+def _sweep_once(store: Store) -> None:
+    """The retention sweeps in one place: expired OAuth rows, tenants idle
+    past the window (their disk artifacts go with them), expired file links."""
+    store.purge_expired()
+    for subject in store.purge_idle_tenants():
+        files.purge_tenant_artifacts(subject)
+    files.purge_expired_files()
+
+
+async def _sweep_forever(store: Store) -> None:
+    """_sweep_once every SWEEP_SECONDS until the lifespan cancels the task.
+
+    One failing sweep must never take the server down: log it and wait for
+    the next tick.
+    """
+    while True:
+        await anyio.sleep(SWEEP_SECONDS)
+        try:
+            _sweep_once(store)
+        except Exception:
+            logger.exception(
+                "periodic retention sweep failed; retrying in %s s",
+                SWEEP_SECONDS)
+
+
 def build_app(settings: RemoteSettings) -> Starlette:
     """The complete hosted server: MCP at /mcp plus the consent, files and
     pages routes, with every request bound to its tenant."""
     _refuse_shared_odoo_env()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
-    files.configure_data_dir(settings.data_dir)
+    # One data root everywhere: pin the process-wide override once at
+    # startup so files, references, profiles and per-tenant scratch all
+    # resolve settings.data_dir, not a captured copy that can go stale.
+    paths.set_data_dir_override(settings.data_dir)
     store = Store(settings.data_dir / "remote.db", settings.secret_key)
     store.init()
     provider = OdooAssistantAuthProvider(store, settings.public_url)
@@ -354,11 +390,17 @@ def build_app(settings: RemoteSettings) -> Starlette:
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        store.purge_expired()
-        store.purge_idle_tenants()
-        files.purge_expired_files()
+        _sweep_once(store)
         async with session_manager_lifespan(app):
-            yield
+            # anyio waits for children on a normal exit instead of
+            # cancelling them, so the sweep must be cancelled explicitly or
+            # the shutdown would hang on the sleeping task.
+            async with anyio.create_task_group() as sweeps:
+                sweeps.start_soon(_sweep_forever, store)
+                try:
+                    yield
+                finally:
+                    sweeps.cancel_scope.cancel()
 
     app.router.lifespan_context = lifespan
     return app

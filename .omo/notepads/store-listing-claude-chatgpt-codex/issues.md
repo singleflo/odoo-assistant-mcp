@@ -83,5 +83,61 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
   dead port (3 FAIL, exit 1).
 - Suite: 346 passed / 31 deselected; `pytest -m remote_live
   tests/test_remote_live.py` = 11 skipped without env (CI never runs it).
-  test_remote_live.py sits at 234 pure LOC — warning band; next edit there
-  should split the plain-HTTP probes from the tokened flow.
+   test_remote_live.py sits at 234 pure LOC — warning band; next edit there
+   should split the plain-HTTP probes from the tokened flow.
+- Promotion follow-up: same (url, API key) re-consent upgrades the shared tenant; earlier tokens follow the current policy, while API_KEY_2 remains isolated.
+
+## Fix round D2 (final-wave F2 re-review, all four findings)
+
+- consent.py (F2#1, DoS): `_verify_credentials` no longer runs on a thread
+  anyio cannot cancel (the scripts have no socket timeout, and they are
+  canonical, so they cannot gain one). `_verify_isolated` runs it in a
+  `multiprocessing.get_context("spawn").Process` (daemon), passing only
+  odoo_url/db/api_key plus a `Pipe`; the parent joins `_VERIFY_TIMEOUT`,
+  then `terminate()` -> `kill()` with a 2 s grace (`_reap`). The HTTP
+  request always answers within the timeout; no worker thread hangs and no
+  process survives (`consent._last_verifier` keeps the last child's handle;
+  the rewritten test polls it). Child target `_verify_entry` writes
+  ("ok","") or ("error", repr(exc)); EOF (child died silent) renders the
+  generic refusal. Flow tests pin the PARENT seam `_verify_isolated` now —
+  a spawn child re-imports the module fresh, so patching `connect` (old
+  fixtures in test_remote_consent/test_remote_app) stopped intercepting;
+  both fixtures were rewired and still record the identical
+  {"base","db","user","key"} shape, so no assertion text changed.
+- files.py (F2#2): new `purge_tenant_artifacts(subject)` rmtree's
+  `data_dir()/files/<subject>` AND `data_dir()/references/<subject>` under
+  the OVERRIDDEN root, with publish's exact "/"+".." guard (now shared as
+  `_checked_subject`). Called from auth.py `revoke_token` right after
+  `delete_tenant` and from the sweep for every idle-removed tenant.
+- app.py (F2#3): lifespan now sweeps periodically — `SWEEP_SECONDS = 3600`
+  (module constant next to the lifespan so REMOTE.md-style docs cite it),
+  `_sweep_once(store)` (purge_expired + purge_idle_tenants +
+  purge_tenant_artifacts per removed subject + purge_expired_files) runs at
+  startup AND in `_sweep_forever` via an anyio task group inside the
+  wrapped SDK lifespan; a failing sweep logs and retries next tick instead
+  of killing the server. GOTCHA worth remembering: anyio task groups WAIT
+  for children on normal exit, they do not cancel them — without an
+  explicit `sweeps.cancel_scope.cancel()` in `finally` the shutdown hangs
+  forever (TestClient and uvicorn alike). store.py `purge_idle_tenants`
+  now RETURNS the removed subjects (signature only; no schema change;
+  test_remote_store callers unaffected).
+- paths.py (F2#4): `set_data_dir_override(path|None)` + `data_dir()`
+  consulting it first; `build_app` pins `settings.data_dir` once at
+  startup. `files.configure_data_dir` stays as a thin alias;
+  `files._base_dir` captured global is GONE — every files.py path derives
+  from `paths.data_dir()` at call time, so tools_collab/_tenant_dir and
+  tools_evolution became correct without touching them. Test proves
+  build_app + publish + `_tenant_dir` all land under one custom root.
+- Test isolation: the process-wide override needed autouse resets —
+  test_remote_app sets `paths._data_dir_override = None` via monkeypatch
+  per test, test_remote_files does it in its data_dir fixture; without
+  this the pin from an earlier module leaks into env-based tests later in
+  the alphabetical run.
+- Suite: 353 passed / 32 deselected, stable across two consecutive runs
+  (evidence .omo/evidence/fix-d-retention.txt has the red run: 8 failed +
+  14 fixture errors, all naming the missing seams).
+- DEBT flag: consent.py is now 295 pure LOC (over the 250 ceiling). The
+  natural split when someone picks it up: the verification machinery
+  (`_verify_entry`/`_verify_isolated`/`_reap`/`_Verified`) into
+  remote/verify.py; not done here because the round's scope fixed the file
+  list and remote/ siblings were frozen.

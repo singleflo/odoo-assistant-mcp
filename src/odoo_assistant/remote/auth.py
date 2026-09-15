@@ -31,7 +31,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyUrl
 
-from odoo_assistant.remote import store
+from odoo_assistant.remote import files, store
 from odoo_assistant import tenant
 
 
@@ -183,10 +183,12 @@ class OdooAssistantAuthProvider(
         if row is None:
             return  # unknown or already revoked: RFC 7009 says do nothing
         # Either half kills the whole family, then a disconnect (no family
-        # left) erases the stored Odoo connection with it.
+        # left) erases the stored Odoo connection — and the disk artifacts
+        # the privacy page promises gone — with it.
         self._store.revoke_family(row.family_id)
         if not self._store.tokens_alive(row.subject):
             self._store.delete_tenant(row.subject)
+            files.purge_tenant_artifacts(row.subject)
             tenant.forget(row.subject)
 
     # ------------------------------------------------------------ internals

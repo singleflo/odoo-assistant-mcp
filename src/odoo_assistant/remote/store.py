@@ -461,9 +461,10 @@ class Store:
                 "DELETE FROM refresh_tokens WHERE revoked = 1 OR expires_at <= ?",
                 (now,))
 
-    def purge_idle_tenants(self, days: int = 90) -> None:
+    def purge_idle_tenants(self, days: int = 90) -> list[str]:
         """Forget tenants unused for `days` that hold no live token — the
-        privacy page's 'automatically after 90 days without use'."""
+        privacy page's 'automatically after 90 days without use'. Returns
+        the removed subjects so the caller can purge their disk artifacts."""
         with self._db(immediate=True) as db:
             params = {"cutoff": _iso(_now() - timedelta(days=days)),
                       "now": _iso(_now())}
@@ -486,3 +487,4 @@ class Store:
                 params)
         for subject in subjects:
             tenant_context.forget(subject)
+        return subjects

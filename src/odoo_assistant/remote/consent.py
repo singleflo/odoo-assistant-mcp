@@ -21,24 +21,30 @@ the pending-`req` check, the https rule, the SSRF guard — the host is
 resolved with `socket.getaddrinfo` and refused unless every address is global,
 BEFORE any connection, so a public
 unauthenticated endpoint can never be turned into an internal prober — then
-a real verification against the submitted Odoo, then the tenant row, reused
-by `key_hash` so one Odoo connection stays one subject. The key is never
-logged and never echoed; every interpolated value, the Odoo error text
+a real verification against the submitted Odoo, run in its own spawn
+SUBPROCESS and reaped at the deadline: the verified scripts carry no socket
+timeout and are canonical (never rewritten here), so a host that accepts the
+socket and stalls would otherwise keep a worker thread blocked forever; a
+process can be terminated and killed instead — the HTTP request always
+answers within the timeout, leaving nothing hanging. Then the tenant row,
+reused by `key_hash` so one Odoo connection stays one subject. The key is
+never logged and never echoed; every interpolated value, the Odoo error text
 included, goes through `html.escape` — it is untrusted external text landing
 in a browser page.
 """
 import html
 import ipaddress
 import logging
+import multiprocessing
 import secrets
 import socket
 import sys
 from dataclasses import dataclass, replace
+from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import parse_qs, urlsplit
 
-import anyio
 from anyio.to_thread import run_sync as run_in_thread
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
@@ -56,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_BODY = 64 * 1024
 _VERIFY_TIMEOUT = 20
+_TERMINATE_GRACE = 2.0
 _GONE_MESSAGE = ("This connection request is unknown or has expired."
                  " Start again from your AI assistant.")
 
@@ -139,21 +146,27 @@ async def consent_submit(request: Request) -> Response:
                 deps, replace(shown, error=refusal)))
 
     try:
-        with anyio.fail_after(_VERIFY_TIMEOUT):
-            # The scripts are canonical and cannot gain socket timeouts here.
-            # Cancellation abandons only our wait; the worker may finish later.
-            await run_in_thread(
-                _verify_credentials, odoo_url, db, api_key,
-                abandon_on_cancel=True)
-    except TimeoutError:
-        logger.info("consent: no answer from host %s", host)
-        return HTMLResponse(_form_html(deps, replace(shown, error=(
-            "The Odoo server did not answer within 20 seconds."))))
+        # Bounded by construction: the thread joins the child for at most
+        # _VERIFY_TIMEOUT (+ the reap), so a cancelled request waits out at
+        # most that, and the terminate/kill bookkeeping is never half-done.
+        outcome = await run_in_thread(_verify_isolated, odoo_url, db, api_key)
     except Exception as exc:
         logger.info("consent: verification failed for host %s", host)
         return HTMLResponse(_form_html(deps, replace(
             shown, error=str(exc) or "The Odoo server refused the"
             " connection.")))
+    match outcome.status:
+        case "timeout":
+            logger.info("consent: no answer from host %s", host)
+            return HTMLResponse(_form_html(
+                deps, replace(shown, error=outcome.detail)))
+        case "error":
+            logger.info("consent: verification failed for host %s", host)
+            return HTMLResponse(_form_html(deps, replace(
+                shown, error=outcome.detail or "The Odoo server refused the"
+                " connection.")))
+        case "ok":
+            pass
 
     existing = deps.store.find_tenant_by_key_hash(key_hash(odoo_url, api_key))
     if existing is not None:
@@ -218,6 +231,79 @@ def _verify_credentials(odoo_url: str, db: str, api_key: str) -> None:
     key alone), then read the key owner's login."""
     odoo = connect(base=odoo_url, db=db, user="", key=api_key)
     odoo.call("res.users", "read", [[odoo.uid], ["login"]], {})
+
+
+@dataclass(frozen=True, slots=True)
+class _Verified:
+    """What one isolated verification concluded. The process travels along
+    so a test (or a supervisor) can confirm nothing survives the call."""
+
+    status: Literal["ok", "error", "timeout"]
+    detail: str
+    process: multiprocessing.process.BaseProcess | None
+
+
+def _verify_entry(odoo_url: str, db: str, api_key: str,
+                  send_conn: Connection) -> None:
+    """Child side: one verification, then the outcome on the pipe — "ok" or
+    the exception repr. `connect` resolves through this module, which the
+    spawn interpreter imports fresh; nothing unpicklable crosses, only the
+    three strings and the pipe."""
+    try:
+        _verify_credentials(odoo_url, db, api_key)
+        send_conn.send(("ok", ""))
+    except Exception as exc:
+        send_conn.send(("error", repr(exc)))
+    finally:
+        send_conn.close()
+
+
+_last_verifier: multiprocessing.process.BaseProcess | None = None
+
+
+def _verify_isolated(odoo_url: str, db: str, api_key: str) -> _Verified:
+    """One credential check in its own short-lived spawn process.
+
+    The verified scripts (`odoo_scripts/`, canonical and never rewritten
+    here) carry no socket timeout, so a host that accepts the connection and
+    stalls would block a worker thread forever. A subprocess instead is
+    joined with a hard deadline and then reaped — the caller always gets an
+    answer within `_VERIFY_TIMEOUT`, and no process survives this call.
+    `_last_verifier` holds the most recent child's handle.
+    """
+    global _last_verifier
+    ctx = multiprocessing.get_context("spawn")
+    recv_conn, send_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_verify_entry,
+                       args=(odoo_url, db, api_key, send_conn), daemon=True)
+    _last_verifier = proc
+    proc.start()
+    send_conn.close()  # the parent keeps no write end: EOF means the child died
+    try:
+        proc.join(_VERIFY_TIMEOUT)
+        if proc.is_alive():
+            _reap(proc)
+            return _Verified(
+                "timeout",
+                f"The Odoo server did not answer within"
+                f" {_VERIFY_TIMEOUT:g} seconds.", proc)
+        try:
+            status, detail = recv_conn.recv()
+        except EOFError:  # the child died without answering
+            return _Verified("error", "", proc)
+        return _Verified(status, detail, proc)
+    finally:
+        recv_conn.close()
+
+
+def _reap(proc: multiprocessing.process.BaseProcess) -> None:
+    """Terminate, then kill: a hung socket read must never outlive the
+    request that started it."""
+    proc.terminate()
+    proc.join(_TERMINATE_GRACE)
+    if proc.is_alive():
+        proc.kill()
+        proc.join(_TERMINATE_GRACE)
 
 
 def _plain_page(message: str, status_code: int) -> HTMLResponse:

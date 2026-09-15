@@ -5,8 +5,10 @@ context manager — the session manager only starts in lifespan (ASGITransport
 never runs it and /mcp dies with RuntimeError there). The two external seams
 are patched exactly where the server resolves them:
 
-* `odoo_assistant.remote.consent.connect` + its `socket.getaddrinfo` — the
-  consent page's credential verification and SSRF guard;
+* `odoo_assistant.remote.consent._verify_isolated` + the consent module's
+  `socket.getaddrinfo` — the consent page's credential verification and
+  SSRF guard (the verifier itself runs in a spawn child, so the tests pin
+  the parent-side seam);
 * `odoo_assistant.tenant.connect` — the per-tenant Odoo client minted on the
   first tool call (patch THIS, never server.connect).
 
@@ -21,11 +23,15 @@ import hashlib
 import json
 import secrets
 import socket
+import sqlite3
 import sys
+import time
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import anyio
 import pytest
 from starlette.testclient import TestClient
 
@@ -35,13 +41,17 @@ pytest.importorskip(
 
 # noqa: E402 - the gate above must run first, cryptography is remote-only
 from cryptography.fernet import Fernet  # noqa: E402
+from mcp.server.auth.provider import AccessToken  # noqa: E402
 
 import odoo_assistant.tenant as tenant_module  # noqa: E402
+from odoo_assistant import paths  # noqa: E402
 from odoo_assistant.remote import consent, files  # noqa: E402
 from odoo_assistant.remote import app as remote_app  # noqa: E402
 from odoo_assistant.remote.app import RemoteSettings, build_app  # noqa: E402
+from odoo_assistant.remote.auth import OdooAssistantAuthProvider  # noqa: E402
 from odoo_assistant.remote.store import Store, key_hash  # noqa: E402
 from odoo_assistant.server import _VERSION  # noqa: E402
+from odoo_assistant.tools_collab import _tenant_dir  # noqa: E402
 
 PUBLIC_URL = "http://localhost:8000"
 MCP_URL = f"{PUBLIC_URL}/mcp"
@@ -72,30 +82,32 @@ def _fresh_tenant_cache(monkeypatch):
     monkeypatch.setattr(tenant_module, "_clients", {})
 
 
-class ConsentFakeOdoo:
-    """Just enough Odoo for consent's verification call."""
-
-    uid = 2
-
-    def call(self, model, method, args=None, kwargs=None):
-        return [{"login": "jane@example.com"}]
+@pytest.fixture(autouse=True)
+def _own_data_root(monkeypatch):
+    """build_app pins the process-wide data root; a stale pin from another
+    test must never leak into the next one."""
+    monkeypatch.setattr(paths, "_data_dir_override", None, raising=False)
 
 
 class ConsentFakeConnect:
-    """consent.connect: records kwargs, always verifies fine."""
+    """consent._verify_isolated: records the credentials consent hands over
+    and always verifies fine. The real verifier runs in a spawn child that
+    re-imports the module fresh, so the parent-side seam is what a test can
+    pin; the SSRF guard still runs in-process and needs the fake resolver."""
 
     def __init__(self):
         self.calls = []
 
-    def __call__(self, **kw):
-        self.calls.append(kw)
-        return ConsentFakeOdoo()
+    def __call__(self, odoo_url, db, api_key):
+        self.calls.append({
+            "base": odoo_url, "db": db, "user": "", "key": api_key})
+        return consent._Verified("ok", "", None)
 
 
 @pytest.fixture
 def consent_connect(monkeypatch):
     recorder = ConsentFakeConnect()
-    monkeypatch.setattr(consent, "connect", recorder)
+    monkeypatch.setattr(consent, "_verify_isolated", recorder)
 
     def fake_getaddrinfo(host, port=None, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
@@ -223,6 +235,100 @@ def test_build_app_uses_a_stateless_session_manager(tmp_path):
     app = build_app(make_settings(tmp_path))
 
     assert app.state.session_manager.stateless is True
+
+
+def test_one_data_root_build_app_publish_and_tenant_tmp_share_it(tmp_path):
+    """Given build_app pinned a custom data root, When a file is published
+    and a tool resolves its per-tenant scratch directory, Then both sit
+    under the SAME pinned root — files.configure_data_dir's captured global
+    used to answer a different, stale directory."""
+    root = tmp_path / "chosen-root"
+    build_app(make_settings(root))
+    payload = root / "seed.txt"
+    payload.write_bytes(b"seed")
+
+    link = files.publish(payload, "t_oneroot", public_url=PUBLIC_URL)
+
+    assert (root / "files" / "t_oneroot").is_dir()
+    work = _tenant_dir("t_oneroot")
+    assert work.parent == root / "files" / "t_oneroot" / "tmp"
+    token = link["url"].rsplit("/", 1)[1]
+    assert (root / "files" / "t_oneroot" / token / "seed.txt").exists()
+
+
+def test_revoking_the_last_token_purges_files_and_references(
+        tmp_path, consent_connect):
+    """Given a tenant with a published file and generated references, When
+    its last token is revoked, Then the tenant row AND both disk trees are
+    gone — retention must match what the privacy page promises."""
+    settings = make_settings(tmp_path)
+    with TestClient(build_app(settings), base_url=PUBLIC_URL,
+                    follow_redirects=False) as client:
+        token = _full_token(client, odoo_url=ODOO_A)
+        store = Store(settings.data_dir / "remote.db", settings.secret_key)
+        subject = store.find_tenant_by_key_hash(
+            key_hash(ODOO_A, API_KEY)).subject
+        file_dir = tmp_path / "files" / subject / "tok"
+        file_dir.mkdir(parents=True)
+        (file_dir / "invoice.pdf").write_bytes(b"%PDF fake")
+        ref_dir = tmp_path / "references" / subject
+        ref_dir.mkdir(parents=True)
+        (ref_dir / "res.sale.order.md").write_text("generated")
+        provider = OdooAssistantAuthProvider(store, PUBLIC_URL)
+
+        anyio.run(provider.revoke_token, AccessToken(
+            token=token, client_id="test", scopes=[], expires_at=0,
+            subject=subject))
+
+    assert store.get_tenant(subject) is None
+    assert not (tmp_path / "files" / subject).exists()
+    assert not (tmp_path / "references" / subject).exists()
+
+
+def test_the_retention_sweep_runs_periodically_not_only_at_startup(
+        tmp_path, monkeypatch):
+    """Given the lifespan running with a shortened interval, When a short
+    window passes, Then the sweep fired repeatedly — the old code purged
+    exactly once, at startup, and never again."""
+    calls = []
+    monkeypatch.setattr(
+        remote_app, "_sweep_once", lambda store: calls.append(1))
+    monkeypatch.setattr(remote_app, "SWEEP_SECONDS", 0.1)
+
+    with make_client(tmp_path):
+        after_startup = len(calls)
+        time.sleep(0.45)
+
+    assert after_startup == 1
+    assert len(calls) - after_startup >= 2
+
+
+def test_startup_sweep_purges_an_idle_tenants_artifacts(tmp_path):
+    """Given a tenant idle past the window with files and references on
+    disk, When the lifespan runs its startup sweep, Then the tenant row and
+    BOTH artifact trees are gone."""
+    settings = make_settings(tmp_path)
+    seed = Store(settings.data_dir / "remote.db", settings.secret_key)
+    seed.init()
+    seed.put_tenant(
+        tenant_module.Tenant("t_idle", ODOO_A, API_KEY, DB, "read"))
+    with sqlite3.connect(settings.data_dir / "remote.db") as db:
+        db.execute(
+            "UPDATE tenants SET last_used_at = ? WHERE subject = 't_idle'",
+            ((datetime.now(timezone.utc) - timedelta(days=91)).isoformat(),))
+    file_dir = tmp_path / "files" / "t_idle" / "tok"
+    file_dir.mkdir(parents=True)
+    (file_dir / "old.pdf").write_bytes(b"%PDF fake")
+    ref_dir = tmp_path / "references" / "t_idle"
+    ref_dir.mkdir(parents=True)
+    (ref_dir / "old.md").write_text("generated")
+
+    with make_client(tmp_path):  # the lifespan runs the startup sweep
+        pass
+
+    assert seed.get_tenant("t_idle") is None
+    assert not (tmp_path / "files" / "t_idle").exists()
+    assert not (tmp_path / "references" / "t_idle").exists()
 
 
 def test_build_app_configures_files_to_use_its_data_directory(tmp_path):

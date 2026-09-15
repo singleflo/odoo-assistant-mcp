@@ -7,16 +7,18 @@ even escaped), the Odoo error text lands in the page html-escaped (it is
 untrusted external text in a browser), an oversize body dies at 413 before
 any parsing, and a re-consent reuses the tenant instead of minting subjects.
 
-`consent.connect` and `consent.socket.getaddrinfo` are the two seams: both
-are patched through the consent module's own namespace, exactly the way todo
-8's real server would carry them.
+`consent._verify_isolated` and `consent.socket.getaddrinfo` are the two
+seams: both are patched through the consent module's own namespace. The
+verifier runs in a spawn child that re-imports the module fresh, so the
+flow tests pin the PARENT-side seam — the credentials consent hands it —
+not `connect` itself; the child's own behaviour is exercised by the
+termination test, which swaps the child entry for a hanging one.
 
 Needs the `remote` extra (`uv sync --extra remote`): cryptography lives
 there, not in the base environment a stdio install resolves.
 """
 import socket
 import sqlite3
-import threading
 import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -65,28 +67,21 @@ class FakeProvider:
         return f"{REDIRECT_URI}?code=c-abc123&state=st-1"
 
 
-class FakeOdoo:
-    """Just enough Odoo for consent's verification call."""
-
-    uid = 2
-
-    def call(self, model, method, args=None, kwargs=None):
-        assert (model, method) == ("res.users", "read")
-        return [{"login": "jane@example.com"}]
-
-
 class FakeConnect:
-    """consent.connect: records kwargs, raises when programmed to."""
+    """consent._verify_isolated: records the credentials consent hands over
+    (the same shape connect would receive) and answers from a programmed
+    error."""
 
     def __init__(self):
         self.error = None
         self.calls = []
 
-    def __call__(self, **kw):
-        self.calls.append(kw)
+    def __call__(self, odoo_url, db, api_key):
+        self.calls.append({
+            "base": odoo_url, "db": db, "user": "", "key": api_key})
         if self.error is not None:
-            raise self.error
-        return FakeOdoo()
+            return consent._Verified("error", repr(self.error), None)
+        return consent._Verified("ok", "", None)
 
 
 @pytest.fixture
@@ -105,7 +100,7 @@ def store(db_path):
 @pytest.fixture
 def fake_connect(monkeypatch):
     recorder = FakeConnect()
-    monkeypatch.setattr("odoo_assistant.remote.consent.connect", recorder)
+    monkeypatch.setattr(consent, "_verify_isolated", recorder)
     return recorder
 
 
@@ -341,28 +336,33 @@ def test_localhost_http_is_accepted_for_a_server_on_this_machine(
     assert fake_connect.calls[0]["base"] == "http://localhost:8069"
 
 
-def test_verification_timeout_returns_while_worker_is_still_blocked(
+def _hang_entry(odoo_url: str, db: str, api_key: str, send_conn) -> None:
+    """Spawn-child target for the termination test: a verifier that never
+    answers — the shape of an Odoo host that accepts the socket and stalls."""
+    time.sleep(30)
+
+
+def test_a_hanging_verification_is_terminated_and_the_request_answers(
         store, provider, monkeypatch):
-    release = threading.Event()
-    started = threading.Event()
-
-    def blocked_verify(*args):
-        started.set()
-        release.wait(timeout=1)
-
-    monkeypatch.setattr(consent, "_VERIFY_TIMEOUT", 0.01)
-    monkeypatch.setattr(consent, "_verify_credentials", blocked_verify)
+    """Given a verifier child that never answers, When the deadline passes,
+    Then the REQUEST answers the timeout page promptly AND no process
+    survives the helper — the cancelled-thread version left a worker blocked
+    on the socket forever."""
+    monkeypatch.setattr(consent, "_VERIFY_TIMEOUT", 0.2)
+    monkeypatch.setattr(consent, "_verify_entry", _hang_entry)
     c = client(store, provider, allow_private_targets=True)
 
     before = time.monotonic()
     answer = c.post("/consent", data=_form())
     elapsed = time.monotonic() - before
-    release.set()
 
-    assert started.is_set()
     assert answer.status_code == 200
     assert "did not answer" in answer.text
-    assert elapsed < 0.2
+    assert elapsed < 8  # the child hangs for 30 s; answering proves the reap
+    verifier = consent._last_verifier
+    assert verifier is not None
+    assert not verifier.is_alive()
+    assert verifier.exitcode is not None
 
 
 # --------------------------------------------------------------- body & req

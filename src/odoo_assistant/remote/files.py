@@ -13,7 +13,9 @@ The token IS the credential: custom routes are unauthenticated by SDK design
 invoice — and tokens are `secrets.token_urlsafe(24)` (128 bits of entropy,
 unguessable, short-lived). Expired access answers 404 AND deletes the file;
 `purge_expired_files()` does the same sweep for tokens nobody ever came back
-for (called at startup and every 50th request).
+for (called at startup, every 50th request, and in the hourly retention
+sweep); `purge_tenant_artifacts()` erases both of a tenant's trees when the
+tenant itself dies.
 
 This module owns its own table `files` in the SAME database file the consent
 store uses (`data_dir()/remote.db`), opened per call, WAL, CREATE IF NOT
@@ -33,24 +35,24 @@ from urllib.parse import quote
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 
-from odoo_assistant.paths import data_dir
+from odoo_assistant.paths import data_dir, set_data_dir_override
 
 TTL_MINUTES = 15
 _NOT_FOUND = {"error": "not found or expired"}
 _hits = itertools.count(1)
-_base_dir = data_dir()
 
 
 def configure_data_dir(path: Path) -> None:
-    """Set the hosted process' file and metadata directory."""
-    global _base_dir
-    _base_dir = path
+    """Set the hosted process' file and metadata directory — a thin alias
+    for the paths-level override, which `build_app` sets once at startup."""
+    set_data_dir_override(path)
 
 
 def _db() -> sqlite3.Connection:
     """One fresh connection per call, table ensured; close the returned one."""
-    _base_dir.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(_base_dir / "remote.db")
+    base = data_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(base / "remote.db")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS files ("
@@ -68,22 +70,27 @@ def _remove(token: str, stored_path: str) -> None:
         conn.commit()
 
 
+def _checked_subject(subject: str) -> str:
+    """The subject becomes a directory name under two data-root trees, so a
+    value carrying "/" or ".." is refused before it can escape either — the
+    seam is public to future callers, and the server-generated subjects
+    ("t_"+token_urlsafe(16)) are fine but are not trusted for that."""
+    if not subject or "/" in subject or ".." in subject:
+        raise ValueError(
+            f"subject must be a plain directory name, got {subject!r}")
+    return subject
+
+
 def publish(path: Path, subject: str, *, public_url: str,
             ttl_minutes: int = TTL_MINUTES) -> dict:
     """Move a produced file into the tenant's files area, answer its link.
 
     The file is MOVED, not copied: the tool's work directory holds nothing
-    worth keeping once the link exists. `subject` becomes a directory name,
-    so a value carrying "/" or ".." is refused before it can escape
-    `data_dir()/files/` — the seam is public to future callers, and the
-    server-generated subjects ("t_"+token_urlsafe(16)) are fine but are not
-    trusted for that.
+    worth keeping once the link exists.
     """
-    if not subject or "/" in subject or ".." in subject:
-        raise ValueError(
-            f"subject must be a plain directory name, got {subject!r}")
+    _checked_subject(subject)
     token = secrets.token_urlsafe(24)
-    dest_dir = _base_dir / "files" / subject / token
+    dest_dir = data_dir() / "files" / subject / token
     dest_dir.mkdir(parents=True)
     dest = dest_dir / path.name
     shutil.move(str(path), dest)
@@ -136,6 +143,16 @@ async def serve_file(request: Request) -> Response:
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+def purge_tenant_artifacts(subject: str) -> None:
+    """Erase a dead tenant's disk footprint: its published files tree AND its
+    generated references tree, both under the one data root — what the
+    privacy page promises when a connection is removed. Called wherever the
+    tenant dies: revocation and the idle sweep."""
+    _checked_subject(subject)
+    for name in ("files", "references"):
+        shutil.rmtree(data_dir() / name / subject, ignore_errors=True)
 
 
 def purge_expired_files() -> int:

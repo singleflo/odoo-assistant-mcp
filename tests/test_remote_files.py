@@ -39,6 +39,7 @@ SUBJECT = "t_test_subject"
 def data_dir(monkeypatch, tmp_path):
     """Given: the server's data directory is this test's own tmp_path."""
     monkeypatch.setenv("ODOO_MCP_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(paths, "_data_dir_override", None, raising=False)
     files.configure_data_dir(tmp_path)
     return tmp_path
 
@@ -134,6 +135,37 @@ def test_publish_refuses_a_subject_that_could_escape_the_files_root(data_dir):
     for bad in ("../escape", "a/b", "..", ""):
         with pytest.raises(ValueError):
             publish(source, bad, public_url=PUBLIC_URL)
+
+
+def test_purge_tenant_artifacts_removes_both_the_files_and_references_trees(
+        data_dir):
+    """Given a dead tenant with a published file and a generated reference,
+    When its artifacts are purged, Then both trees are gone and no other
+    tenant's artifacts are touched."""
+    other = data_dir / "files" / "t_other" / "tok"
+    other.mkdir(parents=True)
+    (other / "keep.pdf").write_bytes(PDF_BYTES)
+    mine_files = data_dir / "files" / SUBJECT / "tok"
+    mine_files.mkdir(parents=True)
+    (mine_files / "gone.pdf").write_bytes(PDF_BYTES)
+    mine_refs = data_dir / "references" / SUBJECT
+    mine_refs.mkdir(parents=True)
+    (mine_refs / "gone.md").write_text("generated")
+
+    files.purge_tenant_artifacts(SUBJECT)
+
+    assert not (data_dir / "files" / SUBJECT).exists()
+    assert not (data_dir / "references" / SUBJECT).exists()
+    assert (other / "keep.pdf").exists()
+
+
+def test_purge_tenant_artifacts_refuses_an_escaping_subject(data_dir):
+    """Given a subject carrying a separator or dot segments, When purged,
+    Then ValueError — the same guard as publish, because the subject becomes
+    a directory name under two roots."""
+    for bad in ("../escape", "a/b", "..", ""):
+        with pytest.raises(ValueError):
+            files.purge_tenant_artifacts(bad)
 
 
 def test_purge_removes_only_the_expired_rows_and_directories(data_dir):

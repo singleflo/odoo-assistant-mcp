@@ -42,6 +42,9 @@ def _from_env(name: str) -> Path | None:
 def data_dir() -> Path:
     """The directory this server may write into. Never created here: importing
     the server must not touch the user's disk."""
+    if _data_dir_override is not None:
+        return _data_dir_override
+
     override = _from_env("ODOO_MCP_DATA_DIR")
     if override:
         return override
@@ -55,3 +58,18 @@ def data_dir() -> Path:
 
     base = _from_env("XDG_DATA_HOME") or Path.home() / ".local" / "share"
     return base / APP_NAME
+
+
+_data_dir_override: Path | None = None
+
+
+def set_data_dir_override(path: Path | None) -> None:
+    """Pin the data root for the whole process; `None` clears the pin.
+
+    `build_app` does this once at startup with the settings it parsed, so
+    every writer — files, references, profiles, per-tenant scratch — resolves
+    the SAME directory instead of a captured copy that can go stale. A plain
+    assignment is enough: it is set once, before the server answers.
+    """
+    global _data_dir_override
+    _data_dir_override = path

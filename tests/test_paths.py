@@ -50,6 +50,19 @@ def test_linux_honours_xdg_data_home(monkeypatch):
     assert paths.data_dir().as_posix() == "/srv/data/odoo-assistant"
 
 
+def test_a_module_override_points_every_resolution_at_one_root(
+        monkeypatch, tmp_path):
+    """Given build_app pinned the hosted root once at startup, When anything
+    resolves the data directory, Then the pinned root wins even where the
+    platform default would answer differently — one data root everywhere."""
+    monkeypatch.setattr(paths, "_data_dir_override", None, raising=False)
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+
+    paths.set_data_dir_override(tmp_path)
+
+    assert paths.data_dir() == tmp_path
+
+
 def test_an_explicit_setting_wins_on_every_platform(monkeypatch):
     """Given the operator named a directory, When resolved on any platform,
     Then that directory is used — the configuration the spec points to."""

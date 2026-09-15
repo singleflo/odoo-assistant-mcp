@@ -525,6 +525,31 @@ def test_settings_from_env_parses_the_documented_variables(tmp_path,
         RemoteSettings.from_env()
 
 
+def test_a_blank_optional_variable_means_unset(tmp_path, monkeypatch):
+    """Given the optional variables arrive EMPTY rather than absent, When the
+    settings are read, Then the defaults apply.
+
+    Measured on the real deployment: `docker-compose.yaml` spells every
+    optional variable `${VAR:-}`, so an operator who leaves the field blank in
+    Coolify hands the container a variable that EXISTS and is empty. A
+    `get(name, default)` would hand that emptiness straight to the legal pages
+    both directories read, and answer the OpenAI challenge with an empty 200
+    where a 404 belongs.
+    """
+    monkeypatch.setenv("ODOO_MCP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ODOO_REMOTE_PUBLIC_URL", "https://mcp.example.com")
+    monkeypatch.setenv("ODOO_REMOTE_SECRET_KEY", Fernet.generate_key().decode())
+    for blank in ("ODOO_REMOTE_OPENAI_CHALLENGE", "ODOO_REMOTE_PUBLISHER",
+                  "ODOO_REMOTE_SUPPORT_EMAIL"):
+        monkeypatch.setenv(blank, "")
+
+    settings = RemoteSettings.from_env()
+
+    assert settings.openai_challenge is None  # None, so the route still 404s
+    assert settings.publisher == "the odoo-assistant maintainers"
+    assert settings.support_email.endswith("/issues")
+
+
 # ------------------------------------------------- startup purges (lifespan)
 def test_startup_purges_expired_files_but_keeps_live_ones(tmp_path,
                                                           consent_connect):

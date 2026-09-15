@@ -162,11 +162,18 @@ class RemoteSettings:
             # so ODOO_REMOTE_PUBLIC_URL=https://host:8443 is reachable as is.
             port=int(os.environ.get(
                 "PORT", str(parts.port or 8000))),
-            openai_challenge=os.environ.get("ODOO_REMOTE_OPENAI_CHALLENGE"),
-            publisher=os.environ.get(
-                "ODOO_REMOTE_PUBLISHER", "the odoo-assistant maintainers"),
-            support_email=os.environ.get(
-                "ODOO_REMOTE_SUPPORT_EMAIL", f"{REPO_URL}/issues"),
+            # `or`, not a get() default: the compose passes every optional
+            # variable as `${VAR:-}`, so an operator who leaves the field blank
+            # in the host's UI hands the container an EMPTY value rather than
+            # no value, and a get() default would never fire. Blank would then
+            # reach the legal pages — the ones both directories read — as a
+            # hole where the publisher's name belongs, and would answer the
+            # OpenAI challenge with an empty 200 instead of 404.
+            openai_challenge=os.environ.get("ODOO_REMOTE_OPENAI_CHALLENGE") or None,
+            publisher=(os.environ.get("ODOO_REMOTE_PUBLISHER")
+                       or "the odoo-assistant maintainers"),
+            support_email=(os.environ.get("ODOO_REMOTE_SUPPORT_EMAIL")
+                           or f"{REPO_URL}/issues"),
             data_dir=paths.data_dir(),
             allow_private_targets=(
                 os.environ.get("ODOO_REMOTE_ALLOW_PRIVATE_TARGETS") == "1"),

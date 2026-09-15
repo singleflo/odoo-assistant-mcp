@@ -26,7 +26,7 @@ from pathlib import Path
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
-from odoo_assistant import paths, resources, server
+from odoo_assistant import paths, resources, server, tenant
 # Package-qualified, unlike the bare bootstrap the sibling modules use: a bare
 # `import explore_module` loads the same file under a SECOND `sys.modules` key,
 # and the redirect below would then be invisible to every qualified importer.
@@ -100,7 +100,7 @@ def list_known_modules() -> str:
     """List the modules this server has learned: name, generation date, records."""
     return tool_result(
         _scan(_bundled_references(), "bundled")
-        + _scan(Path(explorer.REF_DIR), "generated")
+        + _scan(_generated_dir(), "generated")
     )
 
 
@@ -158,18 +158,47 @@ def _generate(odoo: object, name: str, models: str, ctx: dict) -> ToolOutcome:
     # Two-half write: the body ends at the NOTES marker, hand-written notes
     # below it are carried over from the previous generation.
     path.write_text(body + explorer.preserved_notes(str(path)))
-    served = _serve(path)
-    service_note = (
-        f"The NOTES section at the bottom was preserved, and the reference is "
-        f"served as odoo://ref/{name} from now on."
-        if served
-        else "The NOTES section at the bottom was preserved. NOTE: not registered "
-        "as a resource because no MCP server is active."
-    )
+    if tenant.current() is not None:
+        # Resources are global on a shared server: registering one tenant's
+        # reference would serve it to every other tenant, so on the hosted
+        # path it stays a plain file inside that tenant's own directory.
+        service_note = (
+            "The NOTES section at the bottom was preserved. Written for this "
+            "connection; on the hosted server references are not served as "
+            "resources."
+        )
+    else:
+        served = _serve(path)
+        service_note = (
+            f"The NOTES section at the bottom was preserved, and the reference is "
+            f"served as odoo://ref/{name} from now on."
+            if served
+            else "The NOTES section at the bottom was preserved. NOTE: not registered "
+            "as a resource because no MCP server is active."
+        )
     return ToolOutcome(
         False,
         f"Written: {path} ({path.stat().st_size / 1024:.1f} KB). {service_note}",
     )
+
+
+def _generated_dir() -> Path:
+    """The directory this caller's generated references belong in.
+
+    Unbound (stdio, one user) it is the redirected global directory, exactly
+    as before. Bound (hosted) it is a subdirectory per tenant subject, so a
+    generated reference stays inside the tenant that generated it and never
+    becomes another tenant's knowledge. The subject comes from this server's
+    own token minting, but the segment it would add to the path is still
+    checked — no separator, no traversal — before any directory is created.
+    """
+    bound = tenant.current()
+    if bound is None:
+        return Path(explorer.REF_DIR)
+    if "/" in bound.subject or ".." in bound.subject:
+        raise ValueError(
+            f"Tenant subject {bound.subject!r} cannot name a reference directory.")
+    return Path(explorer.REF_DIR) / bound.subject
 
 
 def _reference_path(name: str) -> Path | None:
@@ -182,7 +211,7 @@ def _reference_path(name: str) -> Path | None:
     """
     if not MODULE_NAME.fullmatch(name):
         return None
-    directory = Path(explorer.REF_DIR).resolve()
+    directory = _generated_dir().resolve()
     path = (directory / f"{name}.md").resolve()
     if path.parent != directory:
         return None

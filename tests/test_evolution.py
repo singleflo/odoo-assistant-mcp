@@ -14,7 +14,7 @@ import pytest
 from mcp.server import MCPServer
 from mcp.types import InputRequiredResult
 
-from odoo_assistant import paths, tools_evolution
+from odoo_assistant import paths, tenant, tools_evolution
 from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
 
@@ -262,3 +262,103 @@ def test_list_known_modules_reports_bundled_and_generated_entries(user_home, ins
     assert generated, entries
     assert '"records": 133' in generated[0]
     assert '"generated": null' not in generated[0]
+
+
+# ------------------------------------------------- tenant-bound generation
+def _bind(subject: str):
+    """Given: a tenant bound the way the remote middleware binds one, so every
+    reader of `tenant.current()` sees it for the duration of the call."""
+    return tenant.bind(
+        tenant.Tenant(subject, "http://odoo.invalid:8069", "key", "db", "read"))
+
+
+def test_a_tenant_generation_lands_in_the_tenant_directory(user_home, instance):
+    """Given a bound tenant, When a module is generated, Then the reference
+    lands under `<data>/references/<subject>/` and never in the shared
+    directory — one tenant's generated knowledge must stay its own."""
+    token = _bind("t_a")
+
+    message = tools_evolution.explore_module(
+        "sales", "generate", models="sale.order")
+    tenant.reset(token)
+
+    assert (Path(explorer.REF_DIR) / "t_a" / "sales.md").is_file()
+    assert str(Path(explorer.REF_DIR) / "t_a" / "sales.md") in message
+    assert not (Path(explorer.REF_DIR) / "sales.md").exists()
+
+
+def test_a_tenant_generation_is_listed_only_to_its_own_tenant(user_home, instance):
+    """Given tenant A generated a reference, When the knowledge base is listed,
+    Then A still sees it, tenant B does not, and neither does the unbound
+    stdio path — the generated section is scoped to the listing tenant."""
+    token = _bind("t_a")
+    tools_evolution.explore_module(
+        "zz-tenant-probe", "generate", models="sale.order")
+
+    def generated() -> str:
+        entries = tools_evolution.list_known_modules()
+        return "".join(line for line in entries.split("},")
+                       if '"source": "generated"' in line)
+
+    as_a = generated()
+    tenant.reset(token)
+
+    token_b = _bind("t_b")
+    as_b = generated()
+    tenant.reset(token_b)
+
+    assert '"module": "zz-tenant-probe"' in as_a
+    assert '"module": "zz-tenant-probe"' not in as_b
+    assert '"module": "zz-tenant-probe"' not in generated()
+
+
+def test_a_tenant_generation_closes_with_the_tenant_sentence(user_home, instance):
+    """Given a bound tenant, When generation succeeds, Then the closing
+    sentence is the tenant variant — the agent must not be told a shared
+    `odoo://ref/` resource exists when none was registered."""
+    token = _bind("t_a")
+
+    message = tools_evolution.explore_module(
+        "zz-tenant-probe", "generate", models="sale.order")
+    tenant.reset(token)
+
+    assert ("Written for this connection; on the hosted server references "
+            "are not served as resources.") in message
+    assert "odoo://ref/" not in message
+
+
+def test_a_tenant_generation_registers_no_resource(user_home, instance):
+    """Given a server with the evolution tools registered, When a tenant-bound
+    generate runs, Then the served-resource set gains nothing — resources are
+    global on a server, so registering one tenant's reference would leak it
+    to every other tenant."""
+    mcp = MCPServer("test-evolution-tenant")
+    tools_evolution.register(mcp)
+    before = _uris(mcp)
+
+    token = _bind("t_a")
+    tools_evolution.explore_module(
+        "zz-tenant-probe", "generate", models="sale.order")
+    tenant.reset(token)
+
+    assert "odoo://ref/zz-tenant-probe" not in _uris(mcp)
+    assert _uris(mcp) == before
+
+
+def test_a_tenant_subject_with_a_separator_is_refused(user_home, instance):
+    """Given a tenant whose subject carries a path separator or traversal,
+    Then the reference path refuses with ValueError before any directory is
+    created — the subject is server-generated, but the segment it would add
+    to the path is still checked."""
+    token = _bind("../escape")
+
+    try:
+        with pytest.raises(ValueError):
+            tools_evolution._reference_path("zz-tenant-probe")
+        with pytest.raises(ToolExecutionError):
+            tools_evolution.explore_module(
+                "zz-tenant-probe", "generate", models="sale.order")
+    finally:
+        tenant.reset(token)
+
+    assert not Path(explorer.REF_DIR).exists()

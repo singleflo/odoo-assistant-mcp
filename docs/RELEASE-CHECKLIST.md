@@ -134,7 +134,10 @@ Variables** and refuses to deploy while empty. Steps in order:
    roll back a deploy — Traefik simply drops the unhealthy container from
    routing and the site answers "No available server" instead of an error.
    Named volumes survive redeploys: the SQLite database (`remote.db`) and the
-   published files persist across them.
+   published files persist across them. Bind mounts, if anyone adds one later,
+   resolve against the service configuration directory on the Coolify server,
+   not against the repository checkout — which is why the compose uses a
+   **named volume** for `/data`.
 10. **Post-deploy verification**, against the live domain after every deploy:
     ```bash
     curl https://mcp.singleflo.com/health

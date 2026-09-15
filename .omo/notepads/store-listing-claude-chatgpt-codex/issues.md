@@ -47,3 +47,41 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - Old privacy.md claimed an "encrypted database"; the DB is plain SQLite
   with field-level Fernet encryption. Any store reviewer diffing copy vs
   code would have caught the overstatement.
+
+## fix-c-deploy-e2e (2026-09-15)
+
+- deploy.yml now gates the Coolify webhook on a `tests` job (F1#11, F4#3):
+  same matrix-less essentials as tests.yml (`uv sync --extra remote`,
+  pytest `-m 'not live and not wheel and not remote_live'`, `uv build`);
+  `deploy` runs only `needs: tests` green, secrets guard unchanged.
+- RELEASE-CHECKLIST Coolify step 9 gained the one measured note F1 wanted:
+  bind mounts (if anyone adds one) resolve against the service configuration
+  directory on the Coolify server — the reason the compose uses the named
+  volume `mcp_data` for `/data`. Other prose untouched.
+- test_remote_live.py (F1#16, F4#2): gate is now FOUR env vars
+  (ODOO_REMOTE_TEST_DB joins; policy stays optional, default read). Count is
+  a pair: id-0 zero-canary AND `domain []` asserted > 0 (pure read). New
+  two-tenant test mints a standard-policy token via scripts/remote_token.py
+  and proves the SAME write_record id 0 call is gate-refused read-only under
+  tenant A but passes the gate under tenant B, failing as an Odoo error on
+  the nonexistent id — safe by construction, nothing written either way.
+  New PDF test: under tenant B (standard — rendering goes through the
+  print/send wizard, a write-class call), res.partner id 0 must error naming
+  res.partner with NO /files/ link; with the optional
+  ODOO_REMOTE_TEST_PDF_MODEL/ODOO_REMOTE_TEST_PDF_ID pair it must return a
+  /files/ URL whose HEAD answers 200, application/pdf,
+  Cache-Control private+no-store.
+- ASSUMPTION recorded: the task asked the PDF error text to "mention the
+  Odoo failure"; under a read-policy tenant the gate refuses
+  action_send_and_print BEFORE Odoo, so the error path deliberately runs
+  under the standard token, where the text really is the Odoo-side failure
+  ("No known print wizard for res.partner").
+- scripts/remote_live_check.sh takes the URL as $1 (default
+  $ODOO_REMOTE_PUBLIC_URL, then https://mcp.singleflo.com) and prints
+  PASS/FAIL per check; exit nonzero when any fails. Proven green against a
+  locally spawned odoo-assistant-remote (3 PASS, exit 0) and marking on a
+  dead port (3 FAIL, exit 1).
+- Suite: 346 passed / 31 deselected; `pytest -m remote_live
+  tests/test_remote_live.py` = 11 skipped without env (CI never runs it).
+  test_remote_live.py sits at 234 pure LOC — warning band; next edit there
+  should split the plain-HTTP probes from the tokened flow.

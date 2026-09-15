@@ -8,8 +8,32 @@ permissions:
   contents: read
 
 jobs:
+  # F1#11 / F4#3: a tag must never reach production untested. The same
+  # essentials tests.yml runs on every push gate the deploy here.
+  tests:
+    name: Tests (deploy gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra remote
+
+      - name: Run non-live tests
+        run: uv run pytest tests/ -m 'not live and not wheel and not remote_live'
+
+      - name: Build package
+        run: uv build
+
   deploy:
     name: Trigger Coolify deploy webhook
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - name: Guard - skip when the Coolify secrets are absent

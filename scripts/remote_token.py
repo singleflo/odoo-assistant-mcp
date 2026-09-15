@@ -64,6 +64,10 @@ def main() -> int:
     registered.raise_for_status()
     client_id = registered.json()["client_id"]
 
+    # /authorize and /consent answer 302 on success. raise_for_status() would
+    # REJECT those: httpx (>= 0.28) raises on every redirect response when
+    # follow_redirects=False. Assert the redirect explicitly instead.
+
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
     challenge = base64.urlsafe_b64encode(
         hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -78,14 +82,18 @@ def main() -> int:
         "scope": "odoo",
         "resource": f"{base}/mcp",
     })
-    asked.raise_for_status()
+    if asked.status_code != 302:
+        sys.exit(f"/authorize answered {asked.status_code}: {asked.text[:200]}")
     req = parse_qs(urlparse(asked.headers["location"]).query)["req"][0]
 
     consented = http.post("/consent", data={
         "req": req, "odoo_url": odoo_url, "api_key": api_key,
         "db": db, "policy": args.policy,
     })
-    consented.raise_for_status()
+    if consented.status_code != 302:
+        # 200 = the consent form was re-rendered with an error (bad
+        # credentials, unreachable Odoo); anything else is a protocol fault.
+        sys.exit(f"consent failed ({consented.status_code}): {consented.text[:300]}")
     code = parse_qs(urlparse(consented.headers["location"]).query)["code"][0]
 
     token = http.post("/token", data={

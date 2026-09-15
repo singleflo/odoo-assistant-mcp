@@ -31,52 +31,68 @@ uv pip install git+https://github.com/singleflo/odoo-assistant-mcp
 * `ODOO_API_KEY`: Mandatory always. The Odoo API key (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted. A key is per-user, scoped, and revocable on its own. Odoo 19 additionally requires a description and an expiry, max 3 months.
 * `ODOO_DB`: Mandatory on Odoo Online (SaaS, `*.odoo.com`), optional elsewhere. On Odoo Online, the database-list endpoint is disabled. Discovery cannot find the name, and every tool call fails with an opaque "Error executing tool" without hinting that the database is the problem. With `ODOO_DB` set, the same config connects immediately. The SaaS database name is not the pretty subdomain — it carries a suffix, in the shape `mycompany16-prod-12345678` — and you find it at `/web/database/selector` or in the Odoo.com account page. Elsewhere, it is discovered automatically when the instance serves exactly one database, and is required when it serves several.
 * `ODOO_USER`: Never mandatory. Omitted, the client probes `res.users` for uid 1 to 59 and keeps the one the key answers for. This adds up to 59 extra round trips on the first call, and it fails outright if the key owner's uid is 60 or higher. Setting it removes that cost. It must be the login (e.g. `jane@mycompany.com`), and a wrong value makes Odoo's `authenticate()` return False rather than raise — which reads like a permission error.
-* `ODOO_MCP_MAX_LEVEL`: Optional, default `3`. The highest safety level this server may execute, `0` to `4`. A value of `0` makes the server refuse every write, which is what you want when pointing an agent at live company data for reading. Refer to the Safety Layer section for the L0 to L5 table. An invalid value refuses startup. `5` is accepted but identical to `4`.
-* `ODOO_MCP_PROTECTED_HOSTS`: Comma-separated hosts this server refuses to write to (empty by default, no host is baked into the package). A listed host still allows reads. Writing to it needs `ODOO_ALLOW_PROD_WRITE=yes` as a deliberate override.
+* `ODOO_MCP_ALLOW`: Optional, default `*` — every method the deny list does not refuse. The single value `none` makes the server read-only, which is what you want when pointing an agent at live company data for reading. Anything else is a comma-separated list of method names. See "What the agent may do" below.
+* `ODOO_MCP_DENY`: Optional. Unset, it is the default deny list — `unlink`, `archive`, `action_cancel`, `button_cancel`, `action_reverse`, `action_draft`, `mailing.mailing:action_send`. A value you set replaces that list entirely. See "What the agent may do" below.
+* `ODOO_MCP_ALLOW_UNLINK`: Optional, off by default. `yes` is the only thing that grants `unlink`; no entry on either list can. See "What the agent may do" below.
+* `ODOO_MCP_DATA_DIR`: Optional. Where this server keeps everything it writes, the instance profiles included. It defaults to the platform's own data directory — `%LOCALAPPDATA%\odoo-assistant` on Windows, `~/Library/Application Support/odoo-assistant` on macOS, and `$XDG_DATA_HOME/odoo-assistant` (else `~/.local/share/odoo-assistant`) elsewhere.
 
-## Safety Layer
+## What the agent may do
 
-Every write and action passes through a dynamic safety classifier before reaching Odoo. Operations are classified into levels L0 to L5:
+Every write and every action passes a gate before it reaches Odoo. The gate
+judges a call by its METHOD NAME against two lists you own, in the host
+configuration file, and reads both from the process environment at call time:
 
-| Level | Name | Description | Default Status |
-|---|---|---|---|
-| **L0** | `L0_READ` | Read-only queries (`search_read`, `read`, `search_count`). | Allowed |
-| **L1** | `L1_WRITE` | Single record writes and creations. | Allowed |
-| **L2** | `L2_BATCH` | Batch writes affecting multiple records. | Allowed |
-| **L3** | `L3_STATE_CHANGE` | Workflow state transitions (e.g., confirming orders, posting invoices). | Allowed |
-| **L4** | `L4_DESTRUCTIVE` | Destructive operations (e.g., `unlink`, `action_cancel`, archiving). | Blocked |
-| **L5** | `L5_PRIVATE` / `L5_UNKNOWN` | Private methods or unknown operations. | Blocked |
+* `ODOO_MCP_ALLOW` — what may run. Unset or empty means `*`: every method the
+  deny list does not refuse. The single value `none` makes the server
+  read-only.
+* `ODOO_MCP_DENY` — what may not. Unset or empty means the default list:
+  `unlink`, `archive`, `action_cancel`, `button_cancel`, `action_reverse`,
+  `action_draft`, `mailing.mailing:action_send`. A value you set **replaces**
+  that list entirely rather than extending it, so the refusals in force are
+  exactly the names in your own file — `ODOO_MCP_DENY=unlink` is how you
+  re-admit `action_cancel`.
 
-### Choosing the ceiling
+An entry is either `method`, which matches that method on every model, or
+`model:method`, which matches it on one. Matching is exact string equality — no
+prefix, no substring, so `action_send` never matches `action_send_and_print`
+and `action_cancel` never matches `button_cancel`. A human read and approved
+those exact names, and a looser match would let lookalikes through that nobody
+saw. Deny is checked before allow, so a name on both lists refuses.
 
-`ODOO_MCP_MAX_LEVEL` sets the highest level this server may execute. Each value
-is cumulative, permitting its own level and everything below:
+Model qualification is what the measured case needs. On one live instance 31
+models answer to `action_send`, and only the Evolution wizards should — the one
+on `mailing.mailing` can email an entire customer base in a single call. That
+is why the default deny list spells that entry `mailing.mailing:action_send`
+and leaves `action_send` working everywhere else.
 
-| Value | What it permits |
+Four rules sit outside the lists:
+
+* **`unlink` is decided before both of them.** No value of `ODOO_MCP_ALLOW` or
+  `ODOO_MCP_DENY` can ever grant deletion; only `ODOO_MCP_ALLOW_UNLINK=yes`
+  does. Deletion is the one action that cannot be undone, and a name in a
+  comma-separated list must never be enough to grant it.
+* **`archive` is a virtual name.** Both `action_archive` and a `write` carrying
+  `active: False` carry it into the lists, so denying `archive` refuses hiding
+  records however they are spelled.
+* **Private methods are always refused**, whatever the lists say. Odoo itself
+  rejects every method starting with `_`, so no list could deliver one.
+* **Reads never pass through either list**, because a read has no effect for a
+  list to govern. The `account.move` structural guard is untouched by any of
+  this and still applies to them: a query mixing invoices, bills and journal
+  entries is refused whatever the lists hold, because a meaningless read is its
+  own hazard.
+
+| Configuration | What it permits |
 |---|---|
-| `0` | Reads only. |
-| `1` | + single-record writes and creations. |
-| `2` | + batches above 5 records. |
-| `3` | **Default.** + confirming orders, posting invoices, sending mail. |
-| `4` | + `unlink`, `action_cancel`, archiving. |
-| `5` | Accepted, but identical to `4` in effect. See below. |
+| `ODOO_MCP_ALLOW=none` | Reads only. Nothing this server does can change a record — the setting for an agent pointed at live production data. |
+| Nothing set | **Default.** Every method except the seven on the default deny list: creating, writing, confirming orders, posting invoices, scheduling activities, messaging users. |
+| `ODOO_MCP_ALLOW_UNLINK=yes` | The default, plus `unlink`. The deny list is unchanged, so `archive` and `action_cancel` stay refused until you set `ODOO_MCP_DENY` yourself. |
 
-Two behaviours are worth knowing before you pick a number:
-
-* **`5` does not unlock L5.** Both L5 variants are refused before the ceiling is
-  ever read. `L5_PRIVATE` is refused because Odoo itself rejects every method
-  starting with `_`, so no ceiling could deliver it; `L5_UNKNOWN` is refused
-  because a method nobody classified has, by definition, unreviewed effects. The
-  way to allow such a method is to add it to `WRITE_L1`/`L3`/`L4` in
-  `safety_layer.py` in code, reviewed, never through configuration.
-* **An invalid value refuses startup.** `ODOO_MCP_MAX_LEVEL="O"` raises rather
-  than falling back to the default, because the fallback is write-capable: a
-  typo must not hand you a writing server you believed was read-only.
-
-The ceiling is set out of band, by a human, and read from the process
-environment at startup. The model running against this server cannot raise it;
-when a call exceeds the ceiling the refusal names the level required, so the
-agent can explain what the operation would change and leave the decision to you.
+The lists are set out of band, by a human, and the model running against this
+server cannot change them. When the gate refuses, the reason names the call,
+the entry that decided it and the variable that would change the answer, so the
+agent can explain what the operation would have changed and leave the decision
+to you.
 
 Note that this is the authority of this server, not of the account. An agent
 with shell access can always bypass an MCP server by invoking Odoo directly. A
@@ -159,10 +175,10 @@ systray. "Message user X" is the second kind, which uses `send_direct_message`, 
 ## Host Configuration Examples
 
 Every example below carries only what matters: the two required variables, and
-the ceiling, which is the setting that decides whether this server can write, made
-visible in the file the human owns. The database and the login are discovered,
-and `3` is the ceiling's default. Note the quotes: environment values are
-strings.
+the database, which discovery cannot reach on Odoo Online. The login is
+discovered, and the gate keeps its defaults unless you add `ODOO_MCP_ALLOW` or
+`ODOO_MCP_DENY` — see "What the agent may do". Note the quotes: environment
+values are strings.
 
 ### Claude Desktop
 Add this to your `claude_desktop_config.json`:
@@ -177,7 +193,6 @@ Add this to your `claude_desktop_config.json`:
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_MCP_MAX_LEVEL": "3",
         "ODOO_DB": "your-database-name"
       }
     }
@@ -198,7 +213,6 @@ Add this to your `.cursor/mcp.json` or configure it in the Cursor settings UI:
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_MCP_MAX_LEVEL": "3",
         "ODOO_DB": "your-database-name"
       }
     }
@@ -219,7 +233,6 @@ Add this to your VS Code `settings.json`:
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_MCP_MAX_LEVEL": "3",
         "ODOO_DB": "your-database-name"
       }
     }
@@ -245,7 +258,6 @@ Add this to `opencode.json` or `.opencode/opencode.json` in your project, or to
       "environment": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_MCP_MAX_LEVEL": "3",
         "ODOO_DB": "your-database-name"
       }
     }
@@ -263,8 +275,8 @@ session pays for authentication plus, for `instance_overview`, dozens of XML-RPC
 round trips, which easily exceeds five seconds against a real instance. Set it to 120000.
 
 opencode reads its config once at startup and does not hot-reload it. Quit
-and restart after editing. Anything you change here, the ceiling included,
-takes effect only on the next launch.
+and restart after editing. Anything you change here, the allow and deny lists
+included, takes effect only on the next launch.
 
 ### ChatGPT (Custom Connectors)
 To connect this server to ChatGPT via Custom Connectors:
@@ -285,7 +297,6 @@ mcp_servers:
       ODOO_BASE_URL: https://mycompany.odoo.com
       ODOO_API_KEY: your-api-key-here
       ODOO_DB: your-database-name
-      ODOO_MCP_MAX_LEVEL: "3"
     timeout: 120000
     connect_timeout: 60
     enabled: true
@@ -302,7 +313,7 @@ greedy and swallows every flag that follows it, landing `--env` pairs inside
 `args` and leaving the server to start with no credentials at all.
 
 ### Odoo Online Production (Read-Only Example)
-If you are connecting to a production instance hosted on Odoo Online (SaaS), you must set `ODOO_DB` and should set `ODOO_MCP_MAX_LEVEL` to `"0"` for safety. Here is how it looks in Claude Desktop:
+If you are connecting to a production instance hosted on Odoo Online (SaaS), you must set `ODOO_DB` and should set `ODOO_MCP_ALLOW` to `"none"` for safety. Here is how it looks in Claude Desktop:
 
 ```json
 {
@@ -316,16 +327,16 @@ If you are connecting to a production instance hosted on Odoo Online (SaaS), you
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
         "ODOO_DB": "mycompany16-prod-12345678",
-        "ODOO_MCP_MAX_LEVEL": "0"
+        "ODOO_MCP_ALLOW": "none"
       }
     }
   }
 }
 ```
 
-Setting `ODOO_DB` is mandatory to bypass the disabled database-list endpoint on Odoo Online, while `ODOO_MCP_MAX_LEVEL` set to `"0"` ensures the agent cannot modify live production data.
+Setting `ODOO_DB` is mandatory to bypass the disabled database-list endpoint on Odoo Online, while `ODOO_MCP_ALLOW` set to `"none"` ensures the agent cannot modify live production data.
 
-The examples omit the optional variables. Set `ODOO_DB` when the instance serves several databases, `ODOO_USER` to skip the uid probe, and `ODOO_MCP_MAX_LEVEL` to change the ceiling from its default of `3`.
+The examples omit the optional variables. Set `ODOO_DB` when the instance serves several databases, `ODOO_USER` to skip the uid probe, and `ODOO_MCP_ALLOW` / `ODOO_MCP_DENY` when the gate's defaults — every method but the seven denied ones — are not what you want.
 
 ## Changelog
 

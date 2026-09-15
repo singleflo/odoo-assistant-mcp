@@ -35,6 +35,7 @@ from odoo_client import MissingCredentials, Odoo, connect  # noqa: E402  (needs 
 # of `server` at import time — keep it that way.
 from odoo_assistant import (  # noqa: E402  (cycle: must follow the bootstrap)
     resources,
+    tenant,
     tools_collab,
     tools_discuss,
     tools_evolution,
@@ -140,6 +141,10 @@ def _detect_version(odoo: Odoo) -> dict[str, object]:
 def _get_odoo() -> Odoo:
     """Return the shared client, connecting on first use.
 
+    A bound tenant decides first: `tenant.odoo_for` hands back the one client
+    minted for that request's subject, and the environment singleton below is
+    the plain stdio path only.
+
     The client's `connect()` takes a write-intent flag that arms its
     protected-host guard, and this server passes nothing: whether a call may
     run is decided per call by the gate — read-only is `ODOO_MCP_ALLOW=none`,
@@ -151,6 +156,9 @@ def _get_odoo() -> Odoo:
     thread: a tool call arriving mid-connect waits on `_odoo_lock` for the
     SAME client instead of opening a second connection.
     """
+    bound = tenant.current()
+    if bound is not None:
+        return tenant.odoo_for(bound)
     global _odoo_instance
     with _odoo_lock:
         if _odoo_instance is None:

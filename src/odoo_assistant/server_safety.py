@@ -65,6 +65,10 @@ from safety_layer import (  # noqa: E402
     check_guards,
 )
 
+# The gate's policy follows a bound tenant first, the environment second —
+# `tenant.py` owns the per-request binding this module only reads.
+from odoo_assistant import tenant  # noqa: E402
+
 # The six names 0.1.x refused at its default ceiling, plus one deliberate
 # addition: `mailing.mailing:action_send`. Under the old default-deny it was
 # an unclassified method and therefore refused; the wildcard would now allow
@@ -88,8 +92,13 @@ def allowed_methods() -> set[str] | str:
     """The ODOO_MCP_ALLOW list: `"*"`, `"none"`, or the set of entries.
 
     Read at call time — the environment is the operator's config file, and a
-    value that changes after import must still take effect.
+    value that changes after import must still take effect. A bound tenant
+    owns the policy instead: `read` is the none sentinel, `standard` the
+    wildcard, and the environment is not consulted at all.
     """
+    bound = tenant.current()
+    if bound is not None:
+        return "none" if bound.policy == "read" else "*"
     raw = os.environ.get("ODOO_MCP_ALLOW", "")
     if raw == "none":
         return "none"
@@ -103,14 +112,25 @@ def denied_methods() -> set[str]:
 
     A set value REPLACES the default rather than extending it: the operator
     wrote a whole list, and a refusal they cannot see in their own file would
-    be a name nobody read or approved.
+    be a name nobody read or approved. A bound tenant always gets the
+    package defaults — the hosted server carries no operator's list.
     """
+    bound = tenant.current()
+    if bound is not None:
+        return set(DEFAULT_DENY)
     raw = os.environ.get("ODOO_MCP_DENY", "")
     return set(DEFAULT_DENY) if raw == "" else _entries(raw)
 
 
 def unlink_allowed() -> bool:
-    """Whether ODOO_MCP_ALLOW_UNLINK grants deletion. Read at call time."""
+    """Whether ODOO_MCP_ALLOW_UNLINK grants deletion. Read at call time.
+
+    A bound tenant never: the switch belongs to a local operator's machine,
+    so a process environment the tenant's host happens to carry cannot grant
+    deletion on a hosted connection.
+    """
+    if tenant.current() is not None:
+        return False
     return os.environ.get("ODOO_MCP_ALLOW_UNLINK", "").lower() in ("yes", "true", "1")
 
 
@@ -189,6 +209,10 @@ def gate(model: str, method: str, ids: Any = None, values: Any = None) -> GateRe
         if unlink_allowed():
             return GateResult(True, (
                 f"{model}.unlink is allowed by ODOO_MCP_ALLOW_UNLINK."))
+        if tenant.current() is not None:
+            return GateResult(False, (
+                f"{model}.unlink: Deletion is never available on the hosted "
+                "server; use a local install with ODOO_MCP_ALLOW_UNLINK=yes."))
         return GateResult(False, (
             f"{model}.unlink: deletion is the one action that cannot be "
             "undone. It is granted only by ODOO_MCP_ALLOW_UNLINK=yes; the "
@@ -205,6 +229,11 @@ def gate(model: str, method: str, ids: Any = None, values: Any = None) -> GateRe
     allowed = allowed_methods()
     if not isinstance(allowed, set):
         if allowed == "none":
+            if tenant.current() is not None:
+                return GateResult(False, (
+                    f"{model}.{method}: this connection was authorised as "
+                    "read-only; reconnect and choose the standard policy to "
+                    "allow it."))
             return GateResult(False, (
                 f"{model}.{method}: this is a read-only server "
                 "(ODOO_MCP_ALLOW=none). Remove the variable, or set "

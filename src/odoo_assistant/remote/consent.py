@@ -41,6 +41,7 @@ import socket
 import sys
 from dataclasses import dataclass, replace
 from multiprocessing.connection import Connection
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Literal, Protocol
 from urllib.parse import parse_qs, urlsplit
@@ -240,7 +241,7 @@ class _Verified:
 
     status: Literal["ok", "error", "timeout"]
     detail: str
-    process: multiprocessing.process.BaseProcess | None
+    process: BaseProcess | None
 
 
 def _verify_entry(odoo_url: str, db: str, api_key: str,
@@ -258,7 +259,7 @@ def _verify_entry(odoo_url: str, db: str, api_key: str,
         send_conn.close()
 
 
-_last_verifier: multiprocessing.process.BaseProcess | None = None
+_last_verifier: BaseProcess | None = None
 
 
 def _verify_isolated(odoo_url: str, db: str, api_key: str) -> _Verified:
@@ -296,7 +297,7 @@ def _verify_isolated(odoo_url: str, db: str, api_key: str) -> _Verified:
         recv_conn.close()
 
 
-def _reap(proc: multiprocessing.process.BaseProcess) -> None:
+def _reap(proc: BaseProcess) -> None:
     """Terminate, then kill: a hung socket read must never outlive the
     request that started it."""
     proc.terminate()

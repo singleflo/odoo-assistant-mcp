@@ -135,3 +135,29 @@ Variables** and refuses to deploy while empty. Steps in order:
    routing and the site answers "No available server" instead of an error.
    Named volumes survive redeploys: the SQLite database (`remote.db`) and the
    published files persist across them.
+10. **Post-deploy verification**, against the live domain after every deploy:
+    ```bash
+    curl https://mcp.singleflo.com/health
+    ```
+    must return the version JSON (`{"status":"ok","version":"…"}`) naming the
+    version that was just deployed. An unauthenticated call to the endpoint
+    ```bash
+    curl -si -X POST https://mcp.singleflo.com/mcp
+    ```
+    must answer **401**, and its `WWW-Authenticate` header must carry
+    `resource_metadata="https://mcp.singleflo.com/.well-known/oauth-protected-resource/mcp"`
+    — that header is how a host discovers where to sign in, so a 401 without
+    it breaks every client before the first sign-in. The protected-resource
+    metadata itself
+    ```bash
+    curl https://mcp.singleflo.com/.well-known/oauth-protected-resource/mcp
+    ```
+    must return JSON whose `resource` equals the `/mcp` URL character for
+    character — the reason `ODOO_REMOTE_PUBLIC_URL` is typed explicitly in
+    step 5 rather than derived. And when `ODOO_REMOTE_OPENAI_CHALLENGE` is set
+    (step 5), OpenAI's app review verifies it by fetching
+    ```bash
+    curl https://mcp.singleflo.com/.well-known/openai-apps-challenge
+    ```
+    which must return exactly the token stored in the variable — no wrapper,
+    no trailing content.

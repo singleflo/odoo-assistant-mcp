@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-15
+
+The hosted server. The same nineteen tools are now also served over the
+internet at `https://mcp.singleflo.com/mcp`, which Claude.ai, ChatGPT and Codex
+reach with nothing installed and nothing configured on the user's side: the
+sign-in happens once, on the server's consent page, with the user's own Odoo
+URL and API key. The local stdio server is untouched by all of it — a 0.2.0
+configuration file is a 0.3.0 configuration file.
+
+### Added
+- **`odoo-assistant-remote`, the hosted server** (`odoo-assistant[remote]`, entry point `odoo-assistant-remote`): Streamable HTTP with its own OAuth 2.1 sign-in — the host starts the flow and lands on the consent page, which asks for the Odoo URL, the API key and one choice: **read** lets the agent look, **standard** lets it also create records, run workflows and schedule activities. Deletion is never available hosted — `unlink` is not reachable under either choice, so a chat can ask all it wants. Credentials are per tenant, encrypted at rest, and the choice made at consent is what gates every later call; the local `ODOO_MCP_*` lists do not follow the user onto the hosted route.
+- **Downloaded documents and rendered PDFs as fifteen-minute links.** On the hosted server `download_docs` and `generate_pdf` return links that expire a quarter of an hour after they are issued, so a chat transcript never becomes a permanent copy of an Odoo document — the bytes stay on the server and outlive neither the conversation's need for them.
+- **A title and annotations on all nineteen tools.** Every tool now declares `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, so a host can label and pre-approve calls from the tool's own declaration instead of guessing — ChatGPT honours `readOnlyHint` in its developer mode, which makes the reads self-evident there.
+- **Claude Code and Codex marketplace manifests** under `plugins/odoo-assistant/` — the portable Agent Plugins shape (`plugin.json`, `mcp.json`) and the Claude Code shape (`.claude-plugin/plugin.json`, `.mcp.json`), installable straight from this repository without a store or a review.
+- **Privacy, terms and support pages served on the same origin** as the server itself, so the consent page and the store listings point at URLs under the operator's own domain rather than a foreign wiki.
+- **A `Dockerfile` and a Coolify-ready `docker-compose.yaml`**, and `docs/REMOTE.md` — the whole path from `uv run odoo-assistant-remote` on a laptop, through a tunnel, to a deployed instance behind its own domain.
+
+### Changed
+- **Nothing, for stdio users.** Same environment contract, same nineteen tools, same gate. `download_docs` and `generate_pdf` behave differently only on the hosted server, where they return expiring links instead of local paths — there is no local disk to write to there.
+
+### Security
+- **API keys are Fernet-encrypted at rest** in the hosted store, and tokens are stored hashed. Revocation is per family: a disconnect in Claude or ChatGPT erases the stored connection — the encrypted credentials included — not just the one token the revocation arrived with.
+- **The remote refuses to start with any `ODOO_*` credential in its environment.** A hosted process carrying the operator's own `ODOO_BASE_URL` or `ODOO_API_KEY` would lend that login to every tenant; it exits instead, because the store supplies per-tenant credentials and must never inherit the deployer's.
+- **An SSRF guard on the consent endpoint.** The Odoo address typed into the consent page is resolved and refused when it points at a loopback, link-local, private or unspecified address — before any connection is attempted — so a sign-in cannot be aimed at the server's own network.
+
 ## [0.2.0] - 2026-09-15
 
 The numbered safety ceiling is gone, replaced by two lists of Odoo method names. The scale answered "what does this do"; the question an operator actually has is "may it run", and people answer that in method names — nobody could explain in a minute which number allowed `action_confirm` but refused `unlink`.

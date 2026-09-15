@@ -854,6 +854,10 @@ This is **not in scope for v1** because it introduces auth concerns (OAuth
 for the MCP layer + Odoo credentials) that would complicate the initial
 release. It is milestone M7.
 
+> Delivered in 0.3.0: milestone M7 shipped as the `odoo-assistant-remote`
+> entry point (`odoo_assistant.remote`), the hosted server behind
+> `https://mcp.singleflo.com/mcp` — see `docs/REMOTE.md`.
+
 ---
 
 ## 9. Repository Structure

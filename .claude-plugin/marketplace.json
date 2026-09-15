@@ -10,7 +10,7 @@
       "name": "odoo-assistant",
       "source": "./plugins/odoo-assistant",
       "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "productivity"
     }
   ]

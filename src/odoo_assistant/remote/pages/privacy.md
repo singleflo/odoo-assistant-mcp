@@ -32,12 +32,12 @@ We design our infrastructure to avoid processing or retaining personal or busine
 
 We enforce strict data retention rules to ensure connection details and tokens are erased when no longer in use:
 
-* **Temporary Files**: Automatically deleted after 15 minutes.
+* **Temporary Files**: The download link expires 15 minutes after it is issued; the bytes are removed when an expired link is hit, or by the hourly sweep at the latest.
 * **Access Tokens**: Short-lived tokens expiring after 1 hour.
 * **Refresh Tokens**: Expire after 30 days.
 * **Generated References**: Kept until your tenant is deleted.
 * **Revocation & Disconnection**: When the last token family for your connection is revoked — which is what disconnecting the integration in your host application (such as Claude or ChatGPT) triggers — the tenant row holding your Odoo connection configuration and credentials is deleted.
-* **Idle Purge**: A sweep at server startup removes tenant rows that have been idle for 90 days.
+* **Idle Purge**: A sweep at server startup and hourly thereafter removes tenant rows that have been idle for 90 days.
 
 ## How to Revoke Access
 

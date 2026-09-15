@@ -44,7 +44,9 @@ from cryptography.fernet import Fernet  # noqa: E402
 from mcp.server.auth.provider import AccessToken  # noqa: E402
 
 import odoo_assistant.tenant as tenant_module  # noqa: E402
+import odoo_assistant.tools_evolution as tools_evolution  # noqa: E402
 from odoo_assistant import paths  # noqa: E402
+from odoo_assistant.odoo_scripts import explore_module  # noqa: E402
 from odoo_assistant.remote import consent, files  # noqa: E402
 from odoo_assistant.remote import app as remote_app  # noqa: E402
 from odoo_assistant.remote.app import RemoteSettings, build_app  # noqa: E402
@@ -85,8 +87,21 @@ def _fresh_tenant_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def _own_data_root(monkeypatch):
     """build_app pins the process-wide data root; a stale pin from another
-    test must never leak into the next one."""
+    test must never leak into the next one.
+
+    Clearing the pin is not enough: `tools_evolution.register()` DERIVES
+    `explore_module.REF_DIR` from it, and that derived global keeps pointing
+    at the dead tmp_path once the pin is gone. Re-run the redirect after
+    clearing, so the next test sees the default root."""
     monkeypatch.setattr(paths, "_data_dir_override", None, raising=False)
+    yield
+    _restore_default_data_root(monkeypatch)
+
+
+def _restore_default_data_root(monkeypatch):
+    """Clear the pin AND re-derive every global derived from it."""
+    monkeypatch.setattr(paths, "_data_dir_override", None, raising=False)
+    tools_evolution._redirect_references()
 
 
 class ConsentFakeConnect:
@@ -235,6 +250,19 @@ def test_build_app_uses_a_stateless_session_manager(tmp_path):
     app = build_app(make_settings(tmp_path))
 
     assert app.state.session_manager.stateless is True
+
+
+def test_reference_dir_does_not_survive_a_custom_data_root(tmp_path, monkeypatch):
+    """Given build_app pinned a custom data root, When the pin is cleared,
+    Then explore_module.REF_DIR resolves under the DEFAULT root again —
+    clearing the pin alone leaves it pointing at the dead tmp_path, which
+    failed the next test that read it."""
+    build_app(make_settings(tmp_path))
+    assert str(explore_module.REF_DIR).startswith(str(tmp_path))
+
+    _restore_default_data_root(monkeypatch)
+
+    assert str(explore_module.REF_DIR).startswith(str(paths.data_dir()))
 
 
 def test_one_data_root_build_app_publish_and_tenant_tmp_share_it(tmp_path):

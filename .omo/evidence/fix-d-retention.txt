@@ -55,3 +55,32 @@ red/green pairs:
   F2#2 purge_tenant_artifacts:  2 fails (missing fn)           -> files file green incl. revoke + idle tests
   F2#3 periodic sweep:          2 fails (missing SWEEP_SECONDS/hang) -> app file green, suite x2 stable
   F2#4 one data root:           1 fail + paths override fail   -> both green
+
+=== F2 regression fix: reference redirect survives a custom data root (2026-09-15) ===
+
+RED (before the fix, no checkout needed):
+$ uv run pytest tests/test_remote_app.py::test_build_app_uses_a_stateless_session_manager tests/test_evolution.py
+FAILED tests/test_evolution.py::test_the_reference_dir_is_redirected_under_the_user_home
+  assert str(explorer.REF_DIR).startswith(str(paths.data_dir()))
+  REF_DIR = '/private/var/folders/.../pytest-256/test_build_app_uses_a_stateles0/references'
+  paths.data_dir() = '/Users/crotti/Library/Application Support/odoo-assistant'
+1 failed, 26 passed in 0.10s
+
+GREEN (after the fixture teardown re-runs tools_evolution._redirect_references()):
+$ uv run pytest tests/test_remote_app.py::test_build_app_uses_a_stateless_session_manager tests/test_evolution.py
+27 passed in 0.09s
+
+New regression test:
+$ uv run pytest tests/test_remote_app.py::test_reference_dir_does_not_survive_a_custom_data_root
+1 passed in 0.05s
+  (proved it bites: with the _redirect_references() call removed from the restore
+   helper it fails at tests/test_remote_app.py:264, then reverted)
+
+Full suite:
+$ uv run pytest
+354 passed, 32 deselected in 5.96s
+
+privacy.md retention lines aligned with the code:
+  - Idle Purge: "a sweep at server startup and hourly thereafter"
+  - Temporary Files: link expires at 15 minutes; bytes removed on an expired-link
+    hit, or by the hourly sweep at the latest

@@ -141,3 +141,10 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
   (`_verify_entry`/`_verify_isolated`/`_reap`/`_Verified`) into
   remote/verify.py; not done here because the round's scope fixed the file
   list and remote/ siblings were frozen.
+- FIXED (F2 regression, bisected to 3a42ddf): the `_own_data_root` fixture cleared
+  `paths._data_dir_override` but not the global DERIVED from it, so
+  `explore_module.REF_DIR` stayed pinned to a dead tmp_path and failed
+  test_evolution in the same run; teardown now re-runs
+  `tools_evolution._redirect_references()`, pinned by
+  test_reference_dir_does_not_survive_a_custom_data_root. Two privacy.md
+  retention lines aligned with the code (hourly sweep, link-expiry wording).

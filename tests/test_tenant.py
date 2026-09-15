@@ -191,6 +191,61 @@ def test_odoo_for_is_cached_per_subject(monkeypatch):
     assert len(calls) == 2
 
 
+def test_same_subject_with_a_different_database_gets_a_new_client(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tenant, "_clients", {})
+    monkeypatch.setattr(
+        tenant, "connect", lambda **kw: calls.append(kw) or object())
+
+    first = tenant.odoo_for(tenant.Tenant(
+        "u-db", "http://x", "k", "db-a", "standard"))
+    second = tenant.odoo_for(tenant.Tenant(
+        "u-db", "http://x", "k", "db-b", "standard"))
+
+    assert second is not first
+    assert [call["db"] for call in calls] == ["db-a", "db-b"]
+
+
+def test_forget_drops_every_cached_client_for_the_subject(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tenant, "_clients", {})
+    monkeypatch.setattr(
+        tenant, "connect", lambda **kw: calls.append(kw) or object())
+    tenant.odoo_for(tenant.Tenant(
+        "u-forget", "http://x", "k", "db-a", "standard"))
+    tenant.odoo_for(tenant.Tenant(
+        "u-forget", "http://x", "k", "db-b", "standard"))
+
+    tenant.forget("u-forget")
+    tenant.odoo_for(tenant.Tenant(
+        "u-forget", "http://x", "k", "db-a", "standard"))
+
+    assert len(calls) == 3
+
+
+def test_store_delete_tenant_also_forgets_its_live_client(
+        monkeypatch, tmp_path):
+    pytest.importorskip("cryptography.fernet")
+    from cryptography.fernet import Fernet
+    from odoo_assistant.remote.store import Store
+
+    calls = []
+    monkeypatch.setattr(tenant, "_clients", {})
+    monkeypatch.setattr(
+        tenant, "connect", lambda **kw: calls.append(kw) or object())
+    connected = tenant.Tenant(
+        "u-delete", "http://x", "k", "db", "standard")
+    store = Store(tmp_path / "remote.db", Fernet.generate_key().decode())
+    store.init()
+    store.put_tenant(connected)
+    tenant.odoo_for(connected)
+
+    store.delete_tenant("u-delete")
+    tenant.odoo_for(connected)
+
+    assert len(calls) == 2
+
+
 # ------------------------------------------- (e) isolation between tenants
 def test_two_tenants_in_two_threads_resolve_two_clients(monkeypatch):
     """Given a tenant bound inside each of two threads, When each asks the

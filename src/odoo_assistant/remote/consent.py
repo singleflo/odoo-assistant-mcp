@@ -18,8 +18,8 @@ i.e. the one `streamable_http_app()` returns:
 Security posture, in the order the POST enforces it: a 64 KiB body cap
 (custom routes sit outside the SDK's 4 MiB `RequestBodyLimitMiddleware`),
 the pending-`req` check, the https rule, the SSRF guard — the host is
-resolved with `socket.getaddrinfo` and refused when any address is loopback,
-link-local, private or unspecified, BEFORE any connection, so a public
+resolved with `socket.getaddrinfo` and refused unless every address is global,
+BEFORE any connection, so a public
 unauthenticated endpoint can never be turned into an internal prober — then
 a real verification against the submitted Odoo, then the tenant row, reused
 by `key_hash` so one Odoo connection stays one subject. The key is never
@@ -132,14 +132,19 @@ async def consent_submit(request: Request) -> Response:
             " works for a server on this machine)."))))
 
     if not deps.allow_private_targets:
-        refusal = await run_in_thread(_ssrf_refusal, host)
+        refusal = await run_in_thread(
+            _ssrf_refusal, host, abandon_on_cancel=True)
         if refusal is not None:
             return HTMLResponse(_form_html(
                 deps, replace(shown, error=refusal)))
 
     try:
         with anyio.fail_after(_VERIFY_TIMEOUT):
-            await run_in_thread(_verify_credentials, odoo_url, db, api_key)
+            # The scripts are canonical and cannot gain socket timeouts here.
+            # Cancellation abandons only our wait; the worker may finish later.
+            await run_in_thread(
+                _verify_credentials, odoo_url, db, api_key,
+                abandon_on_cancel=True)
     except TimeoutError:
         logger.info("consent: no answer from host %s", host)
         return HTMLResponse(_form_html(deps, replace(shown, error=(
@@ -187,10 +192,7 @@ def _peek_pending(store: Store, pending_id: str) -> PendingAuthz | None:
     live row is put straight back: the page must survive a failed
     verification and a resubmit. `complete_consent` does the real consume.
     """
-    row = store.pop_pending(pending_id)
-    if row is not None:
-        store.put_pending(row)
-    return row
+    return store.load_pending(pending_id)
 
 
 def _ssrf_refusal(host: str) -> str | None:
@@ -206,8 +208,7 @@ def _ssrf_refusal(host: str) -> str | None:
         return f"Could not resolve the Odoo host: {exc}"
     for info in infos:
         addr = ipaddress.ip_address(info[4][0])
-        if (addr.is_loopback or addr.is_link_local or addr.is_private
-                or addr.is_unspecified):
+        if not addr.is_global:
             return "The Odoo URL must be a public host."
     return None
 

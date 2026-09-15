@@ -49,7 +49,7 @@ import re
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from importlib import resources
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable
 from urllib.parse import urlsplit
@@ -238,7 +238,7 @@ def _markdown_to_html(md: str) -> str:
 
 
 def _serve_page(name: str, settings: RemoteSettings) -> Response:
-    source = (resources.files("odoo_assistant.remote.pages")
+    source = (importlib_resources.files("odoo_assistant.remote.pages")
               / f"{name}.md").read_text(encoding="utf-8")
     source = (source.replace("{{PUBLISHER}}", settings.publisher)
               .replace("{{SUPPORT_EMAIL}}", settings.support_email))
@@ -275,6 +275,7 @@ def build_app(settings: RemoteSettings) -> Starlette:
     pages routes, with every request bound to its tenant."""
     _refuse_shared_odoo_env()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    files.configure_data_dir(settings.data_dir)
     store = Store(settings.data_dir / "remote.db", settings.secret_key)
     store.init()
     provider = OdooAssistantAuthProvider(store, settings.public_url)
@@ -339,6 +340,7 @@ def build_app(settings: RemoteSettings) -> Starlette:
                 settings.public_url, "https://claude.ai", "https://chatgpt.com"],
         ),
     )
+    app.state.session_manager = mcp._lowlevel_server._session_manager
     # consent.py reads request.app.state.consent_deps; request.app is THIS
     # app (custom routes join it unmounted). Set it on the returned app,
     # after streamable_http_app() has run.
@@ -372,6 +374,9 @@ def _page_handler(name: str,
 
 def main() -> None:
     """Entry point of the `odoo-assistant-remote` console script."""
+    if "--help" in sys.argv[1:] or "-h" in sys.argv[1:]:
+        print("usage: odoo-assistant-remote\n\nRun the hosted Odoo Assistant MCP server.")
+        return
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s")

@@ -6,10 +6,9 @@ it. Two security contracts shape every table:
 * **Tokens are stored hashed.** The caller (the auth provider) mints every
   pending id, auth code, access token and refresh token with
   `secrets.token_urlsafe(24)` — 192 bits; RFC 6749 §10.10 wants at least 128 —
-  and hands the Store only the raw pending id / code and the sha256 hex of
-  every token (`hash_token`). Raw token material never reaches this module,
-  so it can never reach the disk. The Store validates nothing: the minting
-  contract lives here in prose and at the call sites.
+  and hands the Store raw pending ids and codes only for in-memory lookup,
+  while their database keys and every access/refresh token use sha256 hex
+  (`hash_token`). Raw token material never reaches the disk.
 * **The Odoo API key is stored encrypted.** `put_tenant` seals it with Fernet
   under the process secret; `get_tenant` opens it. The secret must be a
   32-byte urlsafe-base64 key — what `Fernet.generate_key()` prints — and is
@@ -32,6 +31,7 @@ from typing import Iterator
 from cryptography.fernet import Fernet
 from mcp.shared.auth import OAuthClientInformationFull
 
+from odoo_assistant import tenant as tenant_context
 from odoo_assistant.tenant import Tenant
 
 SECRET_KEY_MESSAGE = (
@@ -157,9 +157,9 @@ def _pending(row: sqlite3.Row) -> PendingAuthz:
         state=row["state"], expires_at=_dt(row["expires_at"]))
 
 
-def _auth_code(row: sqlite3.Row) -> AuthCode:
+def _auth_code(row: sqlite3.Row, raw_code: str) -> AuthCode:
     return AuthCode(
-        code=row["code"], client_id=row["client_id"], subject=row["subject"],
+        code=raw_code, client_id=row["client_id"], subject=row["subject"],
         scopes=row["scopes"], code_challenge=row["code_challenge"],
         redirect_uri=row["redirect_uri"],
         redirect_uri_explicit=bool(row["redirect_uri_explicit"]),
@@ -197,12 +197,14 @@ class Store:
         self._path = path
 
     @contextmanager
-    def _db(self) -> Iterator[sqlite3.Connection]:
+    def _db(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self._path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             with conn:
+                if immediate:
+                    conn.execute("BEGIN IMMEDIATE")
                 yield conn
         finally:
             conn.close()
@@ -217,14 +219,17 @@ class Store:
         with self._db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO oauth_clients VALUES (?, ?, ?)",
-                (client.client_id, client.model_dump_json(), _iso(_now())))
+                (client.client_id,
+                 self._fernet.encrypt(client.model_dump_json().encode()),
+                 _iso(_now())))
 
     def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         with self._db() as db:
             row = db.execute(
                 "SELECT client_json FROM oauth_clients WHERE client_id = ?",
                 (client_id,)).fetchone()
-        return OAuthClientInformationFull.model_validate_json(row[0]) if row else None
+        return (OAuthClientInformationFull.model_validate_json(
+            self._fernet.decrypt(row[0])) if row else None)
 
     # -------------------------------------------------- pending authorisations
     def put_pending(self, row: PendingAuthz) -> None:
@@ -238,19 +243,35 @@ class Store:
     def pop_pending(self, pending_id: str) -> PendingAuthz | None:
         """Delete-on-read; an expired authorisation is refused and dropped."""
         with self._db() as db:
-            row = db.execute(
-                "SELECT * FROM pending_authz WHERE id = ?", (pending_id,)).fetchone()
-            db.execute("DELETE FROM pending_authz WHERE id = ?", (pending_id,))
+            if sqlite3.sqlite_version_info >= (3, 35):
+                row = db.execute(
+                    "DELETE FROM pending_authz WHERE id = ? RETURNING *",
+                    (pending_id,)).fetchone()
+            else:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute(
+                    "SELECT * FROM pending_authz WHERE id = ?",
+                    (pending_id,)).fetchone()
+                db.execute("DELETE FROM pending_authz WHERE id = ?", (pending_id,))
         if row is None or _dt(row["expires_at"]) <= _now():
             return None
         return _pending(row)
+
+    def load_pending(self, pending_id: str) -> PendingAuthz | None:
+        """Read a live pending authorization without consuming it."""
+        with self._db() as db:
+            row = db.execute(
+                "SELECT * FROM pending_authz WHERE id = ?", (pending_id,)).fetchone()
+        return (_pending(row) if row is not None
+                and _dt(row["expires_at"]) > _now() else None)
 
     # -------------------------------------------------------------- auth codes
     def put_code(self, row: AuthCode) -> None:
         with self._db() as db:
             db.execute(
                 "INSERT OR REPLACE INTO auth_codes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (row.code, row.client_id, row.subject, row.scopes, row.code_challenge,
+                (hash_token(row.code), row.client_id, row.subject, row.scopes,
+                 row.code_challenge,
                  row.redirect_uri, int(row.redirect_uri_explicit), row.resource,
                  _iso(row.expires_at), int(row.used)))
 
@@ -258,22 +279,73 @@ class Store:
         """A read that consumes nothing; unknown, used or expired reads as absent."""
         with self._db() as db:
             row = db.execute(
-                "SELECT * FROM auth_codes WHERE code = ?", (code,)).fetchone()
+                "SELECT * FROM auth_codes WHERE code = ?",
+                (hash_token(code),)).fetchone()
             if row and _dt(row["expires_at"]) <= _now():
-                db.execute("DELETE FROM auth_codes WHERE code = ?", (code,))
+                db.execute("DELETE FROM auth_codes WHERE code = ?", (hash_token(code),))
                 return None
-        return _auth_code(row) if row and not row["used"] else None
+        return _auth_code(row, code) if row and not row["used"] else None
 
     def consume_code(self, code: str) -> AuthCode | None:
-        """Single use: flips `used`; a second consume reads as absent."""
+        """Single use: atomically deletes and returns one live code."""
+        code_hash = hash_token(code)
         with self._db() as db:
+            if sqlite3.sqlite_version_info >= (3, 35):
+                row = db.execute(
+                    "DELETE FROM auth_codes WHERE code = ? RETURNING *",
+                    (code_hash,)).fetchone()
+            else:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute(
+                    "SELECT * FROM auth_codes WHERE code = ?",
+                    (code_hash,)).fetchone()
+                db.execute("DELETE FROM auth_codes WHERE code = ?", (code_hash,))
+        if row is None or row["used"] or _dt(row["expires_at"]) <= _now():
+            return None
+        return _auth_code(row, code)
+
+    @staticmethod
+    def _put_pair(db: sqlite3.Connection, access: AccessToken,
+                  refresh: RefreshToken) -> None:
+        db.execute(
+            "INSERT OR REPLACE INTO access_tokens VALUES (?, ?, ?, ?, ?, ?)",
+            (access.token_hash, access.family_id, access.client_id, access.subject,
+             access.scopes, _iso(access.expires_at)))
+        db.execute(
+            "INSERT OR REPLACE INTO refresh_tokens VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (refresh.token_hash, refresh.family_id, refresh.client_id,
+             refresh.subject, refresh.scopes, _iso(refresh.expires_at),
+             int(refresh.revoked)))
+
+    def exchange_code_pair(self, code: str, access: AccessToken,
+                           refresh: RefreshToken) -> AuthCode | None:
+        """Consume a code and persist both minted tokens in one transaction."""
+        with self._db(immediate=True) as db:
             row = db.execute(
-                "SELECT * FROM auth_codes WHERE code = ?", (code,)).fetchone()
+                "SELECT * FROM auth_codes WHERE code = ?",
+                (hash_token(code),)).fetchone()
             if row is None or row["used"] or _dt(row["expires_at"]) <= _now():
-                db.execute("DELETE FROM auth_codes WHERE code = ?", (code,))
+                db.execute("DELETE FROM auth_codes WHERE code = ?", (hash_token(code),))
                 return None
-            db.execute("UPDATE auth_codes SET used = 1 WHERE code = ?", (code,))
-        return _auth_code(row)
+            db.execute("DELETE FROM auth_codes WHERE code = ?", (hash_token(code),))
+            self._put_pair(db, access, refresh)
+        return _auth_code(row, code)
+
+    def rotate_refresh_pair(self, token_hash: str, access: AccessToken,
+                            refresh: RefreshToken) -> RefreshToken | None:
+        """Revoke one refresh family and persist its replacement atomically."""
+        with self._db(immediate=True) as db:
+            row = db.execute(
+                "SELECT * FROM refresh_tokens WHERE token_hash = ?",
+                (token_hash,)).fetchone()
+            if row is None or row["revoked"] or _dt(row["expires_at"]) <= _now():
+                return None
+            family_id = row["family_id"]
+            db.execute("DELETE FROM access_tokens WHERE family_id = ?", (family_id,))
+            db.execute("UPDATE refresh_tokens SET revoked = 1 WHERE family_id = ?",
+                       (family_id,))
+            self._put_pair(db, access, refresh)
+        return _refresh(row)
 
     # ------------------------------------------------------------------ tokens
     def put_access(self, row: AccessToken) -> None:
@@ -319,7 +391,7 @@ class Store:
     def revoke_family(self, family_id: str) -> None:
         """Kill a minted pair and every rotation of it: accesses die now,
         refreshes keep a revocation mark so a presented one reads as dead."""
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             db.execute("DELETE FROM access_tokens WHERE family_id = ?", (family_id,))
             db.execute(
                 "UPDATE refresh_tokens SET revoked = 1 WHERE family_id = ?",
@@ -361,6 +433,7 @@ class Store:
     def delete_tenant(self, subject: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM tenants WHERE subject = ?", (subject,))
+        tenant_context.forget(subject)
 
     # ------------------------------------------------------------ housekeeping
     def tokens_alive(self, subject: str) -> bool:
@@ -391,7 +464,17 @@ class Store:
     def purge_idle_tenants(self, days: int = 90) -> None:
         """Forget tenants unused for `days` that hold no live token — the
         privacy page's 'automatically after 90 days without use'."""
-        with self._db() as db:
+        with self._db(immediate=True) as db:
+            params = {"cutoff": _iso(_now() - timedelta(days=days)),
+                      "now": _iso(_now())}
+            subjects = [row[0] for row in db.execute(
+                "SELECT subject FROM tenants WHERE last_used_at <= :cutoff"
+                " AND NOT EXISTS (SELECT 1 FROM access_tokens a"
+                "                 WHERE a.subject = tenants.subject"
+                "                   AND a.expires_at > :now)"
+                " AND NOT EXISTS (SELECT 1 FROM refresh_tokens r"
+                "                 WHERE r.subject = tenants.subject AND r.revoked = 0"
+                "                   AND r.expires_at > :now)", params).fetchall()]
             db.execute(
                 "DELETE FROM tenants WHERE last_used_at <= :cutoff"
                 " AND NOT EXISTS (SELECT 1 FROM access_tokens a"
@@ -400,4 +483,6 @@ class Store:
                 " AND NOT EXISTS (SELECT 1 FROM refresh_tokens r"
                 "                 WHERE r.subject = tenants.subject AND r.revoked = 0"
                 "                   AND r.expires_at > :now)",
-                {"cutoff": _iso(_now() - timedelta(days=days)), "now": _iso(_now())})
+                params)
+        for subject in subjects:
+            tenant_context.forget(subject)

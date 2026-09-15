@@ -32,6 +32,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyUrl
 
 from odoo_assistant.remote import store
+from odoo_assistant import tenant
 
 
 def _now() -> datetime:
@@ -115,12 +116,18 @@ class OdooAssistantAuthProvider(
     async def exchange_authorization_code(
             self, client: OAuthClientInformationFull,
             authorization_code: AuthorizationCode) -> OAuthToken:
-        row = self._store.consume_code(authorization_code.code)
+        if authorization_code.subject is None:
+            raise TokenError(error="invalid_grant",
+                             error_description="authorization code has no subject")
+        pair, access, refresh = self._new_pair(
+            client.client_id, authorization_code.subject,
+            " ".join(authorization_code.scopes), secrets.token_urlsafe(24))
+        row = self._store.exchange_code_pair(
+            authorization_code.code, access, refresh)
         if row is None:
             raise TokenError(error="invalid_grant",
                              error_description="authorization code is used or expired")
-        return self._mint_pair(client.client_id, row.subject, row.scopes,
-                               family_id=secrets.token_urlsafe(24))
+        return pair
 
     # ---------------------------------------------------- refresh rotation
     async def load_refresh_token(
@@ -146,9 +153,14 @@ class OdooAssistantAuthProvider(
         # Rotation: the presented token (and its family's accesses) die now;
         # the replacement pair is minted in the SAME family, so a later
         # revocation of either still reaches everything ever issued from it.
-        self._store.revoke_family(row.family_id)
-        return self._mint_pair(client.client_id, row.subject, " ".join(scopes),
-                               family_id=row.family_id)
+        pair, access, replacement = self._new_pair(
+            client.client_id, row.subject, " ".join(scopes), row.family_id)
+        rotated = self._store.rotate_refresh_pair(
+            store.hash_token(refresh_token.token), access, replacement)
+        if rotated is None:
+            raise TokenError(error="invalid_grant",
+                             error_description="refresh token is revoked or expired")
+        return pair
 
     # ------------------------------------------------------ access tokens
     async def load_access_token(self, token: str) -> AccessToken | None:
@@ -175,30 +187,33 @@ class OdooAssistantAuthProvider(
         self._store.revoke_family(row.family_id)
         if not self._store.tokens_alive(row.subject):
             self._store.delete_tenant(row.subject)
+            tenant.forget(row.subject)
 
     # ------------------------------------------------------------ internals
-    def _mint_pair(self, client_id: str, subject: str, scopes: str | None,
-                   family_id: str) -> OAuthToken:
+    def _new_pair(self, client_id: str, subject: str, scopes: str | None,
+                  family_id: str) -> tuple[OAuthToken, store.AccessToken,
+                                           store.RefreshToken]:
         now = _now()
         access = secrets.token_urlsafe(24)
         refresh = secrets.token_urlsafe(24)
-        self._store.put_access(store.AccessToken(
+        access_row = store.AccessToken(
             token_hash=store.hash_token(access),
             family_id=family_id,
             client_id=client_id,
             subject=subject,
             scopes=scopes,
-            expires_at=now + store.ACCESS_TTL))
-        self._store.put_refresh(store.RefreshToken(
+            expires_at=now + store.ACCESS_TTL)
+        refresh_row = store.RefreshToken(
             token_hash=store.hash_token(refresh),
             family_id=family_id,
             client_id=client_id,
             subject=subject,
             scopes=scopes,
-            expires_at=now + store.REFRESH_TTL))
-        return OAuthToken(
+            expires_at=now + store.REFRESH_TTL)
+        pair = OAuthToken(
             access_token=access,
             token_type="Bearer",
             expires_in=int(store.ACCESS_TTL.total_seconds()),
             refresh_token=refresh,
             scope=scopes)
+        return pair, access_row, refresh_row

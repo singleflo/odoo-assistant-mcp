@@ -24,6 +24,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from odoo_assistant import paths, tenant
+from odoo_assistant.remote import files
 from odoo_assistant.remote.files import publish, purge_expired_files, serve_file
 from odoo_assistant.tools_collab import download_docs, generate_pdf
 from tests.conftest import MockOdoo
@@ -38,6 +39,7 @@ SUBJECT = "t_test_subject"
 def data_dir(monkeypatch, tmp_path):
     """Given: the server's data directory is this test's own tmp_path."""
     monkeypatch.setenv("ODOO_MCP_DATA_DIR", str(tmp_path))
+    files.configure_data_dir(tmp_path)
     return tmp_path
 
 

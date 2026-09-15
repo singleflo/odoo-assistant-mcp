@@ -16,6 +16,8 @@ there, not in the base environment a stdio install resolves.
 """
 import socket
 import sqlite3
+import threading
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -294,7 +296,8 @@ def test_plain_http_to_a_remote_host_is_rejected(store, fake_connect,
 
 
 # --------------------------------------------------------------- SSRF guard
-@pytest.mark.parametrize("address", ["169.254.169.254", "10.0.0.5"])
+@pytest.mark.parametrize(
+    "address", ["169.254.169.254", "10.0.0.5", "100.64.0.1"])
 def test_private_addresses_are_refused_before_any_connection(
         store, fake_connect, provider, monkeypatch, address):
     """Given an URL that resolves into a refused range, When submitted,
@@ -336,6 +339,30 @@ def test_localhost_http_is_accepted_for_a_server_on_this_machine(
 
     assert answer.status_code == 302
     assert fake_connect.calls[0]["base"] == "http://localhost:8069"
+
+
+def test_verification_timeout_returns_while_worker_is_still_blocked(
+        store, provider, monkeypatch):
+    release = threading.Event()
+    started = threading.Event()
+
+    def blocked_verify(*args):
+        started.set()
+        release.wait(timeout=1)
+
+    monkeypatch.setattr(consent, "_VERIFY_TIMEOUT", 0.01)
+    monkeypatch.setattr(consent, "_verify_credentials", blocked_verify)
+    c = client(store, provider, allow_private_targets=True)
+
+    before = time.monotonic()
+    answer = c.post("/consent", data=_form())
+    elapsed = time.monotonic() - before
+    release.set()
+
+    assert started.is_set()
+    assert answer.status_code == 200
+    assert "did not answer" in answer.text
+    assert elapsed < 0.2
 
 
 # --------------------------------------------------------------- body & req

@@ -67,27 +67,34 @@ def reset(token: Token) -> None:
     _current.reset(token)
 
 
-_clients: dict[str, Odoo] = {}
+_clients: dict[tuple[str, str, str], Odoo] = {}
 _clients_lock = threading.Lock()
 
 
 def odoo_for(tenant: Tenant) -> Odoo:
     """The one client for this subject, connected on first use.
 
-    Keyed by subject alone: a subject is one human's consent to one instance,
-    so whatever else changes about their tenant record, the live connection
-    is reused. The double-checked read outside the lock keeps the common call
-    lock-free.
+    The database and base URL are part of the identity so a changed consent
+    cannot reuse a live connection to stale Odoo data. The double-checked read
+    outside the lock keeps the common call lock-free.
     """
-    existing = _clients.get(tenant.subject)
+    key = (tenant.subject, tenant.db, tenant.base_url)
+    existing = _clients.get(key)
     if existing is not None:
         return existing
     with _clients_lock:
-        if tenant.subject not in _clients:
-            _clients[tenant.subject] = connect(
+        if key not in _clients:
+            _clients[key] = connect(
                 base=tenant.base_url,
                 db=tenant.db,
                 user="",
                 key=tenant.api_key,
             )
-        return _clients[tenant.subject]
+        return _clients[key]
+
+
+def forget(subject: str) -> None:
+    """Drop every live Odoo connection cached for one tenant subject."""
+    with _clients_lock:
+        for key in [key for key in _clients if key[0] == subject]:
+            del _clients[key]

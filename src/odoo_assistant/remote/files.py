@@ -38,12 +38,19 @@ from odoo_assistant.paths import data_dir
 TTL_MINUTES = 15
 _NOT_FOUND = {"error": "not found or expired"}
 _hits = itertools.count(1)
+_base_dir = data_dir()
+
+
+def configure_data_dir(path: Path) -> None:
+    """Set the hosted process' file and metadata directory."""
+    global _base_dir
+    _base_dir = path
 
 
 def _db() -> sqlite3.Connection:
     """One fresh connection per call, table ensured; close the returned one."""
-    data_dir().mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(data_dir() / "remote.db")
+    _base_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_base_dir / "remote.db")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS files ("
@@ -76,7 +83,7 @@ def publish(path: Path, subject: str, *, public_url: str,
         raise ValueError(
             f"subject must be a plain directory name, got {subject!r}")
     token = secrets.token_urlsafe(24)
-    dest_dir = data_dir() / "files" / subject / token
+    dest_dir = _base_dir / "files" / subject / token
     dest_dir.mkdir(parents=True)
     dest = dest_dir / path.name
     shutil.move(str(path), dest)

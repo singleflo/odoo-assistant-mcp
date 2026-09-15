@@ -21,6 +21,7 @@ import hashlib
 import json
 import secrets
 import socket
+import sys
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -37,6 +38,7 @@ from cryptography.fernet import Fernet  # noqa: E402
 
 import odoo_assistant.tenant as tenant_module  # noqa: E402
 from odoo_assistant.remote import consent, files  # noqa: E402
+from odoo_assistant.remote import app as remote_app  # noqa: E402
 from odoo_assistant.remote.app import RemoteSettings, build_app  # noqa: E402
 from odoo_assistant.remote.store import Store, key_hash  # noqa: E402
 from odoo_assistant.server import _VERSION  # noqa: E402
@@ -217,6 +219,30 @@ def test_health_reports_the_server_version(tmp_path):
     assert r.json() == {"status": "ok", "version": _VERSION}
 
 
+def test_build_app_uses_a_stateless_session_manager(tmp_path):
+    app = build_app(make_settings(tmp_path))
+
+    assert app.state.session_manager.stateless is True
+
+
+def test_build_app_configures_files_to_use_its_data_directory(tmp_path):
+    build_app(make_settings(tmp_path))
+    payload = tmp_path / "configured.txt"
+    payload.write_bytes(b"configured")
+
+    files.publish(payload, "t_configured", public_url=PUBLIC_URL)
+
+    assert any((tmp_path / "files" / "t_configured").iterdir())
+
+
+def test_main_prints_help_without_requiring_environment(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["odoo-assistant-remote", "--help"])
+
+    remote_app.main()
+
+    assert "usage: odoo-assistant-remote" in capsys.readouterr().out
+
+
 def test_no_bearer_on_mcp_is_a_401_naming_the_resource_metadata(tmp_path):
     with make_client(tmp_path) as client:
         r = client.post("/mcp", json=_rpc_body("initialize", {}),
@@ -370,6 +396,7 @@ def test_startup_purges_expired_files_but_keeps_live_ones(tmp_path,
                                                           consent_connect):
     """Given an expired file row and a live one, When the lifespan runs,
     Then the expired token answers 404 and the live one still serves."""
+    files.configure_data_dir(tmp_path)
     payload = tmp_path / "doc.txt"
     payload.write_bytes(b"payload")
     expired = files.publish(payload, "t_seed", public_url=PUBLIC_URL,

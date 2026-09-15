@@ -10,8 +10,10 @@ not in the base environment a stdio install resolves.
 """
 import hashlib
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 
 import pytest
 
@@ -61,10 +63,10 @@ def st(db_path, secret):
     return s
 
 
-def _client(client_id="cid-1"):
+def _client(client_id="cid-1", **overrides):
     return OAuthClientInformationFull.model_validate({
         "client_id": client_id,
-        "redirect_uris": ["http://localhost:9000/callback"]})
+        "redirect_uris": ["http://localhost:9000/callback"]} | overrides)
 
 
 def _pending(**kw) -> PendingAuthz:
@@ -147,6 +149,24 @@ def test_pending_pop_deletes_on_read(st):
     assert st.pop_pending("pend-1") is None
 
 
+@pytest.mark.parametrize("force_fallback", [False, True])
+def test_pending_pop_has_exactly_one_winner_under_concurrency(
+        st, monkeypatch, force_fallback):
+    if force_fallback:
+        monkeypatch.setattr(sqlite3, "sqlite_version_info", (3, 34, 0))
+    st.put_pending(_pending())
+    barrier = Barrier(20)
+
+    def race():
+        barrier.wait()
+        return st.pop_pending("pend-1")
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        results = list(pool.map(lambda _: race(), range(20)))
+
+    assert sum(row is not None for row in results) == 1
+
+
 def test_pending_expired_is_refused_and_dropped(st):
     st.put_pending(_pending(expires_at=_now() - timedelta(seconds=1)))
     assert st.pop_pending("pend-1") is None
@@ -161,6 +181,24 @@ def test_code_loads_then_consumes_exactly_once(st):
     assert st.consume_code("code-1") == row
     assert st.consume_code("code-1") is None  # single use
     assert st.load_code("code-1") is None  # used reads as absent
+
+
+@pytest.mark.parametrize("force_fallback", [False, True])
+def test_code_consume_has_exactly_one_winner_under_concurrency(
+        st, monkeypatch, force_fallback):
+    if force_fallback:
+        monkeypatch.setattr(sqlite3, "sqlite_version_info", (3, 34, 0))
+    st.put_code(_code())
+    barrier = Barrier(20)
+
+    def race():
+        barrier.wait()
+        return st.consume_code("code-1")
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        results = list(pool.map(lambda _: race(), range(20)))
+
+    assert sum(row is not None for row in results) == 1
 
 
 def test_code_expired_is_refused(st):
@@ -197,6 +235,42 @@ def test_revoke_family_unloads_both_tokens(st):
     st.revoke_family("fam-1")
     assert st.load_access(hash_token("access-raw")) is None
     assert st.load_refresh(hash_token("refresh-raw")) is None
+
+
+def test_code_exchange_rolls_back_consumption_when_pair_insert_fails(
+        st, monkeypatch):
+    code = _code()
+    st.put_code(code)
+
+    def fail_pair(*args):
+        raise RuntimeError("injected pair failure")
+
+    monkeypatch.setattr(Store, "_put_pair", staticmethod(fail_pair))
+
+    with pytest.raises(RuntimeError, match="injected pair failure"):
+        st.exchange_code_pair("code-1", _access(), _refresh())
+
+    assert st.load_code("code-1") == code
+
+
+def test_refresh_rotation_rolls_back_revocation_when_pair_insert_fails(
+        st, monkeypatch):
+    access = _access()
+    refresh = _refresh()
+    st.put_access(access)
+    st.put_refresh(refresh)
+
+    def fail_pair(*args):
+        raise RuntimeError("injected pair failure")
+
+    monkeypatch.setattr(Store, "_put_pair", staticmethod(fail_pair))
+
+    with pytest.raises(RuntimeError, match="injected pair failure"):
+        st.rotate_refresh_pair(
+            hash_token("refresh-raw"), _access(), _refresh())
+
+    assert st.load_access(hash_token("access-raw")) == access
+    assert st.load_refresh(hash_token("refresh-raw")) == refresh
 
 
 def test_tokens_alive_tracks_the_family_lifecycle(st):
@@ -277,11 +351,18 @@ def test_purge_expired_cleans_and_a_new_store_agrees(st, db_path, secret):
 
 # ------------------------------------------------------------------ secrecy
 def test_db_file_carries_no_plaintext_secret(st, db_path):
+    client_secret = "dcr-client-secret-must-be-sealed"
+    st.put_client(_client(
+        token_endpoint_auth_method="client_secret_post",
+        client_secret=client_secret))
     st.put_tenant(_tenant())
+    st.put_code(_code(code="authorization-code-must-be-hashed"))
     st.put_access(_access())
     st.put_refresh(_refresh())
     blob = _raw_db_bytes(db_path)
+    assert client_secret.encode() not in blob
     assert b"the-key" not in blob
+    assert b"authorization-code-must-be-hashed" not in blob
     assert b"access-raw" not in blob
     assert b"refresh-raw" not in blob
 

@@ -5,6 +5,14 @@ An Odoo virtual employee via the Model Context Protocol (MCP). This server expos
 
 ## Quickstart
 
+**Install with your AI agent.** If you already have an AI coding assistant —
+Claude Code, Claude Desktop, Cursor, opencode, any of the hosts below —
+paste this link into your agent and ask it to set up Odoo Assistant:
+`https://raw.githubusercontent.com/singleflo/odoo-assistant-mcp/main/docs/INSTALL-WITH-YOUR-AGENT.md`
+That page is written for the agent rather than for you: it asks you for the
+Odoo URL and an API key, installs `uv`, writes the configuration file its own
+host reads, and verifies the connection. The manual route is below.
+
 ### 1. Install
 
 Run the server directly:

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-15
+
+The numbered safety ceiling is gone, replaced by two lists of Odoo method names. The scale answered "what does this do"; the question an operator actually has is "may it run", and people answer that in method names — nobody could explain in a minute which number allowed `action_confirm` but refused `unlink`.
+
+**BREAKING**: a method nobody reviewed is now allowed by default. `ODOO_MCP_ALLOW=*` is a real wildcard, where 0.1.2 refused every unclassified method (`L5_UNKNOWN`). The default deny list was extended with `mailing.mailing:action_send` specifically because a mass mailing is the one measured case where that matters: 31 models answered to `action_send` on a live instance, and only the Evolution wizards should. The entry is model-qualified for that reason — `action_send` elsewhere keeps working. There is no compatibility shim: a server still started with `ODOO_MCP_MAX_LEVEL` refuses to start.
+
+### Changed
+- **`ODOO_MCP_ALLOW` and `ODOO_MCP_DENY` replace the L0–L5 ceiling.** The gate now decides by method name, matched as exact string equality on `method` or `model:method` — no prefix, no substring, so `action_cancel` never matches `button_cancel`. Deny is checked before allow. `ODOO_MCP_ALLOW` defaults to `*`; `none` makes the server read-only; a value set on `ODOO_MCP_DENY` REPLACES the default list rather than extending it, which is how an operator re-enables `action_cancel`. `unlink` is decided before both lists and is granted only by `ODOO_MCP_ALLOW_UNLINK=yes`, because deletion is the one action that cannot be undone and a name in a comma-separated list must never be enough to grant it. All three are read at call time, so a host-config edit is the whole story. Reads are never subject to the lists; the structural guards (`account.move` without `move_type`, private `_` methods) still refuse regardless of what either list says.
+- **Startup refuses while `ODOO_MCP_MAX_LEVEL` is still set.** Any value counts, including a stale `0` that used to mean read-only — silently ignoring it would turn a server the operator configured read-only into a writing one. The error names the three replacements.
+- **The server warms its connection up in a background thread at startup** instead of connecting on the first tool call, so the first call no longer pays for authentication. A failed warm-up degrades to a stderr warning and the tools retry.
+
+### Removed
+- **`ODOO_MCP_MAX_LEVEL`**, with the classification ceiling it configured.
+- **`ODOO_MCP_PROTECTED_HOSTS`**, **`ODOO_ALLOW_PROD_WRITE`** and **`ODOO_PROFILE_DIR`** — no longer read by the server. The server no longer arms the protected-host guard: it was a second answer to a question the gate already answers, and read-only intent is now expressed as `ODOO_MCP_ALLOW=none`, in the same file and the same vocabulary as every other permission. The first two remain read by the CLI scripts in `odoo_client.py`, which are used outside the MCP path.
+
+### Added
+- **`docs/INSTALL-WITH-YOUR-AGENT.md`**: the install path for people who let their agent do the configuring.
+- **An expanded host configuration section** in the README, carrying the allow/deny variables in the file the human owns.
+- **A "Database and login" guidance section**, stating when each is discovered and when it must be set.
+
 ## [0.1.2] - 2026-08-25
 
 Everything here was found by pointing the server at a live Odoo **16.0** Enterprise instance for the first time. 16.0 is now verified for connection, authentication, reads, `instance_overview` and Discuss; write scenarios were not exercised.

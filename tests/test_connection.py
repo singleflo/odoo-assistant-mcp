@@ -149,14 +149,16 @@ def test_server_json_marks_the_login_optional():
     """Given the registry reads server.json to build a host's env prompt, When
     the login and the database are optional to the server, Then the manifest
     must say so — otherwise a host refuses to launch without a value it does
-    not need."""
+    not need. It must also offer the three variables that decide what the
+    agent may run, and no longer the ceiling variable that refuses startup."""
     manifest = json.loads((Path(__file__).parents[1] / "server.json").read_text())
     variables = {
         v["name"]: v for v in manifest["packages"][0]["environmentVariables"]
     }
     assert variables["ODOO_USER"]["isRequired"] is False
     assert variables["ODOO_DB"]["isRequired"] is False
-    assert "ODOO_MCP_PROTECTED_HOSTS" in variables
+    assert {"ODOO_MCP_ALLOW", "ODOO_MCP_DENY", "ODOO_MCP_ALLOW_UNLINK"} <= set(variables)
+    assert "ODOO_MCP_MAX_LEVEL" not in variables
     assert variables["ODOO_API_KEY"]["isRequired"] is True
 
 

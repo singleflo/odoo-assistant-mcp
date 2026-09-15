@@ -6,12 +6,12 @@
     "url": "https://github.com/singleflo/odoo-assistant-mcp",
     "source": "github"
   },
-  "version": "0.1.2",
+      "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "odoo-assistant",
-      "version": "0.1.2",
+  "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
@@ -45,15 +45,22 @@
           "format": "string"
         },
         {
-          "name": "ODOO_MCP_MAX_LEVEL",
-          "description": "Safety ceiling 0-5, default 3 (state transitions allowed, destructive ops blocked). See server_safety.py.",
+          "name": "ODOO_MCP_ALLOW",
+          "description": "Methods the agent may call. `*` (default) allows every method not denied; `none` makes the server read-only; or a comma-separated list of `method` or `model:method` entries.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
         },
         {
-          "name": "ODOO_MCP_PROTECTED_HOSTS",
-          "description": "Comma-separated hosts this server refuses to WRITE to (requires ODOO_ALLOW_PROD_WRITE=yes to override). Empty by default: protection is the operator's opt-in, no host is baked in.",
+          "name": "ODOO_MCP_DENY",
+          "description": "Methods the agent may never call. A value set here REPLACES the default list, which is unlink,archive,action_cancel,button_cancel,action_reverse,action_draft,mailing.mailing:action_send.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ODOO_MCP_ALLOW_UNLINK",
+          "description": "Deletion is the one action that cannot be undone: `yes` lets `unlink` through; nothing else can.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"

@@ -612,6 +612,8 @@ Source: internal skill documentation, 12 cold-start runs.
 
 ### How the safety layer maps to MCP
 
+> Superseded in 0.2.0 by the allow/deny lists — see README, "What the agent may do".
+
 The MCP spec says tool annotations are **untrusted** by hosts. This means the
 host will ask the user for consent, but it won't enforce our business rules.
 Our safety layer is the **enforcement point**.

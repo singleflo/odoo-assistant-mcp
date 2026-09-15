@@ -15,7 +15,7 @@ installable with `uvx odoo-assistant`.
 ## Commands
 
 ```bash
-uv run pytest                       # 225 tests. addopts already excludes live+wheel
+uv run pytest                       # 227 tests. addopts already excludes live+wheel
 uv build && uv run pytest -m wheel  #   3 tests. needs dist/ AND network (uvx)
 uv run pytest -m live               #   6 tests. needs the env vars below
 ```
@@ -36,7 +36,7 @@ Protocol check: `npx @modelcontextprotocol/inspector` against the server.
 - **`explore_module.REF_DIR` redirect** needs the package-qualified import (`from odoo_assistant.odoo_scripts import explore_module`) so the patch is visible to every importer. See `tools_evolution.py`'s docstring.
 - **Wheel bundles `references_public/` only** (scrubbed, generic). `references/` holds the instance-specific set and is excluded.
 - stdio transport: **nothing may reach stdout** but the JSON-RPC stream. Diagnostics go to stderr.
-- Every write passes `server_safety.gate()` (L0–L5). L4/L5 refuse by default; `ODOO_MCP_MAX_LEVEL` moves the bar and refuses startup if invalid. Host consent dialogs are untrusted — **the gate is the only enforcement point**.
+- Every write passes `server_safety.gate()`, which decides by METHOD NAME against two operator-owned lists: `ODOO_MCP_ALLOW` (`*` by default, `none` for read-only, else entries spelled `method` or `model:method`) and `ODOO_MCP_DENY` (`DEFAULT_DENY` when unset; a value set REPLACES it). Matching is exact string equality, deny wins over allow, and reads are never subject to either list. `unlink` is decided before both lists and only `ODOO_MCP_ALLOW_UNLINK=yes` grants it. All three are read at CALL time. Host consent dialogs are untrusted — **the gate is the only enforcement point**.
 
 ## Where guidance actually lands (measured)
 
@@ -70,7 +70,7 @@ Full list: `references/SKILL.md` (8 rules) + `references/writing.md` (12 pattern
 
 - Env: required are `ODOO_BASE_URL` (no trailing slash) and `ODOO_API_KEY` only. `ODOO_DB` is discovered (mandatory only when the instance serves several — the error names them), `ODOO_USER` is discovered from the key. **API key only** — passwords were removed deliberately.
 - Write scenarios need `ODOO_MCP_ALLOW_LIVE_WRITE=1`; that variable is test-suite-only and must never appear in host config.
-- Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed). `odoo_client.py` refuses writes to hosts listed in `ODOO_MCP_PROTECTED_HOSTS` (env, empty by default — no host is hardcoded).
+- Dev instance `persevida_dev18` (Odoo 18 Enterprise, companies ES+CZ, XML-RPC, destructive tests allowed).
 - Cleanup archives rather than deletes — `Writer.can()` refuses partner unlink — so `MCP Test %` residue on the dev instance is expected.
 - Local host config lives in `.opencode/opencode.json`, **gitignored because it holds a real API key**. It runs the server from source (`uv run --directory <repo> odoo-assistant`) for development convenience, and raises `timeout` from opencode's 5000 ms default, which `instance_overview` exceeds.
 - Smoke-test a script directly: `python3 src/odoo_assistant/odoo_scripts/query.py --url http://host:8069 --key <API_KEY>`

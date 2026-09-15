@@ -82,6 +82,8 @@ def create_record(
 
     Multi-company: put `company_id` in `values`. The context decides what is
     visible, not which company owns the new record.
+
+    When the gate refuses, tell the user which entry of ODOO_MCP_DENY (or ODOO_MCP_ALLOW_UNLINK) would allow it and stop; never retry with another method name.
     """
     _guard(model, "create", None, values)
     try:
@@ -104,6 +106,8 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
     Setting `active` to False archives the record — the same visible outcome as
     deleting it — so the gate matches it as `archive`, which the default
     ODOO_MCP_DENY list refuses.
+
+    When the gate refuses, tell the user which entry of ODOO_MCP_DENY (or ODOO_MCP_ALLOW_UNLINK) would allow it and stop; never retry with another method name.
     """
     _guard(model, "write", record_id, values)
     try:
@@ -155,6 +159,8 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
     Two behaviours come from the Writer and are worth knowing: a returned dict
     carrying `res_model` is a wizard to follow rather than a result, and a
     transition is one-way — calling it twice raises instead of doing nothing.
+
+    When the gate refuses, tell the user which entry of ODOO_MCP_DENY (or ODOO_MCP_ALLOW_UNLINK) would allow it and stop; never retry with another method name.
     """
     _guard(model, method, record_ids)
     try:

@@ -131,6 +131,10 @@ def test_tools_list_serves_exactly_the_registered_tools(roundtrip: Roundtrip):
     """Given the real server, When tools are listed, Then all 15 are offered."""
     assert roundtrip.tools == EXPECTED_TOOLS
     assert len(roundtrip.tools) == 19
+    tools_list = next(message["result"]["tools"] for message in _wire_messages(roundtrip)
+                      if "tools" in message.get("result", {}))
+    run_action_tool = next(tool for tool in tools_list if tool["name"] == "run_action")
+    assert "ODOO_MCP_DENY" in run_action_tool["description"]
 
 
 def test_a_tool_without_credentials_reports_isError_to_the_client(roundtrip: Roundtrip):

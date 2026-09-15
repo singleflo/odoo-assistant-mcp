@@ -7,9 +7,10 @@ Two things are being proven here, and they are different:
   * what the tool REPORTS comes from the Writer's own before/after verdict, so
     "NO CHANGE" survives all the way out instead of being dressed up as done.
 
-The ceiling is deleted from the environment by an autouse fixture, so every
-test starts from `ODOO_MCP_MAX_LEVEL`'s default (3) and any test that needs
-another value says so out loud.
+The three gate variables are deleted from the environment by an autouse
+fixture, so every test starts from the defaults — allow `*`, the default deny
+list, unlink locked away — and any test that needs another value says so out
+loud.
 """
 import pytest
 from mcp.server import MCPServer
@@ -23,14 +24,15 @@ from odoo_client import OdooError, OdooExecutedButUnserializable
 from write_patterns import Writer
 from tests.conftest import MockOdoo
 
-SIX_IDS = [1, 2, 3, 4, 5, 6]
 FIVE_IDS = [1, 2, 3, 4, 5]
 
 
 @pytest.fixture(autouse=True)
-def default_ceiling(monkeypatch):
-    """Given: no host override — the ceiling is whatever the module defaults to."""
-    monkeypatch.delenv("ODOO_MCP_MAX_LEVEL", raising=False)
+def default_lists(monkeypatch):
+    """Given: no host override — all three gate variables are unset."""
+    monkeypatch.delenv("ODOO_MCP_ALLOW", raising=False)
+    monkeypatch.delenv("ODOO_MCP_DENY", raising=False)
+    monkeypatch.delenv("ODOO_MCP_ALLOW_UNLINK", raising=False)
 
 
 @pytest.fixture
@@ -120,16 +122,18 @@ def test_write_reports_not_changed_when_the_value_is_already_there(writer):
     assert "'SAME'" in text
 
 
-def test_archiving_through_write_record_is_refused_at_the_default_ceiling(writer):
-    """Given active=False, When written, Then it is judged destructive, not L1.
+def test_archiving_through_write_record_is_refused_by_the_default_deny_list(writer):
+    """Given active=False, When written, Then it is refused as `archive`.
 
     Archiving hides the record — the same outcome as deleting it — so the
-    classifier calls it L4 even though the method is `write`.
+    write carries the virtual entry `archive` into the lists even though the
+    method is `write`.
     """
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.write_record("res.partner", 7, {"active": False})
 
-    assert "L4_DESTRUCTIVE" in str(refusal.value)
+    assert "refused by ODOO_MCP_DENY" in str(refusal.value)
+    assert "'archive'" in str(refusal.value)
     assert writer.calls == []
 
 
@@ -148,7 +152,7 @@ def test_the_gate_is_fed_the_execute_kw_positional_shape(writer, monkeypatch,
 
     A spy that still delegates to the real gate: the shape is what matters —
     passing a dict where `execute_kw` wants a list makes a 600-record archive
-    read as a harmless L1.
+    read as a harmless write.
     """
     seen = []
 
@@ -163,29 +167,19 @@ def test_the_gate_is_fed_the_execute_kw_positional_shape(writer, monkeypatch,
     assert seen == [expected]
 
 
-def test_five_targets_stay_within_an_L1_ceiling(writer, monkeypatch):
-    """Given a ceiling of 1, When 5 records are written, Then it is still L1."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "1")
+def test_five_targets_run_when_the_method_is_allowed(writer, monkeypatch):
+    """Given `create,write` on ODOO_MCP_ALLOW, When 5 records are written, Then all 5 go.
+
+    The gate judges the method name, not how many ids carry it — there is no
+    batch threshold to stay under — but the ids must still reach it in
+    `execute_kw`'s list shape.
+    """
+    monkeypatch.setenv("ODOO_MCP_ALLOW", "create,write")
 
     tools_write.run_action("res.partner", "write", FIVE_IDS)
 
     assert writer.last_call["call"] == "act"
     assert writer.last_call["ids"] == FIVE_IDS
-
-
-def test_six_targets_are_refused_as_a_batch(writer, monkeypatch):
-    """Given a ceiling of 1, When 6 records are written, Then L2_BATCH refuses it.
-
-    The pair with the test above is the point: one more id crosses the
-    threshold, which only happens if the ids reached the classifier as a list.
-    """
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "1")
-
-    with pytest.raises(ToolExecutionError) as refusal:
-        tools_write.run_action("res.partner", "write", SIX_IDS)
-
-    assert "L2_BATCH" in str(refusal.value)
-    assert writer.calls == []
 
 
 # ------------------------------------------------------------------ run_action
@@ -212,39 +206,54 @@ def test_an_action_that_changed_nothing_says_so(writer):
 
 
 def test_unlink_is_refused_and_no_write_is_attempted(writer):
-    """Given the default ceiling, When unlink is asked for, Then nothing is sent."""
+    """Given the default lists, When unlink is asked for, Then nothing is sent.
+
+    Deletion is decided before the lists are read: only
+    ODOO_MCP_ALLOW_UNLINK=yes can grant it, so the refusal names that variable.
+    """
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.run_action("res.partner", "unlink", [7])
 
-    assert "L4_DESTRUCTIVE" in str(refusal.value)
-    assert "ODOO_MCP_MAX_LEVEL" in str(refusal.value)
+    assert "ODOO_MCP_ALLOW_UNLINK" in str(refusal.value)
     assert writer.calls == []
 
 
-def test_a_private_method_is_refused_even_with_the_ceiling_raised(writer,
-                                                                  monkeypatch):
-    """Given any ceiling, When a `_` method is asked for, Then it is still refused.
+def test_a_padded_allow_entry_matches_once_trimmed(writer, monkeypatch):
+    """Given `" write , create "`, When write is gated, Then trimming admits it."""
+    monkeypatch.setenv("ODOO_MCP_ALLOW", " write , create ")
+    writer.set_record("sale.order", 7, {"note": "OLD"})
 
-    Odoo rejects every private method itself, so no ceiling can make this one
-    work — raising the bar must not look like a way around it.
+    tools_write.write_record("sale.order", 7, {"note": "NEW"})
+
+    assert writer.last_call["call"] == "write"
+    assert writer.last_call["vals"] == {"note": "NEW"}
+
+
+def test_a_method_outside_that_same_allow_list_is_refused_naming_it(writer,
+                                                                    monkeypatch):
+    """Given the same padded list, When action_confirm is gated, Then refused.
+
+    The pair with the test above is the point: one variable, one method
+    admitted and one refused, so the match up there came from entries read as
+    `write`/`create` rather than from a list that lets everything through.
     """
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "99")
+    monkeypatch.setenv("ODOO_MCP_ALLOW", " write , create ")
 
     with pytest.raises(ToolExecutionError) as refusal:
-        tools_write.run_action("account.move", "_create_invoices", [7])
+        tools_write.run_action("sale.order", "action_confirm", [7])
 
-    assert "private" in str(refusal.value)
+    assert "not in ODOO_MCP_ALLOW" in str(refusal.value)
     assert writer.calls == []
 
 
 # --------------------------------------------------------------- cancel_record
-def test_cancel_record_is_refused_at_the_default_ceiling(writer):
-    """Given the default ceiling, When a cancel is asked for, Then it is refused."""
+def test_cancel_record_is_refused_by_the_default_deny_list(writer):
+    """Given the default deny list, When a cancel is asked for, Then it is refused."""
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.cancel_record("sale.order", 7)
 
-    assert "L4_DESTRUCTIVE" in str(refusal.value)
-    assert "ODOO_MCP_MAX_LEVEL" in str(refusal.value)
+    assert "refused by ODOO_MCP_DENY" in str(refusal.value)
+    assert "'action_cancel'" in str(refusal.value)
     assert writer.calls == []
 
 
@@ -252,7 +261,7 @@ def test_cancel_record_repeats_the_gates_refusal_verbatim(writer):
     """Given a refusal, When it is surfaced, Then it is the gate's text, not a copy.
 
     A second explanation written here would drift from the one the gate keeps
-    tested — and would start naming a ceiling it does not read.
+    tested — and would start naming a variable it does not read.
     """
     with pytest.raises(ToolExecutionError) as refusal:
         tools_write.cancel_record("sale.order", 7)
@@ -260,10 +269,14 @@ def test_cancel_record_repeats_the_gates_refusal_verbatim(writer):
     assert str(refusal.value) == gate("sale.order", "action_cancel", [7]).reason
 
 
-def test_cancel_record_runs_action_cancel_once_the_ceiling_allows_it(writer,
-                                                                     monkeypatch):
-    """Given a ceiling of 4, When cancelling, Then action_cancel runs on that id."""
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+def test_cancel_record_runs_action_cancel_once_the_deny_list_admits_it(writer,
+                                                                       monkeypatch):
+    """Given ODOO_MCP_DENY=unlink, When cancelling, Then action_cancel runs on that id.
+
+    A set value REPLACES the default list entirely, so dropping `action_cancel`
+    from it is all the enablement there is.
+    """
+    monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
     writer.set_record("sale.order", 7, {"state": "sale"})
     writer.set_effect("sale.order", "action_cancel", {"state": "cancel"})
 
@@ -297,7 +310,10 @@ def test_missing_credentials_are_mapped_for_every_write_tool(
         monkeypatch, tool, method):
     from odoo_client import MissingCredentials
 
-    monkeypatch.setenv("ODOO_MCP_MAX_LEVEL", "4")
+    # The credentials are what is under test, so every tool has to reach the
+    # Writer: a DENY holding only `unlink` replaces the default list and lets
+    # `cancel_record`'s `action_cancel` past the gate.
+    monkeypatch.setenv("ODOO_MCP_DENY", "unlink")
     monkeypatch.setattr(
         tools_write, "_writer",
         lambda: (_ for _ in ()).throw(MissingCredentials("missing credentials")),

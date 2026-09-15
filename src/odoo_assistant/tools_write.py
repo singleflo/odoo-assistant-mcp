@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """The four write tools: create a record, write to one, run an action, cancel.
 
-No level is written down here. `gate()` classifies the ACTUAL method string at
-call time, so `run_action` is a state change when it confirms an order and
-destructive when it cancels one — a level attached to the tool would be a lie
-in one of those two cases.
+No verdict is written down here. `gate()` judges the ACTUAL method string at
+call time against the operator's allow/deny lists, so `run_action` is a plain
+state change when it confirms an order and a denied name when it cancels one —
+a verdict attached to the tool would be a lie in one of those two cases.
 
 Every tool keeps the same three beats:
 
@@ -58,9 +58,9 @@ def _writer() -> Writer:
 def _guard(model: str, method: str, ids: Any = None, values: Any = None) -> None:
     """Refuse before anything reaches Odoo. Raising is what marks isError.
 
-    The refusal is the gate's own text: it already names the level, the current
-    ceiling and the `ODOO_MCP_MAX_LEVEL` value that would allow the call. A
-    second explanation written here would drift from the one under test.
+    The refusal is the gate's own text: it names the ODOO_MCP_DENY entry (or
+    ODOO_MCP_ALLOW_UNLINK, or ODOO_MCP_ALLOW) that decided. A second
+    explanation written here would drift from the one under test.
     """
     decision = gate(model, method, ids, values)
     if not decision.allowed:
@@ -102,7 +102,8 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
     comparison is the answer.
 
     Setting `active` to False archives the record — the same visible outcome as
-    deleting it — and is classified destructive rather than as a plain write.
+    deleting it — so the gate matches it as `archive`, which the default
+    ODOO_MCP_DENY list refuses.
     """
     _guard(model, "write", record_id, values)
     try:
@@ -147,9 +148,9 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
 def run_action(model: str, method: str, record_ids: list[int]) -> str:
     """Run a workflow method and report the state it left behind.
 
-    The level follows `method`: confirming or posting is a state change,
-    cancelling or unlinking is destructive and refused unless the server's
-    ceiling was raised deliberately.
+    The gate follows `method`: a name in ODOO_MCP_DENY — the default list
+    refuses `action_cancel` and friends — or `unlink` without
+    ODOO_MCP_ALLOW_UNLINK=yes, never reaches Odoo.
 
     Two behaviours come from the Writer and are worth knowing: a returned dict
     carrying `res_model` is a wizard to follow rather than a result, and a
@@ -189,7 +190,8 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
 def cancel_record(model: str, record_id: int) -> str:
     """Cancel a record through `action_cancel`, following the wizard it returns.
 
-    Destructive, so the default ceiling refuses it and says what would not.
+    `action_cancel` sits in the default ODOO_MCP_DENY list, so this tool is
+    refused until the operator removes that entry from the variable.
     """
     return run_action(model, "action_cancel", [record_id])
 

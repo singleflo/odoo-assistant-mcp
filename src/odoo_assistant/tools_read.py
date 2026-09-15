@@ -201,11 +201,14 @@ def count_records(
 def _redirect_profiles() -> str:
     """Point the instance-profile cache at a writable per-user directory.
 
-    The scripts resolve the same per-user data directory on their own, so the
-    two entry paths agree; this keeps the MCP server's copy in one place and
-    lets `ODOO_MCP_DATA_DIR` move everything at once.
+    Two variables for one folder gave three resolutions of one path: the
+    server override, the scripts' own default, and `paths.data_dir()`. The
+    scripts' default already resolves to the same
+    `.../odoo-assistant/instances`, so one data directory keeps the MCP server
+    and its scripts in agreement while letting `ODOO_MCP_DATA_DIR` move
+    everything at once.
     """
-    target = os.environ.get("ODOO_PROFILE_DIR") or str(paths.data_dir() / "instances")
+    target = str(paths.data_dir() / "instances")
     census.PROFILE_DIR = target
     query.PROFILE_DIR = target
     return target

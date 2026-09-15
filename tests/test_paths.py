@@ -70,3 +70,16 @@ def test_profiles_and_references_live_under_one_root(monkeypatch, tmp_path):
 
     assert tools_read._redirect_profiles().startswith(str(tmp_path))
     assert tools_evolution._redirect_references().startswith(str(tmp_path))
+
+
+def test_profile_directory_ignores_legacy_override(monkeypatch, tmp_path):
+    """Given both profile variables set, When profiles resolve, Then the
+    MCP data directory owns the instances path and the legacy variable is
+    ignored."""
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("ODOO_MCP_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("ODOO_PROFILE_DIR", str(tmp_path / "legacy"))
+
+    from odoo_assistant import tools_read
+
+    assert tools_read._redirect_profiles() == str(data_dir / "instances")

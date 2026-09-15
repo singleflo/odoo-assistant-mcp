@@ -11,7 +11,7 @@ To maintain an active connection and handle authorization securely, our remote s
 | Category | Description | Storage Method & TTL |
 | --- | --- | --- |
 | Odoo URL | The base URL of your target Odoo instance | Stored encrypted in SQLite database |
-| Odoo API Credentials | The API key or user authentication details provided during authorization | Encrypted using AES-256 (Fernet / cryptography package) |
+| Odoo API Credentials | The Odoo API key provided during authorization (account passwords are never accepted) | Encrypted with Fernet (AES-128-CBC + HMAC-SHA256, via the cryptography package) |
 | Policy Selection | The execution policy selected during consent (read-only vs full access) | Stored in SQLite database |
 | Hashed Tokens | Cryptographic hashes of OAuth 2.1 authorization codes, access tokens, and refresh tokens | Hashed using SHA-256 (raw tokens are never stored) |
 | Tenant References | Generated internal identifiers linking your OAuth subject to your connection settings | Stored in SQLite database |

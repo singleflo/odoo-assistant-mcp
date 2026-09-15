@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "coolify": {
+      "source": "oakoss/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/coolify/SKILL.md",
+      "computedHash": "ff688226d48aa0a801fdb09417a50c9aca0677f7867a8da2429d7dbdf4929431"
+    },
+    "coolify-compose": {
+      "source": "joshuadavidthomas/agent-skills",
+      "sourceType": "github",
+      "skillPath": "coolify-compose/SKILL.md",
+      "computedHash": "362e71eb56953e24e0714412dee5ffa0aea94fca85be0aa5e321d7ecf8182374"
+    },
     "mcp-builder": {
       "source": "anthropics/skills",
       "sourceType": "github",

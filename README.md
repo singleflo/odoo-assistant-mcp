@@ -249,6 +249,38 @@ Each snippet below was checked against that host's own documentation, cited on
 the `Source:` line under it. Where a host has a one-line add command, it is
 given as well, because it writes the same entry without a hand-edited file.
 
+## Hosted server: Claude.ai, ChatGPT and Codex
+
+Everything in the sections below runs the server on your machine. There is a
+second way into the same 19 tools: they are also served over the internet at
+`https://mcp.singleflo.com/mcp`, which Claude.ai, ChatGPT and Codex can reach
+directly. Nothing is installed and no environment variables are set on your
+side — you sign in once with your Odoo address and API key, on the server's
+consent page, and the chat you already use reaches your Odoo. The local
+configuration of every other section keeps working exactly as written; the two
+ways differ only in where the server runs.
+
+The consent page asks for your Odoo URL, your API key, and one choice: **read**
+lets the agent look at your data, **standard** lets it also create records,
+run workflows and schedule activities. Deletion is never available through the
+hosted server — `unlink` is not reachable from it under either choice. The
+choice can be changed later by signing in again and picking the other one.
+
+**What the hosted server stores**: your Odoo URL and API key, encrypted at
+rest; your sign-in identity, kept only as a hash; and the files a tool
+produces, which live there only as links that expire after fifteen minutes.
+The details are at https://mcp.singleflo.com/privacy, with
+https://mcp.singleflo.com/terms and https://mcp.singleflo.com/support on the
+same domain.
+
+Per-host instructions: Claude.ai and ChatGPT are hosted-only connections and
+have their own sections below. Claude Code and Codex keep their local
+configuration above and gained a hosted one-liner each.
+
+If you would rather run the hosted part yourself, the developer guide at
+[docs/REMOTE.md](docs/REMOTE.md) covers the whole path — local run, tunnel,
+deployment.
+
 ### Claude Desktop
 
 Claude Desktop ships for macOS and Windows only, and keeps its servers in
@@ -332,6 +364,17 @@ here except on the first `instance_overview` call of a session, which pays for
 authentication plus dozens of XML-RPC round trips. Reconnect the server from the
 `/mcp` panel after editing, or restart Claude Code.
 
+The one-liner above runs the server on your machine. Claude Code can also use
+the hosted server — no install, no environment variables:
+
+```bash
+claude mcp add --transport http odoo-assistant https://mcp.singleflo.com/mcp
+```
+
+The first tool call starts the sign-in and lands on the consent page, where
+read or standard is chosen. On the hosted route the gate is decided there, not
+by local `ODOO_MCP_*` variables, and deletion is not offered at all.
+
 Source: https://code.claude.com/docs/en/mcp
 
 ### OpenAI Codex CLI
@@ -372,26 +415,68 @@ either, which is why both are raised above. After editing, press **Restart** on
 the server in the desktop app or the IDE extension; in the CLI, start a new
 session and check it with `/mcp`.
 
+The hosted server is added by URL instead, and the sign-in is its own command:
+
+```bash
+codex mcp add odoo-assistant --url https://mcp.singleflo.com/mcp
+codex mcp login odoo-assistant
+```
+
+`codex mcp login` walks the same OAuth flow and lands on the consent page,
+where read or standard is chosen; `codex mcp logout odoo-assistant` ends the
+connection. As on every hosted route: reads always work, writes follow the
+choice made at sign-in, and deletion is not available at all.
+
 Source: https://developers.openai.com/codex/mcp
 
 Source: https://developers.openai.com/codex/config-file/config-reference
 
 ### ChatGPT
 
-**ChatGPT cannot run this server, and there is deliberately no snippet here.**
-It connects to remote MCP servers only: a custom connector is configured in
-developer mode by giving ChatGPT an endpoint URL, and OpenAI's own answer to
-"Can I connect to a local MCP server?" is "Not directly." This server speaks
-stdio as a local process, so reaching it from ChatGPT would need a remote HTTPS
-bridge in front of it — OpenAI points at its Secure MCP Tunnel — which this
-project neither ships nor documents. Developer mode is itself limited to
-ChatGPT Business, Enterprise and Edu, on the web, and must be enabled by a
-workspace admin.
+ChatGPT reaches the hosted server through **developer mode**, available to
+Pro, Plus, Business, Enterprise and Education accounts, on the web:
 
-Any stdio configuration written for ChatGPT would be fiction. Use one of the
-local hosts above or below.
+1. In [ChatGPT](https://chatgpt.com), open **Settings → Security and login**
+   and turn on **Developer mode**.
+2. Open [chatgpt.com/plugins](https://chatgpt.com/plugins), press the plus
+   button and create a developer-mode app for the MCP URL
+   `https://mcp.singleflo.com/mcp`.
+3. ChatGPT starts the sign-in, which lands on the server's consent page:
+   enter your Odoo URL and API key and choose **read** or **standard**.
+4. In a conversation, choose **Developer mode** from the plus menu and select
+   the Odoo Assistant app.
 
-Source: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+There is deliberately no local snippet here: developer mode connects to remote
+MCP servers over HTTPS only, so the stdio configuration of the other sections
+does not apply. A public listing in ChatGPT's Plugin Directory, which removes
+the developer-mode step, is planned but has not arrived yet.
+
+What the agent may do is decided once, at sign-in: read, or standard — never
+deletion, whatever the conversation asks for.
+
+Source: https://developers.openai.com/api/docs/guides/developer-mode
+
+### Claude.ai (web, Desktop, mobile)
+
+Claude connects to the hosted server as a custom connector. Open
+**Customize → Connectors → Add custom connector**, paste
+`https://mcp.singleflo.com/mcp` as the server URL and confirm. On Team and
+Enterprise plans an owner adds it once under **Organization settings →
+Connectors**; members then connect from **Customize → Connectors**.
+
+The first use starts the sign-in, which lands on the consent page: your Odoo
+URL, your API key, and the read-or-standard choice.
+
+This link opens the same dialog with the name and URL already filled in —
+review them and confirm; nothing is added until you do:
+
+```text
+https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Odoo%20Assistant&connectorUrl=https%3A%2F%2Fmcp.singleflo.com%2Fmcp
+```
+
+Source: https://claude.com/docs/connectors/custom/remote-mcp
+
+Source: https://claude.com/docs/connectors/building/directory-vs-custom
 
 ### opencode
 

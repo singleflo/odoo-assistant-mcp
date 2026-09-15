@@ -99,6 +99,57 @@ with shell access can always bypass an MCP server by invoking Odoo directly. A
 limit that must hold regardless of the client belongs in the Odoo access rights
 of the user the API key belongs to, where the Odoo server enforces it.
 
+## Database and login: when you must set them
+
+Only `ODOO_BASE_URL` and `ODOO_API_KEY` are required everywhere. `ODOO_DB` and
+`ODOO_USER` are discovered, and whether that discovery can succeed depends on
+how your instance is hosted.
+
+The database is looked for in two steps, in this order: `list()` on
+`/xmlrpc/db`, then a `/web/session/get_session_info` POST, which needs no
+credentials and still reports the database name when `list_db = False` hides
+the first one. The login is never asked for — an API key belongs to exactly one
+user, and `execute_kw` accepts it only with that user's uid, so the client
+finds the owner by probing `res.users` for uid 1 through 59.
+
+| Hosting | `ODOO_DB` | `ODOO_USER` | Why |
+|---|---|---|---|
+| **Odoo Online** (`*.odoo.com`, SaaS) | **Required** | Optional | Measured: the database-list endpoint is disabled there, and without the name every tool call fails with an opaque "Error executing tool" that gives no hint the database is the problem. The SaaS name is not the subdomain — it carries a suffix, in the shape `mycompany16-prod-12345678`, and you find it at `/web/database/selector`. |
+| **Odoo.sh** | Optional | Optional | A branch serves one database, and the session-info fallback reports its name. Untested against a live branch: set it if the first call fails. |
+| **On-premise, one database** | Optional | Optional | Discovery returns the single name, from either step. |
+| **On-premise, several databases** | Optional, but convenient | Optional | Not required: the discovery error **names the databases it found** and tells you to pick one, so the failure is self-explanatory. Setting it skips that round trip and removes the ambiguity. |
+
+`ODOO_USER` is never mandatory by itself, on any hosting. Setting it saves up to
+59 discovery round trips on the first call of a session, and it becomes
+**required when the API key owner's uid is 60 or higher**, because discovery
+only probes uid 1 to 59. It must be the login (e.g. `jane@mycompany.com`), and
+a wrong value is quiet in a way that misleads: Odoo's `authenticate()` returns
+`False` for an unknown login rather than raising, so a typo reads like a
+permission error and not like a typo.
+
+### By Odoo version
+
+**Odoo 14 through 18 behave identically here.** XML-RPC carries the database
+name in every `execute_kw` call, so the client must know it before it can
+authenticate at all — which is exactly why discovery exists.
+
+**Odoo 19** adds the JSON-2 API, which selects the database with an
+`X-Odoo-Database` HTTP header. The header table on Odoo's own page lists it as
+optional, and the page's *Database* section is specific about when it stops
+being: it is "required when a single Odoo server hosts multiple databases and
+the `dbfilter` wasn't configured to use the `Host` header", or, as the same page
+puts it elsewhere, the database "must only be provided (via the
+`X-Odoo-Database` HTTP header) on systems where there are multiple databases
+available for a same domain". Where the hostname already picks the database —
+Odoo Online, Odoo.sh, any `dbfilter` keyed on `Host` — it can be left out.
+
+This server's client tries JSON-2 first: one `POST
+/json/2/res.users/search_count` carrying `Authorization: Bearer <key>`, and a
+200 makes JSON-2 the transport for the session; anything else falls back to
+XML-RPC. It sends `Authorization` and `Content-Type` and nothing else, so it
+does not set `X-Odoo-Database` — over JSON-2 the host has to resolve the
+database itself, and `ODOO_DB` reaches only the XML-RPC path.
+
 ## Odoo Version Support
 
 Odoo 14.0 is the absolute minimum supported version because this server authenticates using API keys only, which do not exist in Odoo 13 or earlier.
@@ -111,7 +162,7 @@ Odoo 14.0 is the absolute minimum supported version because this server authenti
 | **16.0** | Yes | Yes | No | **Verified against a live Enterprise instance**: connection, authentication, reads, `instance_overview` and the Discuss tools. Two generational differences are handled for you — see the note below. Write scenarios were not exercised. |
 | **17.0** | Yes | Yes | **Yes** (until Sep 2026) | Protocol-compatible. Untested against a live instance. |
 | **18.0** | Yes | Yes | **Yes** (until Sep 2027) | **Primary target**. Verified and fully supported against a live instance. |
-| **19.0** | Yes | Yes | **Yes** (until Sep 2028) | Protocol-compatible. Untested against a live instance. API keys require description and expiry (max 3 months). |
+| **19.0** | Yes | Yes | **Yes** (until Sep 2028) | Protocol-compatible. Untested against a live instance. API keys require description and expiry (max 3 months). The JSON-2 API selects the database with an `X-Odoo-Database` header — see "Database and login: when you must set them" above. |
 
 Two things changed between Odoo 16 and 17, and neither needs configuration:
 

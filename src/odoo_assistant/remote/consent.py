@@ -50,6 +50,7 @@ from anyio.to_thread import run_sync as run_in_thread
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
+from odoo_assistant.remote import ui
 from odoo_assistant.remote.store import PendingAuthz, Store, key_hash
 from odoo_assistant.tenant import Tenant
 
@@ -69,9 +70,11 @@ _GONE_MESSAGE = ("This connection request is unknown or has expired."
 
 
 class ConsentProvider(Protocol):
-    """The one auth-provider method consent needs (todo 6 owns the class)."""
+    """The two auth-provider methods consent needs (todo 6 owns the class)."""
 
     def complete_consent(self, pending_id: str, subject: str) -> str: ...
+
+    def refuse_consent(self, pending_id: str) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,14 +85,19 @@ class ConsentDeps:
     provider: ConsentProvider
     public_url: str
     allow_private_targets: bool
+    publisher: str = "the odoo-assistant maintainers"
 
 
 @dataclass(frozen=True, slots=True)
 class _FormState:
-    """What the form shows on a (re)render: the pending id, the previous
-    submission minus the key, and the error explaining the re-render."""
+    """What the form shows on a (re)render: the pending id, who is asking,
+    the previous submission minus the key, and the error explaining the
+    re-render."""
 
     req: str
+    client_name: str = ""
+    redirect_uri: str = ""
+    scopes: str = ""
     odoo_url: str = ""
     db: str = ""
     policy: str = "read"
@@ -102,7 +110,25 @@ async def consent_form(request: Request) -> Response:
     pending = _peek_pending(deps.store, request.query_params.get("req", ""))
     if pending is None:
         return _plain_page(_GONE_MESSAGE, status_code=400)
-    return HTMLResponse(_form_html(deps, _FormState(req=pending.id)))
+    return HTMLResponse(_form_html(deps, _asking(deps, pending)))
+
+
+def _asking(deps: ConsentDeps, pending: PendingAuthz) -> _FormState:
+    """A blank form that says who is asking, for what, and where it leads.
+
+    The specification's consent-UI rules (MCP 2026-07-28, security best
+    practices) require the page to name the requesting client, state the
+    scope and show the redirect it registered — a consent screen that omits
+    them asks a user to approve a stranger. The name arrives from the
+    client's own dynamic registration, so it is untrusted text like any
+    other: escaped on the way out, and shown next to the redirect URI, which
+    is the part an attacker cannot fake past `redirect_uri` validation.
+    """
+    client = deps.store.get_client(pending.client_id)
+    name = getattr(client, "client_name", None) or pending.client_id
+    return _FormState(req=pending.id, client_name=name,
+                      redirect_uri=pending.redirect_uri,
+                      scopes=pending.scopes or "odoo")
 
 
 async def consent_submit(request: Request) -> Response:
@@ -117,11 +143,21 @@ async def consent_submit(request: Request) -> Response:
     if pending is None:
         return _plain_page(_GONE_MESSAGE, status_code=400)
 
+    if fields.get("action") == "deny":
+        # Refusing is part of the flow, not the absence of one. The client
+        # is told `access_denied` and the pending row is consumed, so the
+        # browser goes back to the assistant that asked instead of being
+        # left on a page whose only exit is the window's close button.
+        logger.info("consent: refused for client %s", pending.client_id)
+        return RedirectResponse(deps.provider.refuse_consent(pending.id),
+                                status_code=302)
+
     odoo_url = fields.get("odoo_url", "").strip().rstrip("/")
     api_key = fields.get("api_key", "")
     db = fields.get("db", "").strip()
     policy = fields.get("policy", "")
-    shown = _FormState(req=pending.id, odoo_url=odoo_url, db=db, policy="read")
+    shown = replace(_asking(deps, pending),
+                    odoo_url=odoo_url, db=db, policy="read")
     if not odoo_url or not api_key:
         return HTMLResponse(_form_html(deps, replace(
             shown, error="Fill in the Odoo URL and the API key.")))
@@ -309,50 +345,134 @@ def _reap(proc: BaseProcess) -> None:
 
 def _plain_page(message: str, status_code: int) -> HTMLResponse:
     return HTMLResponse(
-        _page("Odoo Assistant", f"<p>{html.escape(message)}</p>"),
+        ui.layout("This request has expired",
+                  f"<p>{html.escape(message)}</p>",
+                  publisher=_PUBLISHER_FALLBACK),
         status_code=status_code)
 
 
+# The keyboard hygiene every credential field needs on a phone: iOS
+# capitalises the first letter of a URL and autocorrects an API key unless
+# told not to, and the consent page is reached from the in-app browser of
+# Claude and ChatGPT far more often than from a desktop.
+_NO_TYPING_HELP = ('autocapitalize="off" autocorrect="off"'
+                   ' spellcheck="false"')
+_PUBLISHER_FALLBACK = "the odoo-assistant maintainers"
+
+
 def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
-    message = (f"<p><strong>{html.escape(shown.error)}</strong></p>"
-               if shown.error else "")
-    return _page("Connect your Odoo", (
-        f"{message}"
-        "<p>The assistant will talk to the Odoo instance you name here,"
-        " with the key you give it — the same key you would put in a local"
-        " configuration.</p>"
-        "<form method=\"post\" action=\"/consent\">"
+    error = (f'<p class="error" role="alert">{html.escape(shown.error)}</p>'
+             if shown.error else "")
+    read_checked = " checked" if shown.policy == "read" else ""
+    standard_checked = " checked" if shown.policy == "standard" else ""
+    privacy = f"{html.escape(deps.public_url)}/privacy"
+    return ui.layout("Connect your Odoo", (
+        "<p class=\"lead\">"
+        f"<strong>{html.escape(shown.client_name)}</strong> is asking to"
+        " reach an Odoo instance on your behalf. Name the instance, give it"
+        " a key you created, and choose what it may do.</p>"
+
+        "<dl class=\"facts\">"
+        "<div><dt>Requested by</dt>"
+        f"<dd>{html.escape(shown.client_name)}</dd></div>"
+        "<div><dt>Access returns to</dt>"
+        f"<dd><code>{html.escape(shown.redirect_uri)}</code></dd></div>"
+        "<div><dt>Scope</dt>"
+        f"<dd><code>{html.escape(shown.scopes)}</code></dd></div>"
+        "</dl>"
+
+        f"{error}"
+        "<form method=\"post\" action=\"/consent\" class=\"consent-form\">"
         f"<input type=\"hidden\" name=\"req\""
         f" value=\"{html.escape(shown.req)}\">"
-        "<p><label>Odoo URL<br>"
-        f"<input type=\"text\" name=\"odoo_url\" required size=\"48\""
-        f" value=\"{html.escape(shown.odoo_url)}\"></label></p>"
-        "<p><label>API key<br>"
-        "<input type=\"password\" name=\"api_key\" required size=\"48\">"
-        "</label></p>"
-        "<p><label>Database <small>(required on Odoo Online (*.odoo.com):"
-        " the name shown at /web/database/selector)</small><br>"
-        f"<input type=\"text\" name=\"db\" size=\"48\""
-        f" value=\"{html.escape(shown.db)}\"></label></p>"
-        "<fieldset><legend>What the assistant may do</legend>"
-        "<p><label><input type=\"radio\" name=\"policy\" value=\"read\""
-        f"{' checked' if shown.policy == 'read' else ''}>"
-        " Read only: the assistant can look, never change</label></p>"
-        "<p><label><input type=\"radio\" name=\"policy\""
-        " value=\"standard\""
-        f"{' checked' if shown.policy == 'standard' else ''}>"
-        " Standard: create, update, confirm; never delete, cancel or"
-        " mass-mail</label></p>"
+
+        "<p class=\"field\">"
+        "<label for=\"odoo_url\">Odoo address</label>"
+        "<input id=\"odoo_url\" name=\"odoo_url\" type=\"url\" required"
+        f" inputmode=\"url\" autocomplete=\"url\" {_NO_TYPING_HELP}"
+        " placeholder=\"https://mycompany.odoo.com\""
+        f" value=\"{html.escape(shown.odoo_url)}\">"
+        "<span class=\"field-help\">The address you open Odoo at. It must be"
+        " reachable over https.</span></p>"
+
+        "<p class=\"field\">"
+        "<label for=\"api_key\">API key</label>"
+        "<input id=\"api_key\" name=\"api_key\" type=\"password\" required"
+        f" autocomplete=\"off\" {_NO_TYPING_HELP}>"
+        "<span class=\"field-help\">An Odoo API key — never your"
+        " password.</span></p>"
+
+        "<details class=\"help\">"
+        "<summary>Where to generate an API key in Odoo</summary>"
+        "<p>Open the avatar menu in Odoo, then <strong>My Profile</strong>"
+        " (called Preferences on some versions), the <strong>Account"
+        " Security</strong> tab, then <strong>New API Key</strong>. The key"
+        " belongs to one user and carries exactly that user's permissions,"
+        " and you can revoke it on its own at any time.</p>"
+        "<ul class=\"versions\">"
+        "<li><strong>Odoo 16</strong> <em>illustrated steps coming"
+        " soon</em></li>"
+        "<li><strong>Odoo 17</strong> <em>illustrated steps coming"
+        " soon</em></li>"
+        "<li><strong>Odoo 18</strong> <em>illustrated steps coming"
+        " soon</em></li>"
+        "<li><strong>Odoo 19</strong> — a description and an expiry date are"
+        " required, three months at most. <em>illustrated steps coming"
+        " soon</em></li>"
+        "</ul></details>"
+
+        "<p class=\"field\">"
+        "<label for=\"db\">Database <span class=\"optional\">optional</span>"
+        "</label>"
+        "<input id=\"db\" name=\"db\" type=\"text\""
+        f" autocomplete=\"off\" {_NO_TYPING_HELP}"
+        f" value=\"{html.escape(shown.db)}\">"
+        "<span class=\"field-help\">Required on Odoo Online"
+        " (<code>*.odoo.com</code>), where the name is not the subdomain:"
+        " find it at <code>/web/database/selector</code>. Leave it empty"
+        " elsewhere — it is discovered.</span></p>"
+
+        "<fieldset class=\"policy\">"
+        "<legend>What the assistant may do</legend>"
+        "<label class=\"policy-option\">"
+        f"<input type=\"radio\" name=\"policy\" value=\"read\"{read_checked}>"
+        "<span><strong>Read only: the assistant can look, never"
+        " change</strong>"
+        "<span class=\"policy-detail\">Searches, reads and counts. Every"
+        " write is refused.</span></span></label>"
+        "<label class=\"policy-option\">"
+        "<input type=\"radio\" name=\"policy\" value=\"standard\""
+        f"{standard_checked}>"
+        "<span><strong>Standard: create, update, confirm; never delete,"
+        " cancel or mass-mail</strong>"
+        "<span class=\"policy-detail\">Adds creating records, writing"
+        " fields, running workflow actions and messaging colleagues.</span>"
+        "</span></label>"
+        "<p class=\"policy-note\">Either choice can be changed later by"
+        " signing in again. Deletion is never available here.</p>"
         "</fieldset>"
-        "<p>Stored: the Odoo address, an encrypted copy of this key, the"
-        " policy and the reference documents the assistant generates —"
-        " never your records or conversations. See the"
-        f" <a href=\"{html.escape(deps.public_url)}/privacy\">privacy"
-        " notice</a>.</p>"
-        "<p><button type=\"submit\">Connect</button></p></form>"))
 
+        "<section class=\"assurance\">"
+        "<h2>About the key you are about to paste</h2>"
+        "<ul>"
+        "<li>We are not Odoo. This is an independent project, and the"
+        " instance stays yours.</li>"
+        "<li>It is an API key, never an account password: this server cannot"
+        " sign in as you.</li>"
+        "<li>The key is stored encrypted and used only to reach the address"
+        " you typed above, on your behalf. It is never shared and never used"
+        " for anything else.</li>"
+        "<li>Revoking that key inside Odoo ends the access immediately,"
+        " without going through us.</li>"
+        "<li>Your records and your conversations are never stored here."
+        f" What is kept is listed in the <a href=\"{privacy}\">privacy"
+        " notice</a>.</li>"
+        "</ul></section>"
 
-def _page(title: str, body: str) -> str:
-    return ("<html><head><meta charset=\"utf-8\">"
-            f"<title>{html.escape(title)}</title></head><body>"
-            f"<h1>{html.escape(title)}</h1>{body}</body></html>")
+        "<div class=\"actions\">"
+        "<button type=\"submit\" class=\"primary\">Connect</button>"
+        "<button type=\"submit\" class=\"secondary\" name=\"action\""
+        " value=\"deny\" formnovalidate>Refuse</button>"
+        "</div>"
+        "</form>"),
+        publisher=deps.publisher)

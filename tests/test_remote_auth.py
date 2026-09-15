@@ -344,6 +344,37 @@ def test_complete_consent_refuses_an_unknown_request(tmp_path):
         asyncio.run(scenario())
 
 
+def test_refuse_consent_sends_access_denied_and_spends_the_request(tmp_path):
+    """Given a parked authorisation, When the user refuses on the consent
+    page, Then the client gets `access_denied` with its own state back, and
+    the request is spent: refusing twice cannot be replayed into a code."""
+    async def scenario():
+        async with _server(tmp_path) as (http, provider, st):
+            client = await _register(http)
+            _, challenge = _pkce()
+            r = await _authorize(http, client["client_id"], challenge)
+            req = parse_qs(urlparse(r.headers["location"]).query)["req"][0]
+            first = provider.refuse_consent(req)
+            return req, first, st
+
+    req, first, st = asyncio.run(scenario())
+    query = parse_qs(urlparse(first).query)
+    assert first.startswith(REDIRECT_URI)
+    assert query["error"] == ["access_denied"]
+    assert query["state"] == ["st-1"]  # carried from /authorize
+    assert st.load_pending(req) is None
+
+
+def test_refusing_an_unknown_request_discloses_nothing(tmp_path):
+    """An expired or invented id has no redirect to trust, so the answer is
+    this server's own address rather than a redirect an attacker chose."""
+    async def scenario():
+        async with _server(tmp_path) as (http, provider, _):
+            return provider.refuse_consent("no-such-req")
+
+    assert asyncio.run(scenario()) == PUBLIC_URL
+
+
 # ------------------------------------------------------------ protected resource
 def test_protected_resource_metadata_names_the_authorization_server(tmp_path):
     async def scenario():

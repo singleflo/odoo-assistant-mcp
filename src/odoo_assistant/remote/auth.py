@@ -95,6 +95,24 @@ class OdooAssistantAuthProvider(
         return construct_redirect_uri(pending.redirect_uri, code=code,
                                       state=pending.state)
 
+    def refuse_consent(self, pending_id: str) -> str:
+        """Consume a pending request the user refused, and say so.
+
+        OAuth 2.1 gives refusal its own answer — `error=access_denied` at the
+        client's redirect, carrying the original `state`. Without it the only
+        way out of the consent page is closing the window, which leaves the
+        client waiting on a flow that will never complete. An unknown or
+        expired id returns the public URL: there is no redirect to trust, and
+        nothing about the request to disclose.
+        """
+        pending = self._store.pop_pending(pending_id)
+        if pending is None:
+            return self._public_url
+        return construct_redirect_uri(
+            pending.redirect_uri, error="access_denied",
+            error_description="The user refused the connection.",
+            state=pending.state)
+
     # ------------------------------------------------------ code exchange
     async def load_authorization_code(
             self, client: OAuthClientInformationFull,

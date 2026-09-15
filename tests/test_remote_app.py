@@ -43,6 +43,7 @@ pytest.importorskip(
 from cryptography.fernet import Fernet  # noqa: E402
 from mcp.server.auth.provider import AccessToken  # noqa: E402
 
+import odoo_assistant  # noqa: E402
 import odoo_assistant.tenant as tenant_module  # noqa: E402
 import odoo_assistant.tools_evolution as tools_evolution  # noqa: E402
 from odoo_assistant import paths  # noqa: E402
@@ -488,6 +489,58 @@ def test_privacy_is_html_with_the_substituted_publisher(tmp_path):
     assert "{{PUBLISHER}}" not in r.text and "{{SUPPORT_EMAIL}}" not in r.text
     assert landing.status_code == 200
     assert "/mcp" in landing.text and "/privacy" in landing.text
+
+
+def test_every_page_is_built_for_a_phone_and_refuses_framing(tmp_path):
+    """Given the public pages, When each is fetched, Then it declares a
+    viewport and comes with the framing, referrer and policy headers.
+
+    Both halves were measured missing. Without the viewport the pages
+    rendered zoomed out in the in-app browsers of Claude and ChatGPT, which
+    is where the consent form is actually opened; without `frame-ancestors`
+    a consent page can be framed and clicked through, which the MCP
+    specification's consent-UI rules require refusing.
+    """
+    with make_client(tmp_path) as client:
+        pages = {path: client.get(path)
+                 for path in ("/", "/privacy", "/terms", "/support")}
+
+    for path, page in pages.items():
+        assert page.status_code == 200, path
+        assert 'name="viewport"' in page.text, path
+        assert page.headers["x-frame-options"] == "DENY", path
+        assert page.headers["referrer-policy"] == "no-referrer", path
+        assert page.headers["x-content-type-options"] == "nosniff", path
+        policy = page.headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in policy, path
+        assert "default-src 'none'" in policy, path
+
+
+def test_the_stylesheet_serves_itself_and_is_cached_by_version(tmp_path):
+    """One stylesheet, from this origin, immutable — which is only safe
+    because the pages hang the version on the query, so a deploy changes the
+    URL instead of leaving a new page to be read through an old file."""
+    with make_client(tmp_path) as client:
+        css = client.get("/style.css")
+        landing = client.get("/")
+
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert "immutable" in css.headers["cache-control"]
+    assert f'href="/style.css?v={odoo_assistant.__version__}"' in landing.text
+
+
+def test_the_privacy_table_reaches_the_browser_as_a_table(tmp_path):
+    """The privacy page states what is stored, and for how long, as a
+    markdown table. The hand-written renderer used to have no table branch,
+    so every row arrived as a paragraph of pipes — on the page a directory
+    reviewer is certain to open."""
+    with make_client(tmp_path) as client:
+        privacy = client.get("/privacy")
+
+    assert "<table>" in privacy.text
+    assert "<th>Category</th>" in privacy.text
+    assert "<p>|" not in privacy.text
 
 
 def test_the_challenge_route_echoes_the_configured_value_or_404s(tmp_path):

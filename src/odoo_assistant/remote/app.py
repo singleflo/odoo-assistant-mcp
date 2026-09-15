@@ -72,6 +72,7 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import INVALID_REQUEST
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import (
     HTMLResponse,
@@ -79,15 +80,16 @@ from starlette.responses import (
     PlainTextResponse,
     Response,
 )
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from odoo_assistant import paths, resources, tenant
-from odoo_assistant.remote import consent, files
+from odoo_assistant.remote import consent, files, ui
 from odoo_assistant.remote.auth import OdooAssistantAuthProvider
 from odoo_assistant.remote.store import Store
+from odoo_assistant.remote.ui import REPO_URL
 from odoo_assistant import tools_collab, tools_discuss, tools_evolution, tools_read, tools_write
 from odoo_assistant.server import _VERSION
 
-REPO_URL = "https://github.com/singleflo/odoo-assistant-mcp"
 INSTRUCTIONS = (
     "An Odoo virtual employee: query, count, create, update and act on the "
     "records of the Odoo instance the user connected during authorization, "
@@ -216,35 +218,82 @@ def _inline_md(text: str) -> str:
     return _BOLD.sub(r"<strong>\1</strong>", linked)
 
 
+def _cells(row: str) -> list[str]:
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
 def _markdown_to_html(md: str) -> str:
-    """Headings, bullet lists, paragraphs, links, bold. No dependency."""
+    """Headings, bullet lists, tables, paragraphs, links, bold. No dependency.
+
+    Tables earn their branch: the privacy page states what is stored and for
+    how long as a table, and without this every row reached the browser as a
+    paragraph of pipes — on the one page a directory reviewer is certain to
+    open.
+    """
     out: list[str] = []
-    in_list = False
+    state: str | None = None  # None, "list" or "table"
+
+    def close() -> None:
+        nonlocal state
+        if state == "list":
+            out.append("</ul>")
+        elif state == "table":
+            out.append("</tbody></table></div>")
+        state = None
+
     for line in md.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         heading = _HEADING.match(stripped)
         bullet = _BULLET.match(stripped)
+        row = (_cells(stripped)
+               if stripped.startswith("|") and stripped.endswith("|")
+               else None)
         if heading:
-            if in_list:
-                out.append("</ul>")
-                in_list = False
+            close()
             level = len(heading.group(1))
             out.append(f"<h{level}>{_inline_md(heading.group(2))}</h{level}>")
+        elif row is not None:
+            if all(cell and set(cell) <= set("-: ") for cell in row):
+                continue  # the |---|---| rule under a header row
+            if state != "table":
+                close()
+                head = "".join(f"<th>{_inline_md(c)}</th>" for c in row)
+                out.append(f"<div class=\"table-wrap\"><table><thead>"
+                           f"<tr>{head}</tr></thead><tbody>")
+                state = "table"
+            else:
+                body = "".join(f"<td>{_inline_md(c)}</td>" for c in row)
+                out.append(f"<tr>{body}</tr>")
         elif bullet:
-            if not in_list:
+            if state != "list":
+                close()
                 out.append("<ul>")
-                in_list = True
+                state = "list"
             out.append(f"<li>{_inline_md(bullet.group(1))}</li>")
         else:
-            if in_list:
-                out.append("</ul>")
-                in_list = False
+            close()
             out.append(f"<p>{_inline_md(stripped)}</p>")
-    if in_list:
-        out.append("</ul>")
+    close()
     return "\n".join(out)
+
+
+def _split_title(source: str) -> tuple[str, str]:
+    """The page's own `# ` heading becomes the layout's title, once.
+
+    Left in the body it would render a second `<h1>` under the one the shell
+    already draws.
+    """
+    lines = source.splitlines()
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        heading = _HEADING.match(line.strip())
+        if heading and len(heading.group(1)) == 1:
+            return heading.group(2).strip(), "\n".join(lines[index + 1:])
+        break
+    return "", source
 
 
 def _serve_page(name: str, settings: RemoteSettings) -> Response:
@@ -252,32 +301,109 @@ def _serve_page(name: str, settings: RemoteSettings) -> Response:
               / f"{name}.md").read_text(encoding="utf-8")
     source = (source.replace("{{PUBLISHER}}", settings.publisher)
               .replace("{{SUPPORT_EMAIL}}", settings.support_email))
-    return HTMLResponse(
-        "<html><head><meta charset=\"utf-8\">"
-        f"<title>odoo-assistant {name}</title></head><body>"
-        f"{_markdown_to_html(source)}</body></html>")
+    title, body = _split_title(source)
+    return HTMLResponse(ui.layout(
+        title or name.capitalize(),
+        f"<div class=\"doc\">{_markdown_to_html(body)}</div>",
+        publisher=settings.publisher, active=f"/{name}"))
+
+
+def _serve_style() -> Response:
+    """The one stylesheet, from the packaged pages directory.
+
+    Immutable for a year because `ui.layout` hangs the version on the query:
+    a deploy changes the URL, so nothing has to be revalidated and nobody
+    reads a new page through an old stylesheet.
+    """
+    css = (importlib_resources.files("odoo_assistant.remote.pages")
+           / "style.css").read_text(encoding="utf-8")
+    return Response(css, media_type="text/css", headers={
+        "Cache-Control": "public, max-age=31536000, immutable"})
 
 
 def _landing_page(settings: RemoteSettings) -> Response:
-    return HTMLResponse(
-        "<html><head><meta charset=\"utf-8\">"
-        "<title>odoo-assistant hosted server</title></head><body>"
-        "<h1>odoo-assistant — hosted MCP server for Odoo</h1>"
-        "<p>This is a Model Context Protocol server that gives AI clients"
-        " like Claude or ChatGPT supervised access to YOUR Odoo instance:"
-        " search and read records, create and update them within the policy"
-        " you chose, render PDFs, notify colleagues and generate reference"
-        " documentation.</p>"
-        "<p><strong>How to connect:</strong> point your MCP client at"
-        f" <code>{html.escape(settings.public_url)}/mcp</code>. The client"
-        " walks you through an OAuth sign-in; you then enter your own Odoo"
-        " URL and API key on the consent page, and pick what the assistant"
-        " may do (read only, or standard). Nothing is shared between"
-        " users.</p>"
-        "<p><a href=\"/privacy\">Privacy notice</a> &middot;"
-        " <a href=\"/terms\">Terms</a> &middot;"
-        " <a href=\"/support\">Support</a></p>"
-        "</body></html>")
+    endpoint = html.escape(f"{settings.public_url}/mcp")
+    return HTMLResponse(ui.layout(
+        "An Odoo virtual employee, in the chat you already use",
+        "<p class=\"endpoint-label\">Server address</p>"
+        f"<p class=\"endpoint\"><code>{endpoint}</code></p>"
+
+        "<h2>Connect it</h2>"
+        "<p>Nothing is installed and nothing is configured on your side. You"
+        " add the address above to your assistant, sign in once with your own"
+        " Odoo address and API key, and choose what the assistant may do.</p>"
+        "<div class=\"cards\">"
+        "<div class=\"card\"><h3>Claude</h3><p>Customize, then Connectors,"
+        " then Add custom connector. Paste the address and confirm.</p></div>"
+        "<div class=\"card\"><h3>ChatGPT</h3><p>Turn on developer mode in"
+        " Settings, then create an app for the address at"
+        " chatgpt.com/plugins.</p></div>"
+        "<div class=\"card\"><h3>Codex and Claude Code</h3><p>One line each:"
+        f" <code>codex mcp add odoo-assistant --url {endpoint}</code> or"
+        " <code>claude mcp add --transport http odoo-assistant"
+        f" {endpoint}</code>.</p></div>"
+        "</div>"
+
+        "<h2>What it does</h2>"
+        "<p>Nineteen tools cover the working day. It searches, reads and"
+        " counts any model; summarises the instance; says what a record"
+        " demands before creating one; creates and updates records; runs"
+        " workflow actions; writes on the chatter and schedules activities;"
+        " downloads documents and renders PDFs; messages colleagues in"
+        " Discuss; and explores a module to write its reference.</p>"
+
+        "<h2>What it never does</h2>"
+        "<p>Deletion is not reachable here under any choice. Your records and"
+        " your conversations are never stored on this server — what it keeps"
+        " is your Odoo address, your API key encrypted, and the choice you"
+        " made, all listed on the <a href=\"/privacy\">privacy page</a>."
+        " Revoking that key inside Odoo ends the access immediately, without"
+        " going through us.</p>",
+        publisher=settings.publisher, active="/"))
+
+
+class SecurityHeaders:
+    """Framing, referrer and sniffing headers everywhere; a strict Content
+    Security Policy on the HTML this server draws itself.
+
+    The MCP specification's consent-UI rules require the authorization page
+    to refuse being framed — `frame-ancestors 'none'`, with the older
+    `X-Frame-Options` beside it — because a framed consent page is a
+    clickjacking target. The policy can be this narrow, down to
+    `default-src 'none'`, precisely because these pages carry no script and
+    fetch nothing from a third party: one stylesheet from this origin and an
+    inline SVG mark.
+    """
+
+    _ALWAYS = {
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+    }
+    _HTML_CSP = ("default-src 'none'; style-src 'self'; img-src 'self' data:;"
+                 " form-action 'self'; frame-ancestors 'none';"
+                 " base-uri 'none'")
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive,
+                       send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in self._ALWAYS.items():
+                    headers.setdefault(name, value)
+                if headers.get("content-type", "").startswith("text/html"):
+                    headers.setdefault(
+                        "Content-Security-Policy", self._HTML_CSP)
+            await send(message)
+
+        await self._app(scope, receive, send_with_headers)
 
 
 # How often the retention promises are re-swept, in seconds — cited by
@@ -366,6 +492,11 @@ def build_app(settings: RemoteSettings) -> Starlette:
     async def landing(request: Request) -> Response:
         return _landing_page(settings)
 
+    async def style(request: Request) -> Response:
+        return _serve_style()
+
+    mcp.custom_route("/style.css", methods=["GET"])(style)
+
     mcp.custom_route("/", methods=["GET"])(landing)
     for name in ("privacy", "terms", "support"):
         mcp.custom_route(f"/{name}", methods=["GET"])(
@@ -383,13 +514,15 @@ def build_app(settings: RemoteSettings) -> Starlette:
                 settings.public_url, "https://claude.ai", "https://chatgpt.com"],
         ),
     )
+    app.add_middleware(SecurityHeaders)
     app.state.session_manager = mcp._lowlevel_server._session_manager
     # consent.py reads request.app.state.consent_deps; request.app is THIS
     # app (custom routes join it unmounted). Set it on the returned app,
     # after streamable_http_app() has run.
     app.state.consent_deps = consent.ConsentDeps(
         store=store, provider=provider, public_url=settings.public_url,
-        allow_private_targets=settings.allow_private_targets)
+        allow_private_targets=settings.allow_private_targets,
+        publisher=settings.publisher)
 
     # Wrap, not replace: the session manager only starts through the
     # lifespan the SDK app already installed.

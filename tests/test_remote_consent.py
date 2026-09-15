@@ -34,6 +34,8 @@ pytest.importorskip(
 
 # noqa: E402 - the gate above must run first, cryptography is remote-only
 from cryptography.fernet import Fernet  # noqa: E402
+from mcp.shared.auth import OAuthClientInformationFull  # noqa: E402
+from pydantic import AnyUrl  # noqa: E402
 
 from odoo_assistant.remote import consent  # noqa: E402
 from odoo_assistant.remote.consent import ConsentDeps  # noqa: E402
@@ -56,15 +58,21 @@ def _now() -> datetime:
 
 
 class FakeProvider:
-    """The one method consent calls on todo 6's provider: consume and answer
-    with the final redirect URL of the client that asked for consent."""
+    """The two methods consent calls on todo 6's provider: consume and answer
+    with the final redirect URL of the client that asked for consent —
+    carrying a code when the user approved, `access_denied` when refused."""
 
     def __init__(self):
         self.calls = []
+        self.refusals = []
 
     def complete_consent(self, pending_id: str, subject: str) -> str:
         self.calls.append((pending_id, subject))
         return f"{REDIRECT_URI}?code=c-abc123&state=st-1"
+
+    def refuse_consent(self, pending_id: str) -> str:
+        self.refusals.append(pending_id)
+        return f"{REDIRECT_URI}?error=access_denied&state=st-1"
 
 
 class FakeConnect:
@@ -185,6 +193,66 @@ def test_happy_path_stores_an_encrypted_tenant_and_redirects_with_a_code(
     if wal.exists():
         blob += wal.read_bytes()
     assert API_KEY.encode() not in blob
+
+
+def test_the_form_names_who_is_asking_and_where_the_access_returns(
+        store, provider):
+    """Given a client that registered a name, When the form renders, Then it
+    names that client, the redirect its access returns to and the scope.
+
+    The MCP specification's consent-UI rules require all three: a page that
+    hides them asks the user to approve an unnamed stranger. The registered
+    name is attacker-supplied text, so the second half of this test is that
+    it arrives escaped rather than as markup.
+    """
+    store.put_client(OAuthClientInformationFull(
+        client_id="cid-1", client_name="Claude <Desktop>",
+        redirect_uris=[AnyUrl(REDIRECT_URI)],
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"], scope="odoo",
+        token_endpoint_auth_method="none"))
+
+    shown = client(store, provider).get("/consent?req=pend-1")
+
+    assert shown.status_code == 200
+    assert "Claude &lt;Desktop&gt;" in shown.text
+    assert "<Desktop>" not in shown.text
+    assert REDIRECT_URI in shown.text
+    assert "odoo" in shown.text
+
+
+def test_an_unregistered_client_is_named_by_its_id_rather_than_left_blank(
+        store, provider):
+    """Given no registration record for the pending client, When the form
+    renders, Then the client id stands in — the page never says "something"
+    is asking."""
+    shown = client(store, provider).get("/consent?req=pend-1")
+
+    assert "cid-1" in shown.text
+
+
+def test_refusing_answers_access_denied_and_touches_nothing(
+        db_path, store, provider, fake_connect):
+    """Given the form open, When the user presses Refuse, Then the browser is
+    sent back to the client with `access_denied`, no Odoo is contacted and no
+    tenant is stored.
+
+    Closing the window would leave the client waiting on a flow that never
+    ends; OAuth gives refusal its own answer, and this is it. The refusal
+    reaches the provider, which is where the pending row is consumed — see
+    `test_remote_auth.py` for that half.
+    """
+    c = client(store, provider)
+
+    answer = c.post("/consent", data={"req": "pend-1", "action": "deny"})
+
+    assert answer.status_code == 302
+    assert "error=access_denied" in answer.headers["location"]
+    assert provider.refusals == ["pend-1"]
+    assert provider.calls == []
+    assert fake_connect.calls == []
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT count(*) FROM tenants").fetchone()[0] == 0
 
 
 def test_a_second_consent_with_the_same_url_and_key_reuses_the_subject(

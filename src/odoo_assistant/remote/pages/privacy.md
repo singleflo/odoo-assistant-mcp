@@ -1,4 +1,6 @@
-# Privacy Policy for odoo-assistant Hosted Remote Server
+# Privacy Policy
+
+Last updated: 16 September 2026.
 
 This Privacy Policy explains how {{PUBLISHER}} collects, uses, stores, and protects your information when you connect an Odoo instance to an AI client (such as Claude or ChatGPT) using our hosted remote server service.
 
@@ -20,6 +22,21 @@ To maintain an active connection and handle authorization securely, our remote s
 | Generated References | Module reference documents produced by the exploration tool at your request | Stored as files on disk; kept until your tenant is deleted |
 | Temporary Files | Files explicitly downloaded or generated during active tool executions | Stored in temporary storage with a strict 15-minute Time-To-Live (TTL) |
 
+## Why We Store It
+
+Each category above is held for one purpose and for no other:
+
+* The Odoo URL, the database name and the encrypted API key are the connection itself — they are what lets the server reach your instance when your assistant asks it to.
+* The policy selection is what the safety gate reads before every write, so that a connection authorised as read-only stays read-only.
+* Hashed tokens and tenant references are how a request is recognised as yours rather than another tenant's.
+* Generated references and temporary files are the output of the tools you asked to run.
+
+None of it is used for analytics, profiling, advertising, or the training of any model. We run no third-party trackers and the pages of this service load nothing from anyone else.
+
+## Where It Is Processed
+
+One server runs this service, and everything described above stays on it: a single SQLite database file and a directory of generated files on the same machine. Nothing is copied to another provider, to a second region, or to an analytics service. The only outbound request this server makes on your behalf goes to the Odoo address you named during consent.
+
 ## What We Never Store
 
 We design our infrastructure to avoid processing or retaining personal or business records beyond what is strictly necessary to proxy requests. We never store:
@@ -39,12 +56,16 @@ We enforce strict data retention rules to ensure connection details and tokens a
 * **Revocation & Disconnection**: When the last token family for your connection is revoked — which is what disconnecting the integration in your host application (such as Claude or ChatGPT) triggers — the tenant row holding your Odoo connection configuration and credentials is deleted.
 * **Idle Purge**: A sweep at server startup and hourly thereafter removes tenant rows that have been idle for 90 days.
 
-## How to Revoke Access
+## Your Controls
 
-You retain total control over your credentials and active connections. You can revoke access at any time through either of the following mechanisms:
+You retain total control over your credentials and active connections. Three of these controls do not involve us at all:
 
 1. **Host Disconnection**: Disconnect or delete the integration directly within your AI host application (e.g., Claude, ChatGPT, or another client). This triggers an automated revocation request to our server.
 2. **Explicit Revocation Endpoint**: Send a `POST /revoke` request presenting your active token. Our server immediately revokes the associated token family and erases tenant credentials if no active tokens remain.
+3. **Revoke the key inside Odoo**: an API key is revocable from the Odoo account that created it, and revoking it there ends this server's access immediately without going through us. What remains here is an encrypted string that no longer opens anything, deleted with the rest of the tenant row on disconnection or after the idle window.
+4. **Change what the connection may do**: sign in again and pick the other policy. The most recent choice governs the connection, including tokens issued before it.
+
+To ask what is held for your connection, or to have it erased before the windows above elapse, write to the contact below and name the Odoo URL you connected; we answer from the same tenant row this policy describes.
 
 ## Data Recipients and Third-Party Sharing
 

@@ -1,4 +1,4 @@
-# Support for odoo-assistant Hosted Remote Server
+# Support
 
 Welcome to the support page for the odoo-assistant remote server integration. {{PUBLISHER}} provides technical assistance and resources for setting up and troubleshooting your integration.
 
@@ -23,6 +23,10 @@ When reporting an issue on GitHub, please include:
 2. The version of the package or host client you are using.
 3. Relevant error messages (ensuring no API keys, secrets, or confidential Odoo URLs are included).
 4. Steps to reproduce the issue.
+
+## Is the Server Up?
+
+`/health` answers `{"status": "ok"}` and the running version, from the server itself, without signing in. If it answers and your assistant still cannot connect, the problem is in the connection rather than in the service, and the question below is the place to start.
 
 ## Frequently Asked Questions
 

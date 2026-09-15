@@ -28,7 +28,7 @@ jobs:
         run: uv sync
 
       - name: Run non-live tests
-        run: uv run pytest tests/ -m "not live and not wheel"
+        run: uv run pytest tests/ -m 'not live and not wheel and not remote_live'
 
       - name: Build package
         run: uv build
@@ -52,6 +52,14 @@ jobs:
               "odoo_assistant/resources.py",
               "odoo_assistant/server_safety.py",
               "odoo_assistant/server_errors.py",
+              "odoo_assistant/remote/__init__.py",
+              "odoo_assistant/remote/app.py",
+              "odoo_assistant/remote/store.py",
+              "odoo_assistant/remote/pages/__init__.py",
+              "odoo_assistant/remote/pages/privacy.md",
+              "odoo_assistant/remote/pages/terms.md",
+              "odoo_assistant/remote/pages/support.md",
+              "odoo_assistant/tenant.py",
               "odoo_assistant/references/SKILL.md",
           }
           with zipfile.ZipFile(sys.argv[1]) as archive:

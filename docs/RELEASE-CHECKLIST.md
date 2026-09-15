@@ -93,3 +93,45 @@ After the GitHub Actions run completes successfully, verify the release:
    uvx odoo-assistant
    ```
    *(It should prompt for missing Odoo environment variables, confirming the server starts and validates credentials correctly).*
+
+---
+
+## Hosted server (Coolify)
+
+The hosted server at `https://mcp.singleflo.com` is deployed by Coolify from
+the repository's `docker-compose.yaml` (repository mode — the compose has a
+`build:`, which only that mode supports). The compose file carries no domain
+and no secret: the domain lives in Coolify's UI, and every secret is a
+`${VAR:?}` reference that Coolify surfaces under **Configuration → Environment
+Variables** and refuses to deploy while empty. Steps in order:
+
+1. **DNS**: create an **A record** `mcp` pointing at the Coolify server's IP
+   address — not a CNAME, unless the domain sits behind a CDN.
+2. **Coolify**: **+ Add resource** → **GitHub repository** (the GitHub App
+   source) → repository `singleflo/odoo-assistant-mcp`, branch `main`.
+3. **Configuration → General**: set **Build Pack** to **Docker Compose** and
+   **Docker Compose Location** to `docker-compose.yaml`.
+4. Set the domain of the `mcp` service to `https://mcp.singleflo.com`.
+5. **Configuration → Environment Variables**: set
+   `ODOO_REMOTE_PUBLIC_URL=https://mcp.singleflo.com` (typed explicitly — the
+   OAuth issuer and the protected-resource metadata must equal the URL users
+   visit, character for character, so it is never derived from a generated
+   variable), generate `ODOO_REMOTE_SECRET_KEY` with
+   ```bash
+   python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+   ```
+   and set `ODOO_REMOTE_OPENAI_CHALLENGE`, `ODOO_REMOTE_PUBLISHER` and
+   `ODOO_REMOTE_SUPPORT_EMAIL` as wanted (all three are optional).
+6. **Advanced**: turn **Auto Deploy** on.
+7. Press **Deploy** the first time and watch the deployment log.
+8. **Keys & Tokens → API Tokens**: create a token with the **deploy**
+   permission; **Webhooks → Deploy Webhook**: copy the webhook URL. Put both
+   into the GitHub repository secrets `COOLIFY_API_TOKEN` and
+   `COOLIFY_DEPLOY_WEBHOOK` — `.github/workflows/deploy.yml` then redeploys on
+   every `v*` tag (and no-ops on forks that lack the secrets).
+9. **After every deploy, check `https://mcp.singleflo.com/health` first.**
+   Measured Coolify behaviour: a failing healthcheck does **not** block or
+   roll back a deploy — Traefik simply drops the unhealthy container from
+   routing and the site answers "No available server" instead of an error.
+   Named volumes survive redeploys: the SQLite database (`remote.db`) and the
+   published files persist across them.

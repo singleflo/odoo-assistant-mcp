@@ -1,0 +1,35 @@
+name: Deploy to Coolify
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Trigger Coolify deploy webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard - skip when the Coolify secrets are absent
+        id: guard
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+        run: |
+          if [ -z "$COOLIFY_API_TOKEN" ] || [ -z "$COOLIFY_DEPLOY_WEBHOOK" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "COOLIFY_API_TOKEN and/or COOLIFY_DEPLOY_WEBHOOK unset; skipping deploy (forks no-op here)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger deploy
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+        run: |
+          curl --fail --request GET "$COOLIFY_DEPLOY_WEBHOOK" \
+            --header "Authorization: Bearer $COOLIFY_API_TOKEN"

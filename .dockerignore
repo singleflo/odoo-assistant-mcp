@@ -1,0 +1,10 @@
+.venv
+.git
+dist
+references/
+.omo
+.agents
+.claude
+docs/mcp-spec
+docs/json2-source
+tests

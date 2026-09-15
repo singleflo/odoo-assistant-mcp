@@ -1,0 +1,27 @@
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # No ports:/expose: — Coolify's Traefik owns the routing (the bare
+    # SERVICE_FQDN declaration tells it the container listens on 8000 and
+    # makes Coolify write its own labels; do not add labels: here).
+    environment:
+      - SERVICE_FQDN_MCP_8000
+      - ODOO_REMOTE_PUBLIC_URL=${ODOO_REMOTE_PUBLIC_URL:?}
+      - ODOO_REMOTE_SECRET_KEY=${ODOO_REMOTE_SECRET_KEY:?}
+      - ODOO_REMOTE_OPENAI_CHALLENGE=${ODOO_REMOTE_OPENAI_CHALLENGE:-}
+      - ODOO_REMOTE_PUBLISHER=${ODOO_REMOTE_PUBLISHER:-}
+      - ODOO_REMOTE_SUPPORT_EMAIL=${ODOO_REMOTE_SUPPORT_EMAIL:-}
+    volumes:
+      - mcp_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  mcp_data:

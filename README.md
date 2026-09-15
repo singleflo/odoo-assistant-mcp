@@ -231,8 +231,25 @@ discovered, and the gate keeps its defaults unless you add `ODOO_MCP_ALLOW` or
 `ODOO_MCP_DENY` — see "What the agent may do". Note the quotes: environment
 values are strings.
 
+`ODOO_DB` appears in every snippet because it is the variable most people are
+missing when nothing works. Set it **only when required** — see "Database and
+login: when you must set them" above. JSON allows no comments, so that note
+lives here rather than inside the blocks; the TOML and YAML snippets carry it
+inline.
+
+Each snippet below was checked against that host's own documentation, cited on
+the `Source:` line under it. Where a host has a one-line add command, it is
+given as well, because it writes the same entry without a hand-edited file.
+
 ### Claude Desktop
-Add this to your `claude_desktop_config.json`:
+
+Claude Desktop ships for macOS and Windows only, and keeps its servers in
+`claude_desktop_config.json`. Reach it from **Settings → Developer → Edit
+Config**, or edit it where it lives:
+
+* **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+* **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
@@ -244,15 +261,43 @@ Add this to your `claude_desktop_config.json`:
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_DB": "your-database-name"
+        "ODOO_DB": "mycompany16-prod-12345678"
       }
     }
   }
 }
 ```
 
-### Cursor
-Add this to your `.cursor/mcp.json` or configure it in the Cursor settings UI:
+Quit Claude Desktop completely and reopen it: it reads the file at startup and
+does not reload it. Server logs land in `~/Library/Logs/Claude/` on macOS and
+`%APPDATA%\Claude\logs` on Windows, one file per server, and stdio servers write
+everything they say to stderr there.
+
+Source: https://modelcontextprotocol.io/docs/develop/connect-local-servers
+
+### Claude Code
+
+One line adds the server. The `--` separates Claude Code's own options from the
+command that starts the server, and everything after it is passed through
+untouched:
+
+```bash
+claude mcp add --env ODOO_BASE_URL=https://mycompany.odoo.com \
+  --env ODOO_API_KEY=your-api-key-here \
+  --env ODOO_DB=mycompany16-prod-12345678 \
+  --transport stdio odoo-assistant -- uvx odoo-assistant
+```
+
+Note the order. `--env` takes `KEY=value` pairs and keeps reading them, so the
+server name must not follow it directly — put at least one other option, here
+`--transport stdio`, in between, or the CLI reads `odoo-assistant` as another
+pair and rejects it.
+
+`--scope` decides where the entry lands: `local` (the default: this project,
+you only), `project` (`.mcp.json` at the repo root, committed and shared), or
+`user` (every project). To write it by hand, the same entry goes under
+`mcpServers` in `.mcp.json` or in `~/.claude.json`:
+
 ```json
 {
   "mcpServers": {
@@ -264,36 +309,87 @@ Add this to your `.cursor/mcp.json` or configure it in the Cursor settings UI:
       "env": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_DB": "your-database-name"
-      }
+        "ODOO_DB": "mycompany16-prod-12345678"
+      },
+      "timeout": 120000
     }
   }
 }
 ```
 
-### VS Code Copilot
-Add this to your VS Code `settings.json`:
-```json
-{
-  "mcp.servers": {
-    "odoo-assistant": {
-      "command": "uvx",
-      "args": [
-        "odoo-assistant"
-      ],
-      "env": {
-        "ODOO_BASE_URL": "https://mycompany.odoo.com",
-        "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_DB": "your-database-name"
-      }
-    }
-  }
-}
+The per-server `timeout` is a wall-clock limit per tool call, in milliseconds,
+and overrides the `MCP_TOOL_TIMEOUT` environment variable for this server alone;
+`MCP_TIMEOUT`, also milliseconds, bounds server startup instead. Neither matters
+here except on the first `instance_overview` call of a session, which pays for
+authentication plus dozens of XML-RPC round trips. Reconnect the server from the
+`/mcp` panel after editing, or restart Claude Code.
+
+Source: https://code.claude.com/docs/en/mcp
+
+### OpenAI Codex CLI
+
+Codex keeps MCP servers in **TOML**, in `~/.codex/config.toml`, or in a
+project's `.codex/config.toml` once you have trusted that project. The table is
+spelled with an underscore — `mcp_servers`, not `mcp.servers`. The ChatGPT
+desktop app, the Codex CLI and the IDE extension all read this one file, so
+configuring it once covers the three.
+
+```bash
+codex mcp add odoo-assistant \
+  --env ODOO_BASE_URL=https://mycompany.odoo.com \
+  --env ODOO_API_KEY=your-api-key-here \
+  --env ODOO_DB=mycompany16-prod-12345678 \
+  -- uvx odoo-assistant
 ```
+
+The same entry written out:
+
+```toml
+[mcp_servers.odoo-assistant]
+command = "uvx"
+args = ["odoo-assistant"]
+startup_timeout_sec = 30
+tool_timeout_sec = 300
+
+[mcp_servers.odoo-assistant.env]
+ODOO_BASE_URL = "https://mycompany.odoo.com"
+ODOO_API_KEY = "your-api-key-here"
+# only when required, see "Database and login" above
+ODOO_DB = "mycompany16-prod-12345678"
+```
+
+Both timeouts are in **seconds**: `startup_timeout_sec` defaults to 10 and
+`tool_timeout_sec` to 60. Only the first `instance_overview` call comes near
+either, which is why both are raised above. After editing, press **Restart** on
+the server in the desktop app or the IDE extension; in the CLI, start a new
+session and check it with `/mcp`.
+
+Source: https://developers.openai.com/codex/mcp
+
+Source: https://developers.openai.com/codex/config-file/config-reference
+
+### ChatGPT
+
+**ChatGPT cannot run this server, and there is deliberately no snippet here.**
+It connects to remote MCP servers only: a custom connector is configured in
+developer mode by giving ChatGPT an endpoint URL, and OpenAI's own answer to
+"Can I connect to a local MCP server?" is "Not directly." This server speaks
+stdio as a local process, so reaching it from ChatGPT would need a remote HTTPS
+bridge in front of it — OpenAI points at its Secure MCP Tunnel — which this
+project neither ships nor documents. Developer mode is itself limited to
+ChatGPT Business, Enterprise and Edu, on the web, and must be enabled by a
+workspace admin.
+
+Any stdio configuration written for ChatGPT would be fiction. Use one of the
+local hosts above or below.
+
+Source: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
 
 ### opencode
+
 Add this to `opencode.json` or `.opencode/opencode.json` in your project, or to
 `~/.config/opencode/opencode.json` to make the server available everywhere:
+
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
@@ -309,7 +405,7 @@ Add this to `opencode.json` or `.opencode/opencode.json` in your project, or to
       "environment": {
         "ODOO_BASE_URL": "https://mycompany.odoo.com",
         "ODOO_API_KEY": "your-api-key-here",
-        "ODOO_DB": "your-database-name"
+        "ODOO_DB": "mycompany16-prod-12345678"
       }
     }
   }
@@ -329,13 +425,10 @@ opencode reads its config once at startup and does not hot-reload it. Quit
 and restart after editing. Anything you change here, the allow and deny lists
 included, takes effect only on the next launch.
 
-### ChatGPT (Custom Connectors)
-To connect this server to ChatGPT via Custom Connectors:
-1. Go to Settings → Connectors → Add Connector.
-2. Enter the server URL or select from the Registry.
-3. Enter your Odoo credentials when prompted.
+Source: https://opencode.ai/docs/mcp-servers
 
 ### Hermes
+
 Hermes keeps its servers in **YAML**, under `mcp_servers:` in `~/.hermes/config.yaml`:
 
 ```yaml
@@ -347,8 +440,9 @@ mcp_servers:
     env:
       ODOO_BASE_URL: https://mycompany.odoo.com
       ODOO_API_KEY: your-api-key-here
-      ODOO_DB: your-database-name
-    timeout: 120000
+      # only when required, see "Database and login" above
+      ODOO_DB: mycompany16-prod-12345678
+    timeout: 120
     connect_timeout: 60
     enabled: true
 ```
@@ -359,11 +453,321 @@ opencode's single array. The environment block is `env`. And the command needs
 an **absolute path**: Hermes runs as a desktop application, which does not
 inherit the `PATH` of your shell, so a bare `uvx` is not found.
 
-`hermes mcp add` can write this entry for you, but pass `--args` **last**: it is
-greedy and swallows every flag that follows it, landing `--env` pairs inside
-`args` and leaving the server to start with no credentials at all.
+Both timeouts here are in **seconds**, not milliseconds: `timeout` is the
+tool-call limit and defaults to 300, `connect_timeout` bounds the initial
+connection and defaults to 60. The 120 above is comfortably more than the first
+`instance_overview` call needs. Reload the servers with `/reload-mcp` after
+editing rather than restarting.
+
+`hermes mcp add` can write this entry for you — its signature is
+`add <name> [--url URL] [--command CMD] [--auth oauth|header] [--args ...]` —
+but pass `--args` **last**: it takes the remaining argv, so anything after it is
+swallowed into `args`, which is how credentials end up there and the server
+starts with none.
+
+Source: https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference
+
+### Cursor
+
+Add this to `.cursor/mcp.json` in your project, to `~/.cursor/mcp.json` to make
+the server available everywhere, or configure it from **Customize** in the
+sidebar:
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      }
+    }
+  }
+}
+```
+
+Cursor interpolates `${env:NAME}` inside `command`, `args`, `env`, `url` and
+`headers`, so `"ODOO_API_KEY": "${env:ODOO_API_KEY}"` keeps the key out of a
+file you might commit. When a call fails, the reason is in the Output panel
+under **MCP Logs**.
+
+Source: https://cursor.com/docs/context/mcp
+
+### Windsurf
+
+Windsurf's Cascade agent reads **one global file** —
+`~/.codeium/windsurf/mcp_config.json` — on every platform. There is no
+project-scoped equivalent, so this entry applies to every workspace you open:
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      }
+    }
+  }
+}
+```
+
+Open it from the `MCPs` icon in the Cascade panel, or from **Settings →
+Cascade → MCP Servers**, then refresh the server list. The file interpolates
+`${env:VAR_NAME}` and `${file:/path/to/file}` in `command`, `args` and `env`, so
+the API key can live outside it. Cascade caps the agent at 100 tools in total,
+and this server contributes 19.
+
+Source: https://docs.windsurf.com/windsurf/cascade/mcp
+
+### VS Code and GitHub Copilot
+
+VS Code's root key is **`servers`**, not `mcpServers` — an entry copied from
+another host's documentation will not be seen. Put it in `.vscode/mcp.json` in
+your workspace, to commit it with the project, or run **MCP: Open User
+Configuration** from the Command Palette for the copy that follows your user
+profile into every workspace:
+
+```json
+{
+  "servers": {
+    "odoo-assistant": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      }
+    }
+  }
+}
+```
+
+The command line writes the same entry:
+
+```bash
+code --add-mcp "{\"name\":\"odoo-assistant\",\"command\":\"uvx\",\"args\":[\"odoo-assistant\"]}"
+```
+
+The first time VS Code starts a server it asks whether you trust it; decline and
+the server never runs. Use the code lenses in `mcp.json`, or **MCP: List
+Servers** in the Command Palette, to start, stop and restart it and to read its
+output. Avoid hardcoding the API key in a committed workspace file — VS Code
+provides input variables for exactly this.
+
+Source: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
+
+### Gemini CLI
+
+Gemini CLI reads `mcpServers` from `settings.json`: `~/.gemini/settings.json`
+for every session, or `.gemini/settings.json` in a project's root for that
+project only, which takes precedence.
+
+```bash
+gemini mcp add odoo-assistant uvx odoo-assistant \
+  --env ODOO_BASE_URL=https://mycompany.odoo.com \
+  --env ODOO_API_KEY=your-api-key-here \
+  --env ODOO_DB=mycompany16-prod-12345678 \
+  --scope user
+```
+
+The same entry written out:
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      },
+      "timeout": 600000
+    }
+  }
+}
+```
+
+`timeout` is the request timeout in **milliseconds** and already defaults to
+600000, ten minutes, so the first `instance_overview` call needs nothing from
+you here; the line is shown only because it is the key to lower if you want a
+faster failure. Two other habits pay off: Gemini CLI redacts anything matching
+`*KEY*`, `*TOKEN*` or `*SECRET*` from the inherited environment before spawning
+a server, so a variable must be named in this `env` block to arrive at all, and
+`"$MY_VAR"` inside it expands from your shell. Restart the CLI after editing,
+then check the server with `/mcp`.
+
+Source: https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md
+
+Source: https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md
+
+### Cline
+
+Cline's CLI reads `~/.cline/mcp.json`. In the IDE extensions, open the **MCP
+Servers** icon in the Cline panel, go to the **Configure** tab and press
+**Configure MCP Servers**, which opens the extension's own settings JSON. Both
+use the same `mcpServers` shape:
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+Leave `autoApprove` empty. It is the list of tools that run without asking, and
+the gate in this server is not a substitute for reading a write call before it
+happens. `cline mcp` opens an interactive wizard that adds, edits, enables and
+removes servers without touching the file. The request timeout is a per-server
+setting in the MCP settings panel rather than a key in this file — raise it
+there if the first `instance_overview` call times out, and restart the server
+from the same panel.
+
+Source: https://docs.cline.bot/mcp/mcp-overview
+
+### Roo Code
+
+Roo Code reads two files: a global `mcp_settings.json`, opened by the **Edit
+Global MCP** button at the bottom of the MCP settings view, and a per-project
+`.roo/mcp.json` opened by **Edit Project MCP** next to it, which Roo creates if
+it does not exist. A server name present in both takes its project definition.
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      },
+      "alwaysAllow": [],
+      "disabled": false,
+      "timeout": 300
+    }
+  }
+}
+```
+
+`timeout` here is in **seconds**, not milliseconds — it accepts 1 to 3600 and
+defaults to 60. Sixty is enough for every call but the first
+`instance_overview` of a session, which is the one to raise it for; the same
+value is the **Network Timeout** dropdown in the server's own panel. Leave
+`alwaysAllow` empty, for the reason given under Cline. Press the restart button
+next to the server after editing.
+
+Committing `.roo/mcp.json` shares the server with your team — so put the API key
+in a system environment variable and reference it as `${env:ODOO_API_KEY}`
+inside `args`, rather than writing it into a file that goes into version
+control.
+
+Source: https://docs.roocode.com/features/mcp/using-mcp-in-roo
+
+### Zed
+
+Zed calls them context servers, and the key is **`context_servers`**, not
+`mcpServers`. Add the entry to your settings file — Command Palette,
+`zed: open settings file` — or let Zed write it for you from **Settings → AI →
+MCP Servers → Add Server → Add Local Server**:
+
+```json
+{
+  "context_servers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      }
+    }
+  }
+}
+```
+
+The indicator dot beside the server's name in **Settings → AI → MCP Servers**
+says whether it came up: green, with "Server is active" in its tooltip, means
+Zed reached it. Tool approval is governed by `agent.tool_permissions.default`,
+which is `"confirm"` by default; per-tool rules use the key format
+`mcp:odoo-assistant:<tool_name>`, for example `mcp:odoo-assistant:search_read`.
+
+Source: https://zed.dev/docs/ai/mcp
+
+### JetBrains AI Assistant
+
+JetBrains AI Assistant takes the configuration through a dialog rather than a
+file you locate yourself. Go to **Settings | Tools | AI Assistant | Model
+Context Protocol (MCP)**, click **Add**, choose STDIO, and paste this as the
+JSON configuration:
+
+```json
+{
+  "mcpServers": {
+    "odoo-assistant": {
+      "command": "uvx",
+      "args": [
+        "odoo-assistant"
+      ],
+      "env": {
+        "ODOO_BASE_URL": "https://mycompany.odoo.com",
+        "ODOO_API_KEY": "your-api-key-here",
+        "ODOO_DB": "mycompany16-prod-12345678"
+      }
+    }
+  }
+}
+```
+
+The dialog documents `command` and `args`, and adds two fields of its own beside
+the JSON: **Working directory**, and **Server level**, which decides whether the
+server is available globally or only in the current project. Click OK, then
+**Apply** — that is what actually starts the server, and the Status column
+reports whether it connected. If you already have this server in Claude
+Desktop, **Import from Claude** carries the whole entry over instead, including
+its environment block.
+
+Source: https://www.jetbrains.com/help/ai-assistant/mcp.html
 
 ### Odoo Online Production (Read-Only Example)
+
 If you are connecting to a production instance hosted on Odoo Online (SaaS), you must set `ODOO_DB` and should set `ODOO_MCP_ALLOW` to `"none"` for safety. Here is how it looks in Claude Desktop:
 
 ```json
@@ -387,7 +791,7 @@ If you are connecting to a production instance hosted on Odoo Online (SaaS), you
 
 Setting `ODOO_DB` is mandatory to bypass the disabled database-list endpoint on Odoo Online, while `ODOO_MCP_ALLOW` set to `"none"` ensures the agent cannot modify live production data.
 
-The examples omit the optional variables. Set `ODOO_DB` when the instance serves several databases, `ODOO_USER` to skip the uid probe, and `ODOO_MCP_ALLOW` / `ODOO_MCP_DENY` when the gate's defaults — every method but the seven denied ones — are not what you want.
+The examples omit the optional variables. Set `ODOO_DB` when the instance serves several databases, `ODOO_USER` — the login, e.g. `jane@mycompany.com` — to skip the uid probe, and `ODOO_MCP_ALLOW` / `ODOO_MCP_DENY` when the gate's defaults — every method but the seven denied ones — are not what you want.
 
 ## Changelog
 

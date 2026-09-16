@@ -8,8 +8,8 @@ Our hosted remote server acts as an authentication bridge between your AI client
 
 If you encounter issues, discover bugs, or have feature requests, please use the following official channels:
 
-* **Issue Tracker**: https://github.com/singleflo/odoo-assistant-mcp/issues
-* **Documentation**: https://github.com/singleflo/odoo-assistant-mcp#readme
+* **Issue Tracker**: [https://github.com/singleflo/odoo-assistant-mcp/issues](https://github.com/singleflo/odoo-assistant-mcp/issues)
+* **Documentation**: [https://github.com/singleflo/odoo-assistant-mcp#readme](https://github.com/singleflo/odoo-assistant-mcp#readme)
 
 ## Service Response Expectations
 

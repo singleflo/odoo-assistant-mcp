@@ -470,9 +470,10 @@ def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
         "</ul></section>"
 
         "<div class=\"actions\">"
-        "<button type=\"submit\" class=\"primary\">Connect</button>"
+        "<button type=\"submit\" class=\"primary\""
+        " data-busy-label=\"Connecting…\">Connect</button>"
         "<button type=\"submit\" class=\"secondary\" name=\"action\""
-        " value=\"deny\" formnovalidate>Refuse</button>"
+        " value=\"deny\" formnovalidate data-busy-label=\"Refusing…\">Refuse</button>"
         "</div>"
         # Hidden until the form reports itself as sending. What follows the
         # press is a live connection to the user's Odoo, which can take the

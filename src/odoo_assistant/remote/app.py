@@ -106,6 +106,7 @@ _HEADING = re.compile(r"(#{1,4})\s+(.*)")
 _BULLET = re.compile(r"[-*]\s+(.*)")
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
+_CODE = re.compile(r"`([^`]+)`")
 
 logger = logging.getLogger(__name__)
 
@@ -214,8 +215,24 @@ class BindTenant:
 
 def _inline_md(text: str) -> str:
     escaped = html.escape(text, quote=False)
-    linked = _LINK.sub(r'<a href="\2">\1</a>', escaped)
-    return _BOLD.sub(r"<strong>\1</strong>", linked)
+
+    # The placeholder round-trip exists to stop link and bold patterns inside
+    # a code span from being rewritten, while keeping the escaping guarantee
+    # intact (the content is already escaped before the placeholder is made).
+    codes = []
+    def _stash_code(match: re.Match) -> str:
+        codes.append(match.group(1))
+        return f"\x00{len(codes) - 1}\x00"
+
+    stashed = _CODE.sub(_stash_code, escaped)
+    linked = _LINK.sub(r'<a href="\2">\1</a>', stashed)
+    bolded = _BOLD.sub(r"<strong>\1</strong>", linked)
+
+    def _restore_code(match: re.Match) -> str:
+        index = int(match.group(1))
+        return f"<code>{codes[index]}</code>"
+
+    return re.sub(r"\x00(\d+)\x00", _restore_code, bolded)
 
 
 def _cells(row: str) -> list[str]:
@@ -359,6 +376,13 @@ def _landing_page(settings: RemoteSettings) -> Response:
         " made, all listed on the <a href=\"/privacy\">privacy page</a>."
         " Revoking that key inside Odoo ends the access immediately, without"
         " going through us.</p>",
+        # The pages are about to adopt Odoo's own brand colours, and both the
+        # Anthropic and OpenAI directories reject anything implying
+        # endorsement by a third party — a reviewer reads the headline, not
+        # the footer.
+        lead=("An independent, open-source project that connects the assistant"
+              " you already use to your own Odoo. Not affiliated with,"
+              " endorsed or sponsored by Odoo S.A."),
         publisher=settings.publisher, active="/"))
 
 
@@ -370,9 +394,10 @@ class SecurityHeaders:
     to refuse being framed — `frame-ancestors 'none'`, with the older
     `X-Frame-Options` beside it — because a framed consent page is a
     clickjacking target. The policy can be this narrow, down to
-    `default-src 'none'`, precisely because these pages carry no script and
-    fetch nothing from a third party: one stylesheet from this origin and an
-    inline SVG mark.
+    `default-src 'none'`, precisely because these pages carry exactly one
+    inline script, admitted by its own SHA-256 hash, which is why `script-src`
+    names a hash rather than an origin — and nothing is fetched from a third
+    party: one stylesheet from this origin and an inline SVG mark.
     """
 
     _ALWAYS = {

@@ -13,7 +13,7 @@ Two rules this module exists to keep:
   font and no third-party script — a page that asks for a credential must
   not also ask a CDN to watch it being typed. That is also what lets the
   Content Security Policy in `app.py` be as narrow as `default-src 'none'`.
-  The one script on these pages is inline, six lines long, and admitted by
+  The one script on these pages is inline, short, and admitted by
   its own SHA-256 hash (`SCRIPT_HASH`), so the policy names that exact text
   rather than opening the page to scripts in general.
 * **The stylesheet is cache-busted by version.** `/style.css?v=<version>`
@@ -38,13 +38,23 @@ REPO_URL = "https://github.com/singleflo/odoo-assistant-mcp"
 # body, which would silently turn a refusal into a blank submission — they
 # are made unclickable in CSS instead. Without JavaScript the form still
 # works; it just submits silently.
+#
+# A missing submitter (e.g. from a programmatic submit) left no button
+# marked at all, so we fall back to the primary button. Under reduced
+# motion the ring is hidden, so the label swap carries the cue instead.
+# The form is marked busy for screen readers.
 _PENDING_SCRIPT = (
     "document.addEventListener('submit',function(e){"
     "var f=e.target;"
     "if(f.dataset.sending){e.preventDefault();return;}"
     "f.dataset.sending='1';"
     "f.classList.add('is-sending');"
-    "if(e.submitter){e.submitter.classList.add('is-busy');}"
+    "f.setAttribute('aria-busy','true');"
+    "var b=e.submitter||f.querySelector('button.primary');"
+    "if(b){"
+    "b.classList.add('is-busy');"
+    "if(b.dataset.busyLabel){b.textContent=b.dataset.busyLabel;}"
+    "}"
     "});")
 
 # What the Content Security Policy must name to admit the script above.

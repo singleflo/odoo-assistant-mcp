@@ -233,6 +233,31 @@ def test_the_form_carries_the_waiting_message_it_will_reveal(store, provider):
     assert "up to twenty seconds" in shown.text
 
 
+def test_the_form_marks_the_waiting_button_and_states_independence_before_the_footer(
+        store, provider):
+    """Given the consent page, When its submit affordance is served, Then the
+    waiting state names the connecting action, covers a missing submitter and
+    marks the form busy, while independence appears in the body.
+
+    A submit event carrying no submitter left NO button marked (measured
+    `busyWithoutSubmitter: false` in dark mode at 430 px), while the form still
+    dimmed and the note still appeared — so the page looked inert exactly where
+    a user is waiting; and the pressed button was dimmed along with every other,
+    which flattens the one cue that should stand out.
+    """
+    shown = client(store, provider).get("/consent?req=pend-1")
+    body = shown.text.split("<footer")[0]
+
+    assert 'data-busy-label="Connecting' in shown.text, (
+        "the primary button must declare its Connecting busy label")
+    assert "e.submitter||" in shown.text, (
+        "the submit script must fall back to the primary button")
+    assert "aria-busy" in shown.text, (
+        "the consent form must expose its busy state")
+    assert "We are not Odoo" in body, (
+        "the consent body must state independence before the footer")
+
+
 def test_an_unregistered_client_is_named_by_its_id_rather_than_left_blank(
         store, provider):
     """Given no registration record for the pending client, When the form
@@ -479,3 +504,16 @@ def test_an_expired_or_unknown_req_answers_400(store, fake_connect,
     assert c.get("/consent?req=never-issued").status_code == 400
     assert fake_connect.calls == []
     assert provider.calls == []
+
+def test_refuse_button_has_busy_label_and_sending_note_is_scoped(store, provider):
+    """The Refuse button must have its own busy label, and the sending note
+    must only appear when the primary button is busy, because the refusal path
+    never contacts Odoo."""
+    from importlib import resources as importlib_resources
+    
+    shown = client(store, provider).get("/consent?req=pend-1")
+    assert 'data-busy-label="Refusing…"' in shown.text
+    
+    css = (importlib_resources.files("odoo_assistant.remote.pages")
+           / "style.css").read_text(encoding="utf-8")
+    assert ".is-sending:has(button.primary.is-busy) .sending-note" in css

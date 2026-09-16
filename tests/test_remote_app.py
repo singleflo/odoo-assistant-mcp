@@ -491,6 +491,27 @@ def test_privacy_is_html_with_the_substituted_publisher(tmp_path):
     assert "/mcp" in landing.text and "/privacy" in landing.text
 
 
+def test_the_landing_body_names_its_independence_before_the_footer(tmp_path):
+    """Given the landing page, When its body is inspected before the footer,
+    Then it names the project's independence from Odoo.
+
+    The footer already carries that sentence, so the slice matters: asserting
+    on the whole page would pass vacuously. The body placement is required
+    because the Anthropic and OpenAI directories reject anything implying
+    endorsement by a third party, and the page is about to adopt Odoo's own
+    brand colours, which makes an unmissable statement of independence the
+    thing that keeps the two compatible.
+    """
+    with make_client(tmp_path) as client:
+        page = client.get("/")
+
+    body = page.text.split("<footer")[0]
+    assert "Not affiliated with" in body, (
+        "the landing body must state that it is not affiliated")
+    assert "Odoo S.A." in body, (
+        "the landing body must name Odoo S.A. in its independence statement")
+
+
 def test_every_page_is_built_for_a_phone_and_refuses_framing(tmp_path):
     """Given the public pages, When each is fetched, Then it declares a
     viewport and comes with the framing, referrer and policy headers.
@@ -659,3 +680,25 @@ def test_startup_purges_expired_files_but_keeps_live_ones(tmp_path,
         alive = client.get(f"/files/{fresh['url'].rsplit('/', 1)[-1]}")
     assert gone.status_code == 404
     assert alive.status_code == 200
+
+def test_policy_pages_render_inline_code_without_literal_backticks(tmp_path):
+    """The policy pages show literal backticks in a browser capture a directory
+    reviewer opens, because the markdown renderer missed inline code spans.
+    They must render as <code> elements with no backticks left behind."""
+    with make_client(tmp_path) as client:
+        pages = {path: client.get(path)
+                 for path in ("/privacy", "/terms", "/support")}
+
+    for path, page in pages.items():
+        assert page.status_code == 200, path
+        assert "<code>" in page.text, f"{path} must have at least one <code> element"
+        assert "`" not in page.text, f"{path} must not contain literal backticks"
+
+def test_support_page_renders_issue_tracker_as_link(tmp_path):
+    """The long GitHub URLs on the support page were plain unclickable text
+    that wrapped badly. They must render as real anchors."""
+    with make_client(tmp_path) as client:
+        page = client.get("/support")
+
+    assert page.status_code == 200
+    assert '<a href="https://github.com/singleflo/odoo-assistant-mcp/issues"' in page.text

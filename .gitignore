@@ -13,3 +13,5 @@ __pycache__/
 # carries a real API key for local MCP testing
 .opencode/opencode.json
 .claude/
+# screenshots and accessibility snapshots a browser QA run leaves behind
+.playwright-mcp/

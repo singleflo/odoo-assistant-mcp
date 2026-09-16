@@ -694,11 +694,31 @@ def test_policy_pages_render_inline_code_without_literal_backticks(tmp_path):
         assert "<code>" in page.text, f"{path} must have at least one <code> element"
         assert "`" not in page.text, f"{path} must not contain literal backticks"
 
-def test_support_page_renders_issue_tracker_as_link(tmp_path):
-    """The long GitHub URLs on the support page were plain unclickable text
-    that wrapped badly. They must render as real anchors."""
-    with make_client(tmp_path) as client:
-        page = client.get("/support")
+def test_inline_md_escapes_link_targets_for_attribute_context():
+    """The module's own guarantee is that every interpolated value is escaped.
+    A CSP that blocks execution does not make an injected attribute acceptable.
+    """
+    result = remote_app._inline_md('[x](https://safe.example"onmouseover=alert(1))')
+    assert "&quot;" in result
+    import re
+    assert not re.search(r"\sonmouseover", result)
 
-    assert page.status_code == 200
-    assert '<a href="https://github.com/singleflo/odoo-assistant-mcp/issues"' in page.text
+def test_support_destination_renders_as_link(tmp_path):
+    """The support destination is operator-supplied and may be either an address
+    or a URL. The shape decides whether it becomes an https:// or mailto: link.
+    """
+    with make_client(tmp_path) as client:
+        support = client.get("/support")
+        privacy = client.get("/privacy")
+        terms = client.get("/terms")
+    
+    for page in (support, privacy, terms):
+        assert '<a href="https://github.com/singleflo/odoo-assistant-mcp/issues"' in page.text
+
+    with make_client(tmp_path, support_email="help@example.com") as client:
+        support = client.get("/support")
+        privacy = client.get("/privacy")
+        terms = client.get("/terms")
+    
+    for page in (support, privacy, terms):
+        assert '<a href="mailto:help@example.com"' in page.text

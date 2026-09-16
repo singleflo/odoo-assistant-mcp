@@ -366,6 +366,12 @@ input[type="password"]:focus-visible {
   border-color: var(--border-selected);
 }
 
+/* The browser default grey measured 2.89:1 on the dark surface, and a placeholder is text a user reads. */
+input::placeholder {
+  color: var(--ink-tertiary);
+  opacity: 1;            /* Firefox dims placeholders by default */
+}
+
 .field-help {
   font-size: var(--text-sm);
   color: var(--ink-secondary);

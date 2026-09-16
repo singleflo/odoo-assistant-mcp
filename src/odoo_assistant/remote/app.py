@@ -225,7 +225,15 @@ def _inline_md(text: str) -> str:
         return f"\x00{len(codes) - 1}\x00"
 
     stashed = _CODE.sub(_stash_code, escaped)
-    linked = _LINK.sub(r'<a href="\2">\1</a>', stashed)
+
+    # Operator-supplied substitutions enter this function through _serve_page.
+    # The CSP is a second line of defense, not the first.
+    def _replace_link(match: re.Match) -> str:
+        label = match.group(1)
+        target = html.escape(match.group(2), quote=True)
+        return f'<a href="{target}">{label}</a>'
+
+    linked = _LINK.sub(_replace_link, stashed)
     bolded = _BOLD.sub(r"<strong>\1</strong>", linked)
 
     def _restore_code(match: re.Match) -> str:
@@ -316,8 +324,17 @@ def _split_title(source: str) -> tuple[str, str]:
 def _serve_page(name: str, settings: RemoteSettings) -> Response:
     source = (importlib_resources.files("odoo_assistant.remote.pages")
               / f"{name}.md").read_text(encoding="utf-8")
+
+    # The support destination is operator-supplied and may be either an address
+    # or a URL, which is why the shape decides.
+    support_dest = settings.support_email
+    if support_dest.startswith("https://"):
+        support_dest = f"[{support_dest}]({support_dest})"
+    elif "@" in support_dest and "://" not in support_dest:
+        support_dest = f"[{support_dest}](mailto:{support_dest})"
+
     source = (source.replace("{{PUBLISHER}}", settings.publisher)
-              .replace("{{SUPPORT_EMAIL}}", settings.support_email))
+              .replace("{{SUPPORT_EMAIL}}", support_dest))
     title, body = _split_title(source)
     return HTMLResponse(ui.layout(
         title or name.capitalize(),

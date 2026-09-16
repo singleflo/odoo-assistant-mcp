@@ -166,3 +166,15 @@ def test_every_python_emitted_class_has_a_stylesheet_selector():
         assert f".{name}" in stylesheet, (
             f"Python-emitted class .{name} has no stylesheet selector"
         )
+
+
+def test_placeholder_uses_token_colour():
+    """Given the stylesheet, When the placeholder rule is inspected, Then it
+    uses a token colour rather than the browser default, because the default
+    fails WCAG AA contrast on the dark surface.
+    """
+    stylesheet = _stylesheet()
+    assert "::placeholder" in stylesheet, "stylesheet is missing a ::placeholder rule"
+    assert "var(--ink-tertiary)" in stylesheet.split("::placeholder")[1].split("}")[0], (
+        "::placeholder rule must use a token colour (e.g. var(--ink-tertiary))"
+    )

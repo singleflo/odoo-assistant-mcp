@@ -207,7 +207,10 @@ async def consent_submit(request: Request) -> Response:
             return HTMLResponse(_form_html(deps, replace(
                 shown, error=_readable_failure(outcome.detail))))
         case "ok":
-            pass
+            # Odoo's own answer beats the typed one: a wrong login is not an
+            # error while the probe can still rescue it, so keeping what was
+            # submitted would store a value Odoo refuses.
+            login = outcome.login or login
 
     existing = deps.store.find_tenant_by_key_hash(key_hash(odoo_url, api_key))
     if existing is not None:
@@ -270,7 +273,7 @@ def _ssrf_refusal(host: str) -> str | None:
 
 
 def _verify_credentials(odoo_url: str, db: str, api_key: str,
-                        login: str = "") -> None:
+                        login: str = "") -> str:
     """Prove the key works: connect (the JSON-2 path authenticates with the
     key alone), then read the key owner's login.
 
@@ -280,9 +283,18 @@ def _verify_credentials(odoo_url: str, db: str, api_key: str,
     caller holding only a key cannot ask Odoo who owns it and the client falls
     back to probing uid 1 to 59. Given the login, one
     `common.authenticate(db, login, key)` settles it, at any uid.
+
+    Returns the login Odoo itself reports for the connected user, which is
+    the one worth keeping: a wrong one submitted here is not an error while
+    the probe can still rescue it, so storing what was typed would persist a
+    value Odoo refuses and pay for a failed `authenticate` on every later
+    connection. Reading it back also means a tenant that connected by probe
+    never has to probe again.
     """
     odoo = connect(base=odoo_url, db=db, user=login, key=api_key)
-    odoo.call("res.users", "read", [[odoo.uid], ["login"]], {})
+    rows = odoo.call("res.users", "read", [[odoo.uid], ["login"]], {})
+    resolved = rows[0].get("login") if rows else None
+    return resolved or getattr(odoo, "user", "") or login
 
 
 # What the client raises when the uid probe ran out of numbers, and when a
@@ -349,17 +361,20 @@ class _Verified:
     status: Literal["ok", "error", "timeout"]
     detail: str
     process: BaseProcess | None
+    # The login Odoo reported for the connected user; empty unless status is
+    # "ok". It is what gets stored, in place of whatever was typed.
+    login: str = ""
 
 
 def _verify_entry(odoo_url: str, db: str, api_key: str, login: str,
                   send_conn: Connection) -> None:
-    """Child side: one verification, then the outcome on the pipe — "ok" or
-    the exception repr. `connect` resolves through this module, which the
+    """Child side: one verification, then the outcome on the pipe — "ok" with
+    the login Odoo reported, or "error" with the exception repr. `connect`
+    resolves through this module, which the
     spawn interpreter imports fresh; nothing unpicklable crosses, only the
     four strings and the pipe."""
     try:
-        _verify_credentials(odoo_url, db, api_key, login)
-        send_conn.send(("ok", ""))
+        send_conn.send(("ok", _verify_credentials(odoo_url, db, api_key, login)))
     except Exception as exc:
         send_conn.send(("error", repr(exc)))
     finally:
@@ -398,10 +413,12 @@ def _verify_isolated(odoo_url: str, db: str, api_key: str,
                 f"The Odoo server did not answer within"
                 f" {_VERIFY_TIMEOUT:g} seconds.", proc)
         try:
-            status, detail = recv_conn.recv()
+            status, payload = recv_conn.recv()
         except EOFError:  # the child died without answering
             return _Verified("error", "", proc)
-        return _Verified(status, detail, proc)
+        if status == "ok":
+            return _Verified(status, "", proc, payload)
+        return _Verified(status, payload, proc)
     finally:
         recv_conn.close()
 

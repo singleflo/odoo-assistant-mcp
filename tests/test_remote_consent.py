@@ -637,3 +637,38 @@ def test_the_database_failures_point_at_the_field_not_at_a_variable(
     assert "must name one: a, b, c." in answer.text
     assert "the Database field below" in answer.text
     assert "ODOO_DB" not in answer.text
+
+
+def test_the_login_odoo_reports_replaces_the_one_that_was_typed(
+        store, fake_connect, provider, monkeypatch):
+    """A login Odoo refuses is not an error while the uid probe can still
+    rescue it, so what the user typed may be wrong and the sign-in still
+    succeed. Store what Odoo answered instead — which also means a tenant
+    that got in by probing never probes again."""
+    def verified(odoo_url, db, api_key, login=""):
+        return consent._Verified("ok", "", None, "real.owner@acme.com")
+    monkeypatch.setattr(consent, "_verify_isolated", verified)
+
+    answer = client(store, provider).post(
+        "/consent", data=_form(login="typo@acme.com"))
+
+    assert answer.status_code == 302
+    assert store.find_tenant_by_key_hash(
+        key_hash(ODOO_URL, API_KEY)).login == "real.owner@acme.com"
+
+
+def test_the_child_reports_the_resolved_login_over_the_pipe(monkeypatch):
+    """The value has to survive the process boundary: the parent reads it off
+    the same pipe the outcome travels on."""
+    seen = {}
+
+    def fake_verify(odoo_url, db, api_key, login=""):
+        seen["login"] = login
+        return "owner@acme.com"
+
+    monkeypatch.setattr(consent, "_verify_credentials", fake_verify)
+    parent, child = __import__("multiprocessing").Pipe(duplex=False)
+    consent._verify_entry("https://x", "db", "k", "jane@acme.com", child)
+
+    assert parent.recv() == ("ok", "owner@acme.com")
+    assert seen["login"] == "jane@acme.com"

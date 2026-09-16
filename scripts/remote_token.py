@@ -43,6 +43,11 @@ def main() -> int:
     parser.add_argument(
         "--policy", default="read", choices=["read", "standard"],
         help="what the assistant may do on your instance (default: read)")
+    parser.add_argument(
+        "--login", default=os.environ.get("ODOO_REMOTE_TEST_LOGIN", ""),
+        help="the Odoo login the API key belongs to. Only needed when that"
+             " user's uid is past the discovery probe's last (59), which is"
+             " where a key on an established instance usually sits")
     args = parser.parse_args()
     if not args.url:
         parser.error("no server URL: pass --url or set ODOO_REMOTE_PUBLIC_URL")
@@ -88,7 +93,7 @@ def main() -> int:
 
     consented = http.post("/consent", data={
         "req": req, "odoo_url": odoo_url, "api_key": api_key,
-        "db": db, "policy": args.policy,
+        "db": db, "login": args.login, "policy": args.policy,
     })
     if consented.status_code != 302:
         # 200 = the consent form was re-rendered with an error (bad

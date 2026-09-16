@@ -42,17 +42,19 @@ REPO_URL = "https://github.com/singleflo/odoo-assistant-mcp"
 # A missing submitter (e.g. from a programmatic submit) left no button
 # marked at all, so we fall back to the primary button. Under reduced
 # motion the ring is hidden, so the label swap carries the cue instead.
-# The form is marked busy for screen readers.
+# The resolved button is marked busy for screen readers, rather than the
+# form, because a role="status" region inside an aria-busy subtree may
+# never be announced.
 _PENDING_SCRIPT = (
     "document.addEventListener('submit',function(e){"
     "var f=e.target;"
     "if(f.dataset.sending){e.preventDefault();return;}"
     "f.dataset.sending='1';"
     "f.classList.add('is-sending');"
-    "f.setAttribute('aria-busy','true');"
     "var b=e.submitter||f.querySelector('button.primary');"
     "if(b){"
     "b.classList.add('is-busy');"
+    "b.setAttribute('aria-busy','true');"
     "if(b.dataset.busyLabel){b.textContent=b.dataset.busyLabel;}"
     "}"
     "});")

@@ -697,11 +697,17 @@ def test_policy_pages_render_inline_code_without_literal_backticks(tmp_path):
 def test_inline_md_escapes_link_targets_for_attribute_context():
     """The module's own guarantee is that every interpolated value is escaped.
     A CSP that blocks execution does not make an injected attribute acceptable.
+    A URL carrying a query string must not be double-escaped (&amp;amp;).
     """
     result = remote_app._inline_md('[x](https://safe.example"onmouseover=alert(1))')
     assert "&quot;" in result
     import re
     assert not re.search(r"\sonmouseover", result)
+
+    # Defect 1: double escaping of link targets
+    query_result = remote_app._inline_md("[x](https://example.com/a?b=1&c=2)")
+    assert "b=1&amp;c=2" in query_result
+    assert "&amp;amp;" not in query_result
 
 def test_support_destination_renders_as_link(tmp_path):
     """The support destination is operator-supplied and may be either an address

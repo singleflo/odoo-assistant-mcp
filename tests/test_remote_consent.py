@@ -237,13 +237,15 @@ def test_the_form_marks_the_waiting_button_and_states_independence_before_the_fo
         store, provider):
     """Given the consent page, When its submit affordance is served, Then the
     waiting state names the connecting action, covers a missing submitter and
-    marks the form busy, while independence appears in the body.
+    marks the button busy, while independence appears in the body.
 
     A submit event carrying no submitter left NO button marked (measured
     `busyWithoutSubmitter: false` in dark mode at 430 px), while the form still
     dimmed and the note still appeared — so the page looked inert exactly where
     a user is waiting; and the pressed button was dimmed along with every other,
     which flattens the one cue that should stand out.
+    
+    A `role="status"` region inside an `aria-busy` subtree may never be announced.
     """
     shown = client(store, provider).get("/consent?req=pend-1")
     body = shown.text.split("<footer")[0]
@@ -252,8 +254,10 @@ def test_the_form_marks_the_waiting_button_and_states_independence_before_the_fo
         "the primary button must declare its Connecting busy label")
     assert "e.submitter||" in shown.text, (
         "the submit script must fall back to the primary button")
-    assert "aria-busy" in shown.text, (
-        "the consent form must expose its busy state")
+    assert "b.setAttribute('aria-busy','true')" in shown.text, (
+        "the script must set aria-busy on the resolved button")
+    assert "f.setAttribute('aria-busy'" not in shown.text, (
+        "the script must NOT set aria-busy on the form")
     assert "We are not Odoo" in body, (
         "the consent body must state independence before the footer")
 

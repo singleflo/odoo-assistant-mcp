@@ -51,4 +51,4 @@ In no event shall {{PUBLISHER}} or the project maintainers be liable for any dir
 
 ## Contact and Support
 
-If you have questions regarding these Terms of Service or need technical assistance, please reach out to {{SUPPORT_EMAIL}} (defaults to https://github.com/singleflo/odoo-assistant-mcp/issues).
+If you have questions regarding these Terms of Service or need technical assistance, please reach out to {{SUPPORT_EMAIL}}.

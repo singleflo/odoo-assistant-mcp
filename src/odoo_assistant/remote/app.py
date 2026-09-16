@@ -230,7 +230,11 @@ def _inline_md(text: str) -> str:
     # The CSP is a second line of defense, not the first.
     def _replace_link(match: re.Match) -> str:
         label = match.group(1)
-        target = html.escape(match.group(2), quote=True)
+        # The text is already escaped above, so escaping the target again with
+        # html.escape(target, quote=True) would double-escape every ampersand
+        # in a query string. We only need to escape the double quote to prevent
+        # attribute injection.
+        target = match.group(2).replace('"', "&quot;")
         return f'<a href="{target}">{label}</a>'
 
     linked = _LINK.sub(_replace_link, stashed)

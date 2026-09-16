@@ -34,9 +34,9 @@ When reporting an issue on GitHub, please include:
 You can disconnect the integration directly inside your AI host application (e.g., Claude or ChatGPT). Disconnecting immediately revokes your active token family and purges your stored Odoo credentials from our remote database.
 
 ### What should I do if authorization fails?
-Ensure that your Odoo base URL is reachable over HTTPS and that your API key or user credentials possess adequate permissions within your Odoo database. If your Odoo instance requires database name parameters or specific user scoping, verify those settings during consent.
+Ensure that your Odoo base URL is reachable over HTTPS and that your API key belongs to a user with the permissions the work needs. If your instance is hosted on Odoo Online, the database name is required during consent because discovery cannot reach it.
 
 ## Contact
 
-For direct inquiries or support concerns, please contact {{SUPPORT_EMAIL}} (defaults to https://github.com/singleflo/odoo-assistant-mcp/issues).
+For direct inquiries or support concerns, please contact {{SUPPORT_EMAIL}}.
 

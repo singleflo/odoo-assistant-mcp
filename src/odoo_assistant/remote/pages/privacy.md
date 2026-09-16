@@ -75,4 +75,4 @@ The only recipient of requests forwarded by our service is your own target Odoo 
 
 ## Contact Us
 
-If you have questions, feedback, or concerns regarding this Privacy Policy or data handling practices, please open an issue or reach out to {{SUPPORT_EMAIL}} (defaults to https://github.com/singleflo/odoo-assistant-mcp/issues).
+If you have questions, feedback, or concerns regarding this Privacy Policy or data handling practices, please open an issue or reach out to {{SUPPORT_EMAIL}}.

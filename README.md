@@ -266,6 +266,14 @@ run workflows and schedule activities. Deletion is never available through the
 hosted server — `unlink` is not reachable from it under either choice. The
 choice can be changed later by signing in again and picking the other one.
 
+Two optional fields sit alongside them, for the same reasons `ODOO_DB` and
+`ODOO_USER` exist locally: the **database**, required on Odoo Online, and the
+**Odoo login** of the user the key belongs to. Leave the login empty and the
+server works the owner out by probing uid 1 to 59; fill it in when that
+probe cannot reach — a user created well after the instance was set up sits
+past uid 59, and there the sign-in fails until the login is given. The page
+says so when it happens.
+
 **What the hosted server stores**: your Odoo URL and API key, encrypted at
 rest; your sign-in identity, kept only as a hash; and the files a tool
 produces, which live there only as links that expire after fifteen minutes.

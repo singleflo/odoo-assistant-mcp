@@ -296,3 +296,37 @@ def test_after_reset_the_environment_decides_again(monkeypatch):
     decision = gate("res.partner", "write", [1], {"name": "x"})
     assert "ODOO_MCP_ALLOW=none" in decision.reason
     assert "authorised as read-only" not in decision.reason
+
+
+def test_the_tenants_login_is_what_the_client_authenticates_with(monkeypatch):
+    """Given a tenant that recorded the key owner's login, When its client is
+    built, Then the login is handed to connect — the uid is a parameter of the
+    XML-RPC call and Odoo derives the login from it, never the other way
+    round, so without this the client is back to probing uid 1 to 59."""
+    calls = []
+    monkeypatch.setattr(tenant, "_clients", {})
+    monkeypatch.setattr(
+        tenant, "connect", lambda **kw: calls.append(kw) or object())
+
+    tenant.odoo_for(tenant.Tenant(
+        "u-login", "http://x", "k", "db", "standard", "jane@acme.com"))
+
+    assert calls[0]["user"] == "jane@acme.com"
+
+
+def test_a_changed_login_is_not_served_from_the_cached_client(monkeypatch):
+    """Re-consenting with the login filled in must reconnect: the cached
+    client authenticated as whoever the probe found, which on the instance
+    that needed the field is nobody."""
+    calls = []
+    monkeypatch.setattr(tenant, "_clients", {})
+    monkeypatch.setattr(
+        tenant, "connect", lambda **kw: calls.append(kw) or object())
+
+    first = tenant.odoo_for(tenant.Tenant(
+        "u-same", "http://x", "k", "db", "standard"))
+    second = tenant.odoo_for(tenant.Tenant(
+        "u-same", "http://x", "k", "db", "standard", "jane@acme.com"))
+
+    assert second is not first
+    assert [call["user"] for call in calls] == ["", "jane@acme.com"]

@@ -114,9 +114,9 @@ class ConsentFakeConnect:
     def __init__(self):
         self.calls = []
 
-    def __call__(self, odoo_url, db, api_key):
+    def __call__(self, odoo_url, db, api_key, login=""):
         self.calls.append({
-            "base": odoo_url, "db": db, "user": "", "key": api_key})
+            "base": odoo_url, "db": db, "user": login, "key": api_key})
         return consent._Verified("ok", "", None)
 
 

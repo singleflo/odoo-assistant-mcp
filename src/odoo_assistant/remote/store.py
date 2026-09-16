@@ -67,8 +67,15 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE TABLE IF NOT EXISTS tenants (
     subject TEXT PRIMARY KEY, base_url TEXT NOT NULL, key_hash TEXT NOT NULL,
     api_key_enc BLOB NOT NULL, db TEXT, policy TEXT NOT NULL,
-    created_at TEXT NOT NULL, last_used_at TEXT NOT NULL);
+    created_at TEXT NOT NULL, last_used_at TEXT NOT NULL, login TEXT);
 """
+
+# Columns added after the first release. `CREATE TABLE IF NOT EXISTS` leaves an
+# existing table exactly as it was, so a database written before the column
+# existed keeps its old shape and every read of the new name fails — on the
+# deployed instance, not here. `init()` adds what is missing, and SQLite's
+# ADD COLUMN is an O(1) catalogue change that fills the rows with NULL.
+_ADDED_COLUMNS = (("tenants", "login", "TEXT"),)
 
 
 def hash_token(raw: str) -> str:
@@ -213,6 +220,12 @@ class Store:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._db() as db:
             db.executescript(_SCHEMA)
+            for table, column, decl in _ADDED_COLUMNS:
+                present = {row["name"] for row in
+                           db.execute(f"PRAGMA table_info({table})")}
+                if column not in present:
+                    db.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     # ---------------------------------------------------------- OAuth clients
     def put_client(self, client: OAuthClientInformationFull) -> None:
@@ -402,15 +415,19 @@ class Store:
         """Seal the API key; created_at and last_used_at start now."""
         with self._db() as db:
             db.execute(
-                "INSERT OR REPLACE INTO tenants VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO tenants (subject, base_url, key_hash,"
+                " api_key_enc, db, policy, created_at, last_used_at, login)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (t.subject, t.base_url, key_hash(t.base_url, t.api_key),
                  self._fernet.encrypt(t.api_key.encode()), t.db, t.policy,
-                 _iso(_now()), _iso(_now())))
+                 _iso(_now()), _iso(_now()), t.login))
 
     def _tenant(self, row: sqlite3.Row) -> Tenant:
         api_key = self._fernet.decrypt(row["api_key_enc"]).decode()
+        # A row written before the column existed reads NULL; the client wants
+        # the empty string, which is what "no login, discover it" spells.
         return Tenant(row["subject"], row["base_url"], api_key, row["db"],
-                      row["policy"])
+                      row["policy"], row["login"] or "")
 
     def get_tenant(self, subject: str) -> Tenant | None:
         with self._db() as db:

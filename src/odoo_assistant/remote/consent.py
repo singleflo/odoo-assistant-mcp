@@ -32,10 +32,12 @@ never logged and never echoed; every interpolated value, the Odoo error text
 included, goes through `html.escape` — it is untrusted external text landing
 in a browser page.
 """
+import ast
 import html
 import ipaddress
 import logging
 import multiprocessing
+import re
 import secrets
 import socket
 import sys
@@ -100,6 +102,7 @@ class _FormState:
     scopes: str = ""
     odoo_url: str = ""
     db: str = ""
+    login: str = ""
     policy: str = "read"
     error: str | None = None
 
@@ -155,9 +158,10 @@ async def consent_submit(request: Request) -> Response:
     odoo_url = fields.get("odoo_url", "").strip().rstrip("/")
     api_key = fields.get("api_key", "")
     db = fields.get("db", "").strip()
+    login = fields.get("login", "").strip()
     policy = fields.get("policy", "")
     shown = replace(_asking(deps, pending),
-                    odoo_url=odoo_url, db=db, policy="read")
+                    odoo_url=odoo_url, db=db, login=login, policy="read")
     if not odoo_url or not api_key:
         return HTMLResponse(_form_html(deps, replace(
             shown, error="Fill in the Odoo URL and the API key.")))
@@ -186,7 +190,8 @@ async def consent_submit(request: Request) -> Response:
         # Bounded by construction: the thread joins the child for at most
         # _VERIFY_TIMEOUT (+ the reap), so a cancelled request waits out at
         # most that, and the terminate/kill bookkeeping is never half-done.
-        outcome = await run_in_thread(_verify_isolated, odoo_url, db, api_key)
+        outcome = await run_in_thread(
+            _verify_isolated, odoo_url, db, api_key, login)
     except Exception as exc:
         logger.info("consent: verification failed for host %s", host)
         return HTMLResponse(_form_html(deps, replace(
@@ -196,23 +201,24 @@ async def consent_submit(request: Request) -> Response:
         case "timeout":
             logger.info("consent: no answer from host %s", host)
             return HTMLResponse(_form_html(
-                deps, replace(shown, error=outcome.detail)))
+                deps, replace(shown, error=_readable_failure(outcome.detail))))
         case "error":
             logger.info("consent: verification failed for host %s", host)
             return HTMLResponse(_form_html(deps, replace(
-                shown, error=outcome.detail or "The Odoo server refused the"
-                " connection.")))
+                shown, error=_readable_failure(outcome.detail))))
         case "ok":
             pass
 
     existing = deps.store.find_tenant_by_key_hash(key_hash(odoo_url, api_key))
     if existing is not None:
         subject = existing.subject
-        deps.store.put_tenant(replace(existing, db=db, policy=policy))
+        deps.store.put_tenant(
+            replace(existing, db=db, policy=policy, login=login))
     else:
         subject = "t_" + secrets.token_urlsafe(16)
         deps.store.put_tenant(Tenant(subject=subject, base_url=odoo_url,
-                                     api_key=api_key, db=db, policy=policy))
+                                     api_key=api_key, db=db, policy=policy,
+                                     login=login))
     logger.info("consent: subject %s connected to host %s", subject, host)
     return RedirectResponse(
         deps.provider.complete_consent(pending.id, subject), status_code=302)
@@ -263,11 +269,76 @@ def _ssrf_refusal(host: str) -> str | None:
     return None
 
 
-def _verify_credentials(odoo_url: str, db: str, api_key: str) -> None:
+def _verify_credentials(odoo_url: str, db: str, api_key: str,
+                        login: str = "") -> None:
     """Prove the key works: connect (the JSON-2 path authenticates with the
-    key alone), then read the key owner's login."""
-    odoo = connect(base=odoo_url, db=db, user="", key=api_key)
+    key alone), then read the key owner's login.
+
+    `login` is what rescues the XML-RPC path. There, the uid is a parameter of
+    the protocol — `service/model.py` reads it straight out of the call and
+    `res.users.check` builds the credential from *that* user's login — so a
+    caller holding only a key cannot ask Odoo who owns it and the client falls
+    back to probing uid 1 to 59. Given the login, one
+    `common.authenticate(db, login, key)` settles it, at any uid.
+    """
+    odoo = connect(base=odoo_url, db=db, user=login, key=api_key)
     odoo.call("res.users", "read", [[odoo.uid], ["login"]], {})
+
+
+# What the client raises when the uid probe ran out of numbers, and when a
+# supplied login was refused. Matched as substrings of the child's exception
+# repr, because `odoo_scripts/` is canonical and its wording is not ours to
+# restructure into a typed field.
+_PROBE_EXHAUSTED = "Could not resolve the API key to a user"
+_LOGIN_REFUSED = "Authentication failed for login"
+_DB_MISSING = "XML-RPC transport needs ODOO_DB"
+_DB_AMBIGUOUS = "so ODOO_DB must name"
+
+
+def _readable_failure(detail: str) -> str:
+    """One sentence a person can act on, from a child process' exception repr.
+
+    The repr is what crossed the pipe, so the raw text reaches the page as
+    `MissingCredentials("...\\nSet ODOO_USER to...")` — a class name, literal
+    backslash-n, and an instruction to set an environment variable that
+    nobody signing in through a browser has anywhere to put.
+
+    The client's own wording is written for someone editing a host config, so
+    the cases that name a variable are answered with the field on this page
+    that carries the same value. Everything else passes through as written:
+    guessing at an unfamiliar failure would hide it.
+    """
+    unwrapped = _unwrap(detail)
+    if _PROBE_EXHAUSTED in unwrapped:
+        return ("We could not work out which user this API key belongs to."
+                " Fill in the Odoo login below — the address you sign in"
+                " with — and try again.")
+    if _LOGIN_REFUSED in unwrapped:
+        return ("Odoo refused that login and key together. Check the login is"
+                " the one you sign in with, and that the key was created in"
+                " this same database.")
+    if _DB_MISSING in unwrapped:
+        return ("We could not work out the database name. Fill in the"
+                " Database field below and try again.")
+    if _DB_AMBIGUOUS in unwrapped:
+        # This one already names the candidates, which is the useful half —
+        # only the variable has to become the field.
+        named = unwrapped.split(" Set ODOO_DB")[0].replace(
+            "ODOO_DB must name one", "the Database field below must name one")
+        return named + " Fill it in and try again."
+    return unwrapped or "The Odoo server refused the connection."
+
+
+def _unwrap(detail: str) -> str:
+    """`ClassName("text")` back to text; anything else through untouched."""
+    match = re.fullmatch(r"\w+\((.*)\)", detail.strip(), re.S)
+    if match is None:
+        return detail
+    try:
+        inner = ast.literal_eval(match.group(1))
+    except (ValueError, SyntaxError):
+        return detail
+    return inner if isinstance(inner, str) else detail
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,14 +351,14 @@ class _Verified:
     process: BaseProcess | None
 
 
-def _verify_entry(odoo_url: str, db: str, api_key: str,
+def _verify_entry(odoo_url: str, db: str, api_key: str, login: str,
                   send_conn: Connection) -> None:
     """Child side: one verification, then the outcome on the pipe — "ok" or
     the exception repr. `connect` resolves through this module, which the
     spawn interpreter imports fresh; nothing unpicklable crosses, only the
-    three strings and the pipe."""
+    four strings and the pipe."""
     try:
-        _verify_credentials(odoo_url, db, api_key)
+        _verify_credentials(odoo_url, db, api_key, login)
         send_conn.send(("ok", ""))
     except Exception as exc:
         send_conn.send(("error", repr(exc)))
@@ -298,7 +369,8 @@ def _verify_entry(odoo_url: str, db: str, api_key: str,
 _last_verifier: BaseProcess | None = None
 
 
-def _verify_isolated(odoo_url: str, db: str, api_key: str) -> _Verified:
+def _verify_isolated(odoo_url: str, db: str, api_key: str,
+                     login: str = "") -> _Verified:
     """One credential check in its own short-lived spawn process.
 
     The verified scripts (`odoo_scripts/`, canonical and never rewritten
@@ -312,7 +384,8 @@ def _verify_isolated(odoo_url: str, db: str, api_key: str) -> _Verified:
     ctx = multiprocessing.get_context("spawn")
     recv_conn, send_conn = ctx.Pipe(duplex=False)
     proc = ctx.Process(target=_verify_entry,
-                       args=(odoo_url, db, api_key, send_conn), daemon=True)
+                       args=(odoo_url, db, api_key, login, send_conn),
+                       daemon=True)
     _last_verifier = proc
     proc.start()
     send_conn.close()  # the parent keeps no write end: EOF means the child died
@@ -420,6 +493,18 @@ def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
         " required, three months at most. <em>illustrated steps coming"
         " soon</em></li>"
         "</ul></details>"
+
+        "<p class=\"field\">"
+        "<label for=\"login\">Odoo login"
+        " <span class=\"optional\">optional</span></label>"
+        "<input id=\"login\" name=\"login\" type=\"text\""
+        f" autocomplete=\"username\" {_NO_TYPING_HELP}"
+        " placeholder=\"jane@mycompany.com\""
+        f" value=\"{html.escape(shown.login)}\">"
+        "<span class=\"field-help\">The address you sign in to Odoo with, for"
+        " the user the key belongs to. Leave it empty and we work it out;"
+        " fill it in when we report that we could not. Never your"
+        " password.</span></p>"
 
         "<p class=\"field\">"
         "<label for=\"db\">Database <span class=\"optional\">optional</span>"

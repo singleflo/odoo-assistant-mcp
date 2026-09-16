@@ -381,3 +381,35 @@ def test_non_fernet_secret_names_the_generation_command(tmp_path):
     with pytest.raises(ValueError) as caught:
         Store(tmp_path / "remote.db", "hunter2")
     assert caught.value.args[0] == SECRET_KEY_MESSAGE
+
+
+def test_a_database_written_before_the_login_column_gains_it_on_init(tmp_path):
+    """Given a tenants table from a release that had no `login` column — the
+    shape the deployed instance already carries, and one `CREATE TABLE IF NOT
+    EXISTS` will never change — When a new Store initialises over it, Then the
+    column is added and the existing row reads back with an empty login
+    instead of raising on a missing key."""
+    path = tmp_path / "old.db"
+    secret = Fernet.generate_key().decode()
+    with sqlite3.connect(path) as raw:
+        raw.execute("""CREATE TABLE tenants (
+            subject TEXT PRIMARY KEY, base_url TEXT NOT NULL,
+            key_hash TEXT NOT NULL, api_key_enc BLOB NOT NULL, db TEXT,
+            policy TEXT NOT NULL, created_at TEXT NOT NULL,
+            last_used_at TEXT NOT NULL)""")
+        raw.execute(
+            "INSERT INTO tenants VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("t_old", "https://old.example.com",
+             key_hash("https://old.example.com", "k-old"),
+             Fernet(secret.encode()).encrypt(b"k-old"), "olddb", "read",
+             "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"))
+
+    store = Store(path, secret)
+    store.init()
+
+    kept = store.get_tenant("t_old")
+    assert kept is not None
+    assert kept.login == ""
+    assert kept.api_key == "k-old"
+    store.put_tenant(replace(kept, login="jane@old.example.com"))
+    assert store.get_tenant("t_old").login == "jane@old.example.com"

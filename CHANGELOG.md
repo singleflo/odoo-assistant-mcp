@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-09-16
+
+### Fixed
+- **Signing in when the API key's owner has a high uid.** XML-RPC takes the uid as a parameter of the call, and Odoo derives the login from that uid rather than from the key (`res.users.check` builds the credential out of `env.user.login`), so a client holding only a key cannot ask who owns it and falls back to probing `res.users` for uid 1 to 59. A user created after the first few dozen sits past that — measured at 687 and 691 on a live instance — and every sign-in failed with a message telling the person to set `ODOO_USER`, an environment variable nobody signing in through a browser has anywhere to put. The consent page now offers an optional **Odoo login**, which resolves the uid in a single `authenticate` call at any value, and stores it with the tenant so later calls never probe. Left empty, discovery runs exactly as before.
+- **Verification failures read as sentences.** The text came from a subprocess as an exception repr, so the page showed `MissingCredentials("...\nSet ODOO_USER to...")`, class name and escapes included. The two failures a person can act on now say what to do, and anything else is unwrapped to the message the client wrote.
+
 ## [0.3.1] - 2026-09-16
 
 ### Fixed

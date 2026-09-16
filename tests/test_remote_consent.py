@@ -84,9 +84,9 @@ class FakeConnect:
         self.error = None
         self.calls = []
 
-    def __call__(self, odoo_url, db, api_key):
+    def __call__(self, odoo_url, db, api_key, login=""):
         self.calls.append({
-            "base": odoo_url, "db": db, "user": "", "key": api_key})
+            "base": odoo_url, "db": db, "user": login, "key": api_key})
         if self.error is not None:
             return consent._Verified("error", repr(self.error), None)
         return consent._Verified("ok", "", None)
@@ -521,3 +521,119 @@ def test_refuse_button_has_busy_label_and_sending_note_is_scoped(store, provider
     css = (importlib_resources.files("odoo_assistant.remote.pages")
            / "style.css").read_text(encoding="utf-8")
     assert ".is-sending:has(button.primary.is-busy) .sending-note" in css
+
+
+# --------------------------------------------------------------- the login
+def test_the_login_reaches_the_client_and_is_stored_with_the_tenant(
+        store, fake_connect, provider):
+    """Given a user who fills in the Odoo login, When consent succeeds, Then
+    the login went to the client as `user` and was stored, so every later
+    tool call authenticates with it instead of probing for a uid."""
+    c = client(store, provider)
+
+    answer = c.post("/consent", data=_form(login="giuseppe@mycompany.com"))
+
+    assert answer.status_code == 302
+    assert fake_connect.calls == [{
+        "base": ODOO_URL, "db": DB, "user": "giuseppe@mycompany.com",
+        "key": API_KEY}]
+    tenant = store.find_tenant_by_key_hash(key_hash(ODOO_URL, API_KEY))
+    assert tenant.login == "giuseppe@mycompany.com"
+
+
+def test_an_omitted_login_still_leaves_the_client_discovering(
+        store, fake_connect, provider):
+    """The field is optional: left empty it must reach the client as the
+    empty string, which is what "find the owner yourself" spells."""
+    assert client(store, provider).post(
+        "/consent", data=_form()).status_code == 302
+    assert fake_connect.calls[0]["user"] == ""
+    assert store.find_tenant_by_key_hash(
+        key_hash(ODOO_URL, API_KEY)).login == ""
+
+
+def test_the_form_offers_the_login_as_an_optional_field(store, provider):
+    """The field has to exist and read as optional, or the error telling a
+    user to fill it in points at nothing."""
+    shown = client(store, provider).get("/consent?req=pend-1").text
+    assert 'name="login"' in shown
+    assert 'placeholder="jane@mycompany.com"' in shown
+    assert "Never your password." in shown
+
+
+def test_the_exhausted_uid_probe_asks_for_the_login_instead_of_an_env_var(
+        store, fake_connect, provider):
+    """Given an instance whose key owner sits past the probe's last uid, When
+    consent fails, Then the page asks for the login — not for `ODOO_USER`,
+    which someone signing in through a browser has nowhere to set."""
+    fake_connect.error = RuntimeError(
+        "Could not resolve the API key to a user.\nEither the key does not"
+        " belong to db 'acme', or the instance has an unusually high uid.\n"
+        "Set ODOO_USER to the login (NOT the email) to authenticate"
+        " explicitly.")
+
+    answer = client(store, provider).post("/consent", data=_form())
+
+    assert answer.status_code == 200
+    assert "Fill in the Odoo login below" in answer.text
+    assert "could not work out which user" in answer.text
+    assert "ODOO_USER" not in answer.text
+    assert "RuntimeError(" not in answer.text
+    assert store.find_tenant_by_key_hash(key_hash(ODOO_URL, API_KEY)) is None
+
+
+def test_a_refused_login_says_so_rather_than_repeating_itself(
+        store, fake_connect, provider):
+    """A wrong login is quiet in Odoo — `authenticate` returns False rather
+    than raising — so the page must name it as the thing to check."""
+    fake_connect.error = RuntimeError(
+        "Authentication failed for login 'nobody@acme.com' on db 'acme', and"
+        " the key does not resolve to a user either.")
+
+    answer = client(store, provider).post(
+        "/consent", data=_form(login="nobody@acme.com"))
+
+    assert "Odoo refused that login and key together" in answer.text
+    assert 'value="nobody@acme.com"' in answer.text   # kept, so it can be fixed
+
+
+def test_an_unrecognised_failure_loses_its_repr_wrapper(
+        store, fake_connect, provider):
+    """Anything else still reaches the page, but as the sentence the client
+    wrote and not as `ClassName("...\\n...")` with the escapes showing."""
+    fake_connect.error = RuntimeError("The database 'acme' does not exist.")
+
+    answer = client(store, provider).post("/consent", data=_form())
+
+    assert "The database &#x27;acme&#x27; does not exist." in answer.text
+    assert "RuntimeError(" not in answer.text
+
+
+def test_the_database_failures_point_at_the_field_not_at_a_variable(
+        store, fake_connect, provider):
+    """The same defect as the login's, one field over: the client's wording
+    is written for someone editing a host config, and the person reading this
+    page has a form instead."""
+    fake_connect.error = RuntimeError(
+        'XML-RPC transport needs ODOO_DB.\nDatabases: python3 -c "import'
+        ' xmlrpc.client as x; print(x.ServerProxy(\'http://h/xmlrpc/db\')'
+        '.list())"')
+    c = client(store, provider)
+
+    answer = c.post("/consent", data=_form())
+
+    assert "Fill in the Database field below" in answer.text
+    assert "ODOO_DB" not in answer.text
+    assert "python3" not in answer.text
+
+    fake_connect.error = RuntimeError(
+        "This instance serves 3 databases, so ODOO_DB must name one: a, b,"
+        " c. Set ODOO_DB to the database you mean to work on.")
+
+    answer = c.post("/consent", data=_form())
+
+    # The candidates are the useful half and must survive; only the variable
+    # becomes the field.
+    assert "must name one: a, b, c." in answer.text
+    assert "the Database field below" in answer.text
+    assert "ODOO_DB" not in answer.text

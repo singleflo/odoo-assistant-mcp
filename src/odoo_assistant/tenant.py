@@ -41,6 +41,14 @@ class Tenant:
     api_key: str
     db: str
     policy: Literal["read", "standard"]
+    # The key's owner, when the instance would not give it up. XML-RPC takes
+    # the uid as a protocol parameter and Odoo derives the login FROM it
+    # (`res.users.check` builds the credential out of `env.user.login`), so a
+    # client holding only a key has to guess — `_discover_uid` probes uid 1
+    # to 59. A real instance puts recent users far past that: measured 687
+    # and 691 on a live one, where the probe can only fail. Given the login,
+    # `common.authenticate(db, login, key)` resolves the uid in one call.
+    login: str = ""
 
     def __post_init__(self) -> None:
         if self.policy not in ("read", "standard"):
@@ -67,18 +75,18 @@ def reset(token: Token) -> None:
     _current.reset(token)
 
 
-_clients: dict[tuple[str, str, str], Odoo] = {}
+_clients: dict[tuple[str, str, str, str], Odoo] = {}
 _clients_lock = threading.Lock()
 
 
 def odoo_for(tenant: Tenant) -> Odoo:
     """The one client for this subject, connected on first use.
 
-    The database and base URL are part of the identity so a changed consent
-    cannot reuse a live connection to stale Odoo data. The double-checked read
-    outside the lock keeps the common call lock-free.
+    The database, base URL and login are part of the identity so a changed
+    consent cannot reuse a live connection to stale Odoo data. The
+    double-checked read outside the lock keeps the common call lock-free.
     """
-    key = (tenant.subject, tenant.db, tenant.base_url)
+    key = (tenant.subject, tenant.db, tenant.base_url, tenant.login)
     existing = _clients.get(key)
     if existing is not None:
         return existing
@@ -87,7 +95,7 @@ def odoo_for(tenant: Tenant) -> Odoo:
             _clients[key] = connect(
                 base=tenant.base_url,
                 db=tenant.db,
-                user="",
+                user=tenant.login,
                 key=tenant.api_key,
             )
         return _clients[key]

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "odoo-assistant",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
   "author": {
     "name": "Roberto Crotti"

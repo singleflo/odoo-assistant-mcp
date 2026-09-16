@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-16
+
+### Fixed
+- **The consent form's pending state.** The spinner was attached to the submit event's `submitter`, so a submission that supplied none left no button marked at all, and the pressed button was dimmed along with every other; now the script falls back to the primary button, swaps its label to "Connecting…", marks the form `aria-busy`, dims only the buttons that are not busy, and hides the ring under reduced motion where the label carries the cue instead.
+
+### Changed
+- **The palette.** Neutral structure with Odoo's own hues carried only by actions, links and selected states (plum `#714B67`, teal `#017E84` as the focus ring), Odoo's neutrals for surfaces and text, and a dark scheme that is this project's derivation because Odoo ships none. The font stack now names Inter first and falls back to the system stack — no web font is loaded, the pages still make no external request.
+- **The landing page states its independence from Odoo S.A.** under the headline, not only in the footer.
+
 ## [0.3.0] - 2026-09-15
 
 The hosted server. The same nineteen tools are now also served over the

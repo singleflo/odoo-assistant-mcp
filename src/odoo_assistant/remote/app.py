@@ -380,8 +380,19 @@ class SecurityHeaders:
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
+    # `form-action` is deliberately ABSENT, and must stay absent. Chrome and
+    # Safari check that directive against the whole redirect chain a form
+    # submission triggers, not just its action URL — and the consent POST
+    # answers 302 to the client's own callback, which is the authorization
+    # response OAuth is made of. Measured in Claude Desktop: with
+    # `form-action 'self'` the browser refused the submission, naming our own
+    # /consent as the target because that is the URL it reports for a
+    # blocked redirect, and the sign-in never completed. Dynamic client
+    # registration means those callbacks cannot be enumerated in advance —
+    # claude.ai today, a localhost port for a CLI tomorrow — so no value of
+    # this directive is both correct and workable.
     _HTML_CSP = ("default-src 'none'; style-src 'self'; img-src 'self' data:;"
-                 " form-action 'self'; frame-ancestors 'none';"
+                 f" script-src {ui.SCRIPT_HASH}; frame-ancestors 'none';"
                  " base-uri 'none'")
 
     def __init__(self, app: ASGIApp) -> None:

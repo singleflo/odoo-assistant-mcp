@@ -221,6 +221,18 @@ def test_the_form_names_who_is_asking_and_where_the_access_returns(
     assert "odoo" in shown.text
 
 
+def test_the_form_carries_the_waiting_message_it_will_reveal(store, provider):
+    """Pressing Connect waits on a live connection to someone's Odoo, up to
+    `_VERIFY_TIMEOUT`. The note that explains the wait ships with the page,
+    hidden, so revealing it costs no request — and the whole affordance
+    degrades to a plain submit where scripts do not run."""
+    shown = client(store, provider).get("/consent?req=pend-1")
+
+    assert 'class="sending-note"' in shown.text
+    assert 'role="status"' in shown.text
+    assert "up to twenty seconds" in shown.text
+
+
 def test_an_unregistered_client_is_named_by_its_id_rather_than_left_blank(
         store, provider):
     """Given no registration record for the pending client, When the form
@@ -310,8 +322,14 @@ def test_the_odoo_error_text_is_rendered_escaped(store, fake_connect,
     answer = c.post("/consent", data=_form())
 
     assert answer.status_code == 200
-    assert "<script>" not in answer.text
     assert "&lt;script&gt;" in answer.text
+    assert "alert('xss')" not in answer.text
+    # The page does carry one script of its own — the submit-state helper the
+    # policy admits by hash — so counting tags is what separates "ours" from
+    # "the error text became markup", where a bare `"<script>" not in` no
+    # longer can.
+    assert answer.text.count("<script") == 1
+    assert "dataset.sending" in answer.text
 
 
 def test_a_failed_attempt_never_echoes_the_api_key(store, fake_connect,

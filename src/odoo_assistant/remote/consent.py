@@ -474,5 +474,11 @@ def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
         "<button type=\"submit\" class=\"secondary\" name=\"action\""
         " value=\"deny\" formnovalidate>Refuse</button>"
         "</div>"
+        # Hidden until the form reports itself as sending. What follows the
+        # press is a live connection to the user's Odoo, which can take the
+        # better part of half a minute on a cold instance; `role=\"status\"`
+        # so a screen reader hears it appear rather than only seeing it.
+        "<p class=\"sending-note\" role=\"status\">Checking your Odoo and the"
+        " key you gave — this can take up to twenty seconds.</p>"
         "</form>"),
         publisher=deps.publisher)

@@ -516,6 +516,44 @@ def test_every_page_is_built_for_a_phone_and_refuses_framing(tmp_path):
         assert "default-src 'none'" in policy, path
 
 
+def test_the_policy_never_constrains_form_action(tmp_path):
+    """Given the consent route, When its policy is read, Then it says nothing
+    about `form-action`.
+
+    Measured in Claude Desktop: `form-action 'self'` refused the consent
+    submission outright. Chrome and Safari check that directive against the
+    whole redirect chain a form starts, and the consent POST answers 302 to
+    the client's callback — that redirect IS the authorization response.
+    Dynamic client registration means the callbacks cannot be listed ahead of
+    time, so the directive can only be absent. Clickjacking is refused by
+    `frame-ancestors`, which this policy does carry.
+    """
+    with make_client(tmp_path) as client:
+        gone = client.get("/consent")  # no req: the 400 page, still HTML
+
+    policy = gone.headers["content-security-policy"]
+    assert "form-action" not in policy
+    assert "frame-ancestors 'none'" in policy
+
+
+def test_the_inline_script_is_admitted_by_its_own_hash(tmp_path):
+    """The page carries one inline script and the policy names its hash.
+
+    Hashing what the page actually served is the whole point: an edit to the
+    script that forgets the policy would leave a page whose own browser
+    refuses to run it, and this fails instead.
+    """
+    with make_client(tmp_path) as client:
+        page = client.get("/")
+
+    script = page.text.split("<script>")[1].split("</script>")[0]
+    digest = base64.b64encode(
+        hashlib.sha256(script.encode("utf-8")).digest()).decode()
+    policy = page.headers["content-security-policy"]
+    assert f"script-src 'sha256-{digest}'" in policy
+    assert page.text.count("<script") == 1  # nothing else to admit
+
+
 def test_the_stylesheet_serves_itself_and_is_cached_by_version(tmp_path):
     """One stylesheet, from this origin, immutable — which is only safe
     because the pages hang the version on the query, so a deploy changes the

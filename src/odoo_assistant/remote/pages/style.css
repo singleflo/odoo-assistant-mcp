@@ -566,6 +566,50 @@ button.secondary:hover {
   color: var(--ink-primary);
 }
 
+/*
+   Sending state
+   Set by the one inline script when the form is submitted. The wait is a
+   real connection to someone's Odoo, so the page has to say so: the pressed
+   button spins, the note appears, and nothing else is clickable until the
+   answer arrives.
+*/
+.is-sending button {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+button.is-busy::after {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.6em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The note carries the message on its own, so a reader who has asked for
+   reduced motion loses only the spin, not the information. */
+.sending-note {
+  display: none;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--ink-secondary);
+}
+
+.is-sending .sending-note {
+  display: block;
+}
+
 /* 
    Alerts / Errors 
 */

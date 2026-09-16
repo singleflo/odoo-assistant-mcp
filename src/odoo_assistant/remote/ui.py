@@ -9,19 +9,49 @@ rendered zoomed out in browser-default serif. They now share `layout()`.
 Two rules this module exists to keep:
 
 * **No external request.** The stylesheet is served by this same server from
-  `pages/style.css`, the mark is an inline SVG data URI, and there is no
-  script and no web font — a page that asks for a credential must not also
-  ask a CDN to watch it being typed. That is also what lets the Content
-  Security Policy in `app.py` be as narrow as `default-src 'none'`.
+  `pages/style.css`, the mark is an inline SVG data URI, and there is no web
+  font and no third-party script — a page that asks for a credential must
+  not also ask a CDN to watch it being typed. That is also what lets the
+  Content Security Policy in `app.py` be as narrow as `default-src 'none'`.
+  The one script on these pages is inline, six lines long, and admitted by
+  its own SHA-256 hash (`SCRIPT_HASH`), so the policy names that exact text
+  rather than opening the page to scripts in general.
 * **The stylesheet is cache-busted by version.** `/style.css?v=<version>`
   with a one-year immutable cache: a deploy changes the query, so nobody
   reads a new page through an old stylesheet.
 """
+import base64
+import hashlib
 import html
 
 from odoo_assistant import __version__
 
 REPO_URL = "https://github.com/singleflo/odoo-assistant-mcp"
+
+# The consent POST opens a real connection to the user's own Odoo and waits
+# for it — up to twenty seconds (`consent._VERIFY_TIMEOUT`). A page that
+# looks untouched for that long reads as broken and gets clicked again, so
+# the form marks itself as sending and the pressed button grows a spinner.
+# The guard on `dataset.sending` is the point: it turns a second click into
+# nothing rather than a second authorization request. Buttons are not
+# disabled — a disabled submitter drops its own name and value from the
+# body, which would silently turn a refusal into a blank submission — they
+# are made unclickable in CSS instead. Without JavaScript the form still
+# works; it just submits silently.
+_PENDING_SCRIPT = (
+    "document.addEventListener('submit',function(e){"
+    "var f=e.target;"
+    "if(f.dataset.sending){e.preventDefault();return;}"
+    "f.dataset.sending='1';"
+    "f.classList.add('is-sending');"
+    "if(e.submitter){e.submitter.classList.add('is-busy');}"
+    "});")
+
+# What the Content Security Policy must name to admit the script above.
+# Derived from the text itself, so editing one without the other is not a
+# state this module can be left in.
+SCRIPT_HASH = "'sha256-{}'".format(base64.b64encode(
+    hashlib.sha256(_PENDING_SCRIPT.encode("utf-8")).digest()).decode())
 
 # The listing icon as 500 bytes of vector, inline: no route, no file, no
 # second request, and it survives a CSP that allows `img-src 'self' data:`.
@@ -79,6 +109,7 @@ def layout(title: str, body: str, *, publisher: str,
         f"<h1>{html.escape(title)}</h1>{lead_html}{body}"
         "</main>"
         f"{_footer(publisher)}"
+        f"<script>{_PENDING_SCRIPT}</script>"
         "</body></html>")
 
 

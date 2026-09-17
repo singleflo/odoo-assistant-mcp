@@ -65,7 +65,7 @@ the shorter limit wins).
 ```text
 Odoo Assistant connects your AI host to your own Odoo instance over the Model Context Protocol. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a method-name gate you own before it reaches Odoo.
 
-Twenty-one tools cover the working day: search, read and count any model; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
+Twenty-two tools cover the working day: search, read and count any model; a long text field read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
 
 Safety is structural, not advisory. Deletion is refused unless a separate operator variable grants it. The default deny list blocks cancelling, archiving and mass mailing. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided and the variable that would change the answer — and the lists live in the operator's configuration, read at call time, out of the model's reach.
 
@@ -146,7 +146,7 @@ Initial submission.
 ```text
 This is the initial submission of the Odoo Assistant plugin.
 
-Odoo Assistant connects ChatGPT and Codex to the user's own Odoo instance over the Model Context Protocol. Twenty-one tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
+Odoo Assistant connects ChatGPT and Codex to the user's own Odoo instance over the Model Context Protocol. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
 
 Every write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy.
 
@@ -174,6 +174,7 @@ than from a bounded workspace owned by the publisher.
 |---|---|---|---|---|
 | `search_read` | yes | no | yes | Fetches and returns the records matching a domain; nothing it runs can change data, and the answer comes from the customer's own Odoo instance. |
 | `read_record` | yes | no | yes | Returns one record's named fields; a pure read whose values depend on the connected instance. |
+| `read_long_field` | yes | no | yes | Returns one window of a single text field, so a value larger than the result cap stays readable; a pure read with no side effect. |
 | `count_records` | yes | no | yes | Returns how many records match a domain; a pure read with no side effect. |
 | `group_records` | yes | no | yes | Runs `read_group` and returns every bucket's count or aggregate in one call; a pure read over the customer's own instance. |
 | `instance_overview` | yes | no | yes | Reads version, companies, per-area volumes and installed modules to summarise the instance; its only local artifact is a rebuildable internal cache, so it stays read-only. |

@@ -195,7 +195,7 @@ def _text_of(result) -> str:
                      if isinstance(block, types.TextContent))
 
 
-def test_the_deployed_server_exposes_the_twenty_one_expected_tools(token):
+def test_the_deployed_server_exposes_the_twenty_two_expected_tools(token):
     async def action(client: Client):
         return {t.name for t in (await client.list_tools()).tools}
 

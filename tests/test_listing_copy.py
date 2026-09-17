@@ -136,7 +136,7 @@ def test_annotation_table_matches_the_live_wire_annotations():
             tool.annotations.read_only_hint,
             tool.annotations.destructive_hint,
             tool.annotations.open_world_hint)
-    assert len(live) == 21
+    assert len(live) == 22
     assert set(table) == set(live), "table rows and live tools disagree on names"
     assert table == live, (
         "the dossier's annotation table has drifted from the live annotations:\n"

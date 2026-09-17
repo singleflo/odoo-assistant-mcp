@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-09-17
+
+### Added
+- **`read_long_field`** — one long text field, read in windows. The 5000-character result cap protects the model's context, but it also made a single oversized value **unreachable past its first cut**: narrowing the field list or the domain cannot help when that one value already is the whole answer, and paging with `offset` returns the same cut text forever. Measured on a live lead: `read_record` came back cut and no combination of arguments could reach the rest of its description. This tool reads that field alone and returns a 4000-character window with the total length and the offset of the next window, so the value can be walked to the end — the window is sized so an answer never hits the cap that caused the problem. An empty field says it is empty rather than returning a window of nothing.
+
+### Changed
+- **The truncation notice names the remedy for each cause.** It now reads: narrow fields/domain, `group_records` for counts, `read_long_field` for text. The cap is announced in the notice and in the `read_record` and `search_read` docstrings, so an agent that meets it is told what to call next instead of retrying a call that cannot succeed.
+
 ## [0.3.3] - 2026-09-17
 
 ### Added

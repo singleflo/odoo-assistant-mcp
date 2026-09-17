@@ -1,7 +1,7 @@
 {
   "name": "odoo-assistant",
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": {
     "name": "Roberto Crotti"
   },

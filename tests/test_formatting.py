@@ -46,8 +46,9 @@ def test_twelve_kilobyte_payload_is_truncated_and_says_so():
     # Then it lands inside the budget, keeps the head, and names the remedy
     assert len(text) <= 5100
     assert text.startswith(raw[:MAX_RESULT_CHARS])
-    assert "... truncated at 5000 chars" in text
+    assert "... cut at 5000 chars" in text
     assert "group_records" in text
+    assert "read_long_field" in text
 
 
 def test_payload_exactly_at_the_cap_is_left_alone():

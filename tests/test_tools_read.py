@@ -353,8 +353,9 @@ def test_register_exposes_the_read_tools():
 
     listed = {tool.name for tool in asyncio.run(mcp.list_tools())}
     assert listed == {
-        "search_read", "read_record", "count_records", "group_records",
-        "instance_overview", "required_fields", "describe_model",
+        "search_read", "read_record", "read_long_field", "count_records",
+        "group_records", "instance_overview", "required_fields",
+        "describe_model",
     }
 
 
@@ -552,3 +553,71 @@ def test_the_new_tools_describe_their_parameters_on_the_wire():
     assert "domain" in by_prop["domain"]["description"]
     assert "read live" in tools["describe_model"].input_schema["properties"][
         "model"]["description"]
+
+
+# -------------------------------------------------------------- read_long_field
+def test_read_long_field_asks_odoo_for_that_one_field_only(mock_odoo):
+    """Given a field name, When walked, Then the read names it and nothing else."""
+    mock_odoo.set_results("crm.lead", [{"id": 759, "description": "x" * 10}],
+                          method="read")
+
+    tools_read.read_long_field("crm.lead", 759, "description")
+
+    assert mock_odoo.last_call["args"] == [[759], ["description"]]
+
+
+def test_read_long_field_returns_a_window_and_says_where_to_continue(mock_odoo):
+    """Given a value past the window, When read from 0, Then the answer carries
+    the window, the total length and the offset the next call needs."""
+    mock_odoo.set_results("crm.lead", [{"id": 759, "description": "ab" * 30_000}],
+                          method="read")
+
+    out = tools_read.read_long_field("crm.lead", 759, "description")
+
+    header, body = out.split("\n", 1)
+    assert "characters 0-4000 of 60000" in header
+    assert "Next window: offset=4000." in header
+    assert body == "ab" * 2000
+    # The window exists to fit the cap that made the field unreadable.
+    assert len(out) < MAX_RESULT_CHARS
+    assert TRUNCATION_NOTICE not in out
+
+
+def test_read_long_field_walks_to_the_end_and_says_so(mock_odoo):
+    """Given an offset near the end, When read, Then the tail comes back and
+    the answer states there is no next window."""
+    mock_odoo.set_results("crm.lead", [{"id": 759, "description": "y" * 4500}],
+                          method="read")
+
+    out = tools_read.read_long_field("crm.lead", 759, "description", offset=4000)
+
+    assert "characters 4000-4500 of 4500" in out
+    assert "This is the end of the field." in out
+    assert out.split("\n", 1)[1] == "y" * 500
+
+
+def test_read_long_field_reports_an_empty_field_as_empty(mock_odoo):
+    """Odoo answers False, not "", for an empty text field — say so plainly
+    rather than returning a window of nothing."""
+    mock_odoo.set_results("crm.lead", [{"id": 759, "description": False}],
+                          method="read")
+
+    out = tools_read.read_long_field("crm.lead", 759, "description")
+
+    assert out == "crm.lead id=759: description is empty."
+
+
+def test_read_long_field_names_describe_model_when_the_field_is_absent(mock_odoo):
+    """A field the model does not have must not read as an empty value: the
+    refusal names the tool that lists what the model does have."""
+    mock_odoo.set_results("crm.lead", [{"id": 759}], method="read")
+
+    with pytest.raises(ToolExecutionError, match="describe_model"):
+        tools_read.read_long_field("crm.lead", 759, "notafield")
+
+
+def test_read_long_field_refuses_account_move_like_read_record():
+    """The structural guard applies: a read by id on account.move has nowhere
+    to carry a move_type filter, so it is refused here too."""
+    with pytest.raises(ToolExecutionError, match="move_type"):
+        tools_read.read_long_field("account.move", 6162, "narration")

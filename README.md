@@ -197,34 +197,35 @@ The client automatically detects if the native JSON-2 API is available at `/json
 
 ## Tools and Resources
 
-The server exposes 21 tools and 2 resource types:
+The server exposes 22 tools and 2 resource types:
 
 ### Tools
 
 1. `search_read`: Search and read records in one call (Odoo `search_read`).
 2. `read_record`: Read one record by id, always with named fields.
-3. `count_records`: Count the records matching a domain (Odoo `search_count`).
-4. `group_records`: Group records and count (or aggregate) per bucket in one call (Odoo `read_group`) — totals per state, stage or month.
-5. `instance_overview`: Summarise the connected instance: version, companies, volumes per area, in-house modules, anomalies.
-6. `required_fields`: List what Odoo demands before a `create` on a model, the default it would apply, and how existing records actually use it.
-7. `describe_model`: List a model's fields as the live instance defines them: names, types, relations, selection values, required marked.
-8. `create_record`: Create a record, reusing an existing match when `unique_on` is given.
-9. `write_record`: Write field values to one record and report what actually changed.
-10. `run_action`: Run a workflow method and report the state it left behind.
-11. `cancel_record`: Cancel a record through `action_cancel`, following the wizard it returns.
-12. `notify_user`: Notify users on a record's chatter. Internal by default.
-13. `create_activity`: Schedule an activity: the only notification that carries a deadline.
-14. `download_docs`: Save every document of a record to disk, chatter files included.
-15. `generate_pdf`: Render the PDF of a record and return where it was saved.
-16. `list_message_targets`: List who can be messaged and where, including internal users with presence (online/away/offline) and the caller's open conversations. Ask this before sending.
-17. `read_conversation`: Read a Discuss conversation, newest first.
-18. `send_direct_message`: Send a 1-to-1 Discuss message that appears in the user's chat systray in real time. This sends no email and reaches them whatever their notification setting says.
-19. `send_channel_message`: Post to an existing Discuss channel, refusing a room that holds a non-employee.
-20. `explore_module`: Discover a module's structure by interrogating the live instance.
-21. `list_known_modules`: List the modules this server has learned: name, generation date, records.
+3. `read_long_field`: Read one long text field in windows, so a value larger than the 5000-character result cap stays readable to the end.
+4. `count_records`: Count the records matching a domain (Odoo `search_count`).
+5. `group_records`: Group records and count (or aggregate) per bucket in one call (Odoo `read_group`) — totals per state, stage or month.
+6. `instance_overview`: Summarise the connected instance: version, companies, volumes per area, in-house modules, anomalies.
+7. `required_fields`: List what Odoo demands before a `create` on a model, the default it would apply, and how existing records actually use it.
+8. `describe_model`: List a model's fields as the live instance defines them: names, types, relations, selection values, required marked.
+9. `create_record`: Create a record, reusing an existing match when `unique_on` is given.
+10. `write_record`: Write field values to one record and report what actually changed.
+11. `run_action`: Run a workflow method and report the state it left behind.
+12. `cancel_record`: Cancel a record through `action_cancel`, following the wizard it returns.
+13. `notify_user`: Notify users on a record's chatter. Internal by default.
+14. `create_activity`: Schedule an activity: the only notification that carries a deadline.
+15. `download_docs`: Save every document of a record to disk, chatter files included.
+16. `generate_pdf`: Render the PDF of a record and return where it was saved.
+17. `list_message_targets`: List who can be messaged and where, including internal users with presence (online/away/offline) and the caller's open conversations. Ask this before sending.
+18. `read_conversation`: Read a Discuss conversation, newest first.
+19. `send_direct_message`: Send a 1-to-1 Discuss message that appears in the user's chat systray in real time. This sends no email and reaches them whatever their notification setting says.
+20. `send_channel_message`: Post to an existing Discuss channel, refusing a room that holds a non-employee.
+21. `explore_module`: Discover a module's structure by interrogating the live instance.
+22. `list_known_modules`: List the modules this server has learned: name, generation date, records.
 
-Tools 12-13 (`notify_user`, `create_activity`) notify ABOUT a record and land
-in the Inbox bell; tools 16-19 are Discuss conversations that land in the chat
+Tools 13-14 (`notify_user`, `create_activity`) notify ABOUT a record and land
+in the Inbox bell; tools 17-20 are Discuss conversations that land in the chat
 systray. "Message user X" is the second kind, which uses `send_direct_message`, not
 `notify_user`.
 
@@ -254,7 +255,7 @@ given as well, because it writes the same entry without a hand-edited file.
 ## Hosted server: Claude.ai, ChatGPT and Codex
 
 Everything in the sections below runs the server on your machine. There is a
-second way into the same 21 tools: they are also served over the internet at
+second way into the same 22 tools: they are also served over the internet at
 `https://mcp.singleflo.com/mcp`, which Claude.ai, ChatGPT and Codex can reach
 directly. Nothing is installed and no environment variables are set on your
 side — you sign in once with your Odoo address and API key, on the server's
@@ -629,7 +630,7 @@ Open it from the `MCPs` icon in the Cascade panel, or from **Settings →
 Cascade → MCP Servers**, then refresh the server list. The file interpolates
 `${env:VAR_NAME}` and `${file:/path/to/file}` in `command`, `args` and `env`, so
 the API key can live outside it. Cascade caps the agent at 100 tools in total,
-and this server contributes 21.
+and this server contributes 22.
 
 Source: https://docs.windsurf.com/windsurf/cascade/mcp
 

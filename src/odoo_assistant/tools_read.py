@@ -55,6 +55,11 @@ from odoo_client import Odoo  # noqa: E402
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 80
 
+# One window of a long text field. Small enough that the window plus its header
+# always fits `MAX_RESULT_CHARS`, so walking a field never hits the cap that
+# made the field unreadable in the first place.
+LONG_FIELD_WINDOW = 4000
+
 # The fields `Writer.state_of` reads, plus the name every model carries. Only
 # those a model actually has are asked for — see `_default_fields`.
 STATE_FIELDS = ("display_name", "name", "state", "payment_state", "amount_residual")
@@ -128,7 +133,10 @@ def search_read(
 
     One line before you call: rows you only intend to count are a wasted read
     — `count_records` answers totals, `group_records` answers totals per
-    value, and neither moves records through the context window.
+    value, and neither moves records through the context window. And when a
+    SINGLE field is larger than the 5000-character cap, paging with `offset`
+    returns the same cut text forever: `read_long_field` walks that one field
+    in windows instead.
 
     Args:
         model: Odoo model, e.g. "sale.order".
@@ -178,6 +186,11 @@ def read_record(
     And never add up `amount_total` across records — it is in the record's own
     currency. `amount_total_signed` is the company-currency twin to sum.
 
+    The answer is capped at 5000 characters. When ONE field is bigger than
+    that on its own — a description holding a transcript, a long `body` —
+    asking for fewer fields cannot help: use `read_long_field`, which walks a
+    single field in windows to its end.
+
     Args:
         model: Odoo model, e.g. "sale.order".
         record_id: The record's database id.
@@ -190,6 +203,72 @@ def read_record(
         return tool_result(odoo.call(model, "read", [[record_id], names], {}))
     except Exception as exc:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+
+def read_long_field(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "crm.lead". account.move and account.move.line are '
+        "refused here for the same reason read_record refuses them."))],
+    record_id: Annotated[int, Field(description="The record's database id.")],
+    field: Annotated[str, Field(description=(
+        'The single text field to walk, e.g. "description" or "body". '
+        "`describe_model` lists what a model has."))],
+    offset: Annotated[int, Field(description=(
+        "Character to start from. 0 is the beginning; each answer reports the "
+        "offset of the next window and the total length."))] = 0,
+) -> str:
+    """Read ONE long text field in windows, so a value larger than the 5000-char
+    result cap stays readable to the end.
+
+    Every tool result is capped at 5000 characters. When a single value is
+    bigger than that — a `description` holding a pasted transcript, an email
+    `body` — narrowing the domain or the field list cannot help: that one value
+    already IS the whole answer, so the tail is unreachable and the caller ends
+    up asking for the same cut text again. Measured on a live lead: its
+    description came back cut, and no limit or offset could ever reach the
+    rest of it.
+
+    This reads that field alone and returns a 4000-character window of it,
+    naming the total length and the offset of the next window, so the value can
+    be walked to the end one call at a time. For anything else — several
+    fields, several records — `read_record` and `search_read` stay the tools.
+
+    Args:
+        model: Odoo model, e.g. "crm.lead".
+        record_id: The record's database id.
+        field: The single text field to walk, e.g. "description".
+        offset: Character to start from. 0 is the beginning.
+    """
+    _gate_or_raise(model, "read", [record_id])
+    try:
+        odoo = server._get_odoo()
+        rows = odoo.call(model, "read", [[record_id], [field]], {})
+    except Exception as exc:
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+    row = rows[0] if isinstance(rows, list) and rows else {}
+    if not isinstance(row, dict) or field not in row:
+        raise ToolExecutionError(
+            f"{model} id={record_id} answered without {field!r}. Either the "
+            f"record does not exist or the model has no such field — "
+            f"`describe_model` lists the fields it does have.")
+
+    value = row[field]
+    # Odoo returns False, not "", for an empty text field.
+    if value is False or value is None or value == "":
+        return tool_result(f"{model} id={record_id}: {field} is empty.")
+
+    text = value if isinstance(value, str) else str(value)
+    total = len(text)
+    start = max(0, min(offset, total))
+    window = text[start:start + LONG_FIELD_WINDOW]
+    end = start + len(window)
+    next_step = (
+        f"Next window: offset={end}." if end < total
+        else "This is the end of the field.")
+    return tool_result(
+        f"{model} id={record_id} {field} — characters {start}-{end} of "
+        f"{total}. {next_step}\n{window}")
 
 
 def count_records(
@@ -519,6 +598,8 @@ def register(mcp: MCPServer) -> None:
         open_world_hint=True)
     mcp.add_tool(search_read, title="Search records", annotations=reads)
     mcp.add_tool(read_record, title="Read a record", annotations=reads)
+    mcp.add_tool(
+        read_long_field, title="Read a long text field", annotations=reads)
     mcp.add_tool(count_records, title="Count records", annotations=reads)
     mcp.add_tool(group_records, title="Group records", annotations=reads)
     mcp.add_tool(instance_overview, title="Instance overview", annotations=reads)

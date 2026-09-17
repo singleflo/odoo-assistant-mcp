@@ -60,8 +60,8 @@ from odoo_client import (  # noqa: E402  (needs the bootstrap above)
 
 MAX_RESULT_CHARS = 5000
 TRUNCATION_NOTICE = (
-    "\n... truncated at 5000 chars — fewer fields, tighter domain, "
-    "or group_records for counts."
+    "\n... cut at 5000 chars: narrow fields/domain, group_records for counts, "
+    "read_long_field for text."
 )
 
 # A Literal, not a bool: `phase="after_mutation_possible"` names the claim it

@@ -400,8 +400,8 @@ def test_protected_resource_metadata_names_this_server_as_its_authority(
 
 
 # ------------------------------------------------------------------- (4)
-def test_full_oauth_flow_then_initialize_and_nineteen_tools(tmp_path,
-                                                            consent_connect):
+def test_full_oauth_flow_then_initialize_and_twenty_one_tools(tmp_path,
+                                                              consent_connect):
     with make_client(tmp_path) as client:
         token = _full_token(client, odoo_url=ODOO_A)
 
@@ -419,8 +419,9 @@ def test_full_oauth_flow_then_initialize_and_nineteen_tools(tmp_path,
             "Authorization": f"Bearer {token}"},
             json=_rpc_body("tools/list", {}, id=2))
         names = {t["name"] for t in _rpc_result(listed)["result"]["tools"]}
-    assert len(names) == 19
+    assert len(names) == 21
     assert "count_records" in names
+    assert "group_records" in names
     assert consent_connect.calls == [{
         "base": ODOO_A, "db": DB, "user": "", "key": API_KEY}]
 

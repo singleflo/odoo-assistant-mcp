@@ -29,6 +29,8 @@ from typing import Any
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from typing_extensions import Annotated
 
 from odoo_assistant import server
 from odoo_assistant.server_errors import (
@@ -68,9 +70,18 @@ def _guard(model: str, method: str, ids: Any = None, values: Any = None) -> None
 
 
 def create_record(
-    model: str,
-    values: dict[str, Any],
-    unique_on: list[str] | None = None,
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". Call `required_fields` first on a '
+        "model you have not written to: a required field that carries a "
+        "default lands the record where the default points."))],
+    values: Annotated[dict[str, Any], Field(description=(
+        "Field values for the new record — field names to values. "
+        "Multi-company: put company_id in here; the context decides what is "
+        "visible, not which company owns the record."))],
+    unique_on: Annotated[list[str] | None, Field(description=(
+        'Field names searched first, e.g. ["email"]: an existing match comes '
+        "back instead of a duplicate. Odoo has no idempotency key — this is "
+        "the only protection a retried create has."))] = None,
 ) -> str:
     """Create a record, reusing an existing match when `unique_on` is given.
 
@@ -96,7 +107,15 @@ def create_record(
     return tool_result(f"Created (or reused) {model} id={record_id}")
 
 
-def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
+def write_record(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". A write is done only when a re-read '
+        "proves it — the tool reports before/after itself."))],
+    record_id: Annotated[int, Field(description="The record's database id.")],
+    values: Annotated[dict[str, Any], Field(description=(
+        "Field values to write — field names to values. Writing a value the "
+        "record already holds changes nothing, and the report says so."))],
+) -> str:
     """Write field values to one record and report what actually changed.
 
     Writing the value a record already holds succeeds and changes nothing; only
@@ -149,7 +168,18 @@ def write_record(model: str, record_id: int, values: dict[str, Any]) -> str:
     )
 
 
-def run_action(model: str, method: str, record_ids: list[int]) -> str:
+def run_action(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". Unlink is decided before the '
+        "allow/deny lists and only ODOO_MCP_ALLOW_UNLINK grants it."))],
+    method: Annotated[str, Field(description=(
+        'Workflow method name, e.g. "action_post" or "action_confirm". '
+        "Judged by exact name against the operator's allow/deny lists; "
+        "methods starting with _ are always refused."))],
+    record_ids: Annotated[list[int], Field(description=(
+        "The records to run it on. A transition is one-way — calling it "
+        "twice raises instead of doing nothing."))],
+) -> str:
     """Run a workflow method and report the state it left behind.
 
     The gate follows `method`: a name in ODOO_MCP_DENY — the default list
@@ -193,7 +223,13 @@ def run_action(model: str, method: str, record_ids: list[int]) -> str:
     return tool_result(repr(result))
 
 
-def cancel_record(model: str, record_id: int) -> str:
+def cancel_record(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". action_cancel sits in the default '
+        "ODOO_MCP_DENY list, so this is refused until the operator removes "
+        "that entry."))],
+    record_id: Annotated[int, Field(description="The record's database id.")],
+) -> str:
     """Cancel a record through `action_cancel`, following the wizard it returns.
 
     `action_cancel` sits in the default ODOO_MCP_DENY list, so this tool is

@@ -128,9 +128,9 @@ def _wire_messages(roundtrip: Roundtrip) -> list[dict]:
 
 
 def test_tools_list_serves_exactly_the_registered_tools(roundtrip: Roundtrip):
-    """Given the real server, When tools are listed, Then all 15 are offered."""
+    """Given the real server, When tools are listed, Then all 21 are offered."""
     assert roundtrip.tools == EXPECTED_TOOLS
-    assert len(roundtrip.tools) == 19
+    assert len(roundtrip.tools) == 21
     tools_list = next(message["result"]["tools"] for message in _wire_messages(roundtrip)
                       if "tools" in message.get("result", {}))
     run_action_tool = next(tool for tool in tools_list if tool["name"] == "run_action")

@@ -447,10 +447,11 @@ wheels = [
 
 [[package]]
 name = "odoo-assistant"
-version = "0.3.2"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
+    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
@@ -472,6 +473,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'remote'", specifier = ">=42" },
     { name = "httpx", marker = "extra == 'remote'", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=2.0.0,<3" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "uvicorn", marker = "extra == 'remote'", specifier = ">=0.30" },
 ]
 provides-extras = ["remote"]

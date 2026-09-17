@@ -65,6 +65,8 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from typing_extensions import Annotated
 
 # Same bootstrap as server.py: the nine scripts are flat modules imported by
 # bare name, from the repo and from an installed wheel alike.
@@ -128,12 +130,24 @@ def _tenant_dir(subject: str) -> Path:
 
 
 def notify_user(
-    model: str,
-    record_id: int,
-    message: str,
-    user_ids: list[int],
-    subtype: str = "note",
-    force: bool = False,
+    model: Annotated[str, Field(description=(
+        'the Odoo model, e.g. "sale.order".'))],
+    record_id: Annotated[int, Field(description="id of the record to write on.")],
+    message: Annotated[str, Field(description=(
+        "the body, PLAIN TEXT: Odoo escapes anything arriving over RPC, so "
+        "\"<b>x</b>\" displays as literal characters. Newlines survive but "
+        "are not turned into line breaks. Write the note as prose."))],
+    user_ids: Annotated[list[int], Field(description=(
+        "res.users ids to notify. Each is notified through their OWN Odoo "
+        "setting, inbox or email — naming someone is not a promise that no "
+        "mail leaves."))],
+    subtype: Annotated[str, Field(description=(
+        '"note" (default): visible in the chatter, internal users, never '
+        'emails a customer. "inbox": notification only, no chatter trace. '
+        '"comment": visible to everyone and EMAILS EXTERNAL FOLLOWERS — '
+        "refused while one exists, unless force=True."))] = "note",
+    force: Annotated[bool, Field(description=(
+        "post the comment anyway, knowing those people get an email."))] = False,
 ) -> str:
     """Write a note on a record's chatter and notify the users you name.
 
@@ -216,12 +230,18 @@ def notify_user(
 
 
 def create_activity(
-    model: str,
-    record_id: int,
-    summary: str,
-    user_id: int,
-    days: int = 0,
-    activity_type: str | None = None,
+    model: Annotated[str, Field(description=(
+        'the Odoo model, e.g. "crm.lead".'))],
+    record_id: Annotated[int, Field(description="id of the record the activity hangs off.")],
+    summary: Annotated[str, Field(description=(
+        "the one-line title the assignee will read."))],
+    user_id: Annotated[int, Field(description="res.users id of the assignee.")],
+    days: Annotated[int, Field(description=(
+        "deadline offset from today, in days. 0 = today."))] = 0,
+    activity_type: Annotated[str | None, Field(description=(
+        "substring of an activity type name, e.g. \"call\". Types differ per "
+        "instance; the first available one is used when this is omitted or "
+        "matches nothing."))] = None,
 ) -> str:
     """Schedule an activity: the only notification that carries a deadline.
 
@@ -257,7 +277,15 @@ def create_activity(
     return tool_result(activity)
 
 
-def download_docs(model: str, record_id: int, dest_dir: str = "") -> str:
+def download_docs(
+    model: Annotated[str, Field(description=(
+        'the Odoo model, e.g. "account.move". Chatter files included.'))],
+    record_id: Annotated[int, Field(description=(
+        "id of the record whose documents to fetch."))],
+    dest_dir: Annotated[str, Field(description=(
+        "directory to write the files into. Defaults to this platform's "
+        "temporary directory — \"/tmp\" does not exist on Windows."))] = "",
+) -> str:
     """Save every document of a record to disk — chatter files included.
 
     Returns {"saved": [paths], "skipped": [[name, why]]}. `skipped` is not
@@ -301,7 +329,15 @@ def download_docs(model: str, record_id: int, dest_dir: str = "") -> str:
     return tool_result(result)
 
 
-def generate_pdf(model: str, record_id: int, dest_dir: str = "") -> str:
+def generate_pdf(
+    model: Annotated[str, Field(description=(
+        'the Odoo model, e.g. "account.move".'))],
+    record_id: Annotated[int, Field(description=(
+        "id of the record to print."))],
+    dest_dir: Annotated[str, Field(description=(
+        "directory to write the PDF into. Defaults to this platform's "
+        "temporary directory — \"/tmp\" does not exist on Windows."))] = "",
+) -> str:
     """Render the PDF of a record and return where it was saved.
 
     An already rendered PDF is reused. Otherwise the model's own print/send

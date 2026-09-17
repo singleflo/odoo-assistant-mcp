@@ -85,7 +85,7 @@ def test_search_read_omits_offset_on_the_first_page(mock_odoo):
     assert "offset" not in mock_odoo.last_call["kwargs"]
 
 
-def test_a_huge_result_is_truncated_with_the_paging_advice(mock_odoo):
+def test_a_huge_result_is_truncated_with_the_narrowing_advice(mock_odoo):
     """Given a result far past the cap, When searched, Then it is cut with advice."""
     mock_odoo.set_results("sale.order", [{"id": n, "name": "x" * 60} for n in range(400)])
 
@@ -353,8 +353,8 @@ def test_register_exposes_the_read_tools():
 
     listed = {tool.name for tool in asyncio.run(mcp.list_tools())}
     assert listed == {
-        "search_read", "read_record", "count_records", "instance_overview",
-        "required_fields",
+        "search_read", "read_record", "count_records", "group_records",
+        "instance_overview", "required_fields", "describe_model",
     }
 
 
@@ -402,3 +402,153 @@ def test_instance_overview_profiles_the_connected_instance_not_a_neighbour(
     assert "Alpha S.L." in out, f"did not report the connected instance: {out}"
     assert "Beta S.L." not in out, f"served a neighbour's profile: {out}"
     assert (tmp_path / "alpha.json").is_file(), "the built profile was not cached"
+
+
+# ------------------------------------------------------------------ group_records
+def test_group_records_passes_domain_groupby_and_flat_mode(mock_odoo):
+    """Given a model and one group field, When grouped, Then Odoo sees the
+    exact query with lazy=False — the mode that returns flat rows."""
+    mock_odoo.set_results("crm.lead", [], method="read_group")
+
+    tools_read.group_records("crm.lead", [["state", "=", "sale"]], ["stage_id"])
+
+    call = mock_odoo.last_call
+    assert call["method"] == "read_group"
+    assert call["args"] == [[["state", "=", "sale"]], [], ["stage_id"]]
+    assert call["kwargs"]["lazy"] is False
+
+
+def test_group_records_strips_odoo_bookkeeping_and_names_the_count(mock_odoo):
+    """Given Odoo's decorated rows, When cleaned, Then only the answer remains
+    and the count sits under a key that does not change with the lazy mode."""
+    mock_odoo.set_results("crm.lead", [
+        {"stage_id": [1, "New"], "__count": 13,
+         "__domain": ["&", ["active", "in", [True, False]]], "__fold": False},
+        {"stage_id": [2, "Qualified"], "__count": 5,
+         "__domain": ["x"], "__fold": True},
+    ], method="read_group")
+
+    out = tools_read.group_records("crm.lead", [["active", "in", [True, False]]],
+                                   ["stage_id"])
+
+    assert json.loads(out) == [
+        {"stage_id": [1, "New"], "count": 13},
+        {"stage_id": [2, "Qualified"], "count": 5},
+    ]
+
+
+def test_group_records_sends_aggregate_specs(mock_odoo):
+    """Given an aggregate, When grouped, Then the spec travels untouched."""
+    mock_odoo.set_results("account.move", [], method="read_group")
+
+    tools_read.group_records(
+        "account.move", [["move_type", "=", "out_invoice"]], ["company_id"],
+        aggregate=["amount_total_signed:sum"])
+
+    assert mock_odoo.last_call["args"] == [
+        [["move_type", "=", "out_invoice"]], ["amount_total_signed:sum"], ["company_id"]]
+
+
+def test_group_records_passes_company_ids_as_context(mock_odoo):
+    """Given two companies, When grouped, Then both reach Odoo as context."""
+    mock_odoo.set_results("sale.order", [], method="read_group")
+
+    tools_read.group_records("sale.order", [], ["state"], company_ids=[1, 2])
+
+    assert mock_odoo.last_call["kwargs"]["context"] == {"allowed_company_ids": [1, 2]}
+
+
+def test_group_records_refuses_anything_but_one_or_two_group_bys(mock_odoo):
+    """Given zero or three group fields, When grouped, Then it refuses before
+    Odoo is touched — grouping by nothing is count_records' job."""
+    with pytest.raises(ToolExecutionError, match="one or two fields"):
+        tools_read.group_records("crm.lead", [], [])
+    with pytest.raises(ToolExecutionError, match="one or two fields"):
+        tools_read.group_records("crm.lead", [], ["a", "b", "c"])
+
+    assert mock_odoo.calls == []
+
+
+def test_group_records_refuses_amount_total_on_the_multicurrency_models(mock_odoo):
+    """Given account.move and an amount_total aggregate, When grouped, Then it
+    refuses with the company-currency twin named — the 11,9× lesson."""
+    with pytest.raises(ToolExecutionError, match="amount_total_signed"):
+        tools_read.group_records(
+            "account.move", [["move_type", "=", "out_invoice"]], ["company_id"],
+            aggregate=["amount_total:sum"])
+
+    assert mock_odoo.calls == []
+
+
+def test_group_records_allows_amount_total_signed_on_the_same_models(mock_odoo):
+    """Given the twin field, When grouped, Then the sum comes through."""
+    mock_odoo.set_results("account.move", [
+        {"company_id": [2, "Alpha S.L."], "__count": 3, "amount_total_signed": 100.0},
+    ], method="read_group")
+
+    out = tools_read.group_records(
+        "account.move", [["move_type", "=", "out_invoice"]], ["company_id"],
+        aggregate=["amount_total_signed:sum"])
+
+    # Odoo answers aggregates under the bare field name, not the spec
+    # spelling — measured live: "amount_total_signed": 295727.68.
+    assert '"amount_total_signed": 100.0' in out
+    assert '"count": 3' in out
+
+
+def test_group_records_on_account_move_requires_move_type():
+    """Given account.move with no move_type in the domain, When grouped, Then
+    the structural guard refuses it exactly as it refuses search_read."""
+    with pytest.raises(ToolExecutionError, match="move_type"):
+        tools_read.group_records("account.move", [], ["company_id"])
+
+
+# ------------------------------------------------------------------ describe_model
+def test_describe_model_lists_fields_with_required_relation_and_selection(mock_odoo):
+    """Given a model's fields_get answer, When described, Then each line carries
+    the name (starred when required), type, relation, selection values, label."""
+    mock_odoo.set_results("crm.lead", {
+        "name": {"type": "char", "string": "Title", "required": True},
+        "partner_id": {"type": "many2one", "string": "Customer",
+                       "relation": "res.partner"},
+        "type": {"type": "selection", "string": "Type",
+                 "selection": [["lead", "Lead"], ["opportunity", "Opportunity"]]},
+        "create_date": {"type": "datetime", "string": "Created on"},
+    }, method="fields_get")
+
+    out = tools_read.describe_model("crm.lead")
+
+    assert mock_odoo.last_call["kwargs"]["attributes"] == [
+        "string", "type", "required", "selection", "relation"]
+    assert out.splitlines()[0] == "crm.lead — 4 fields (* = required):"
+    assert "  name*  char  (Title)" in out
+    assert "  partner_id  many2one → res.partner  (Customer)" in out
+    assert "  type  selection  [lead | opportunity]  (Type)" in out
+    assert "  create_date  datetime  (Created on)" in out
+
+
+def test_describe_model_names_the_shape_of_a_bad_answer(mock_odoo):
+    """Given fields_get answering with something else, When described, Then the
+    failure says what arrived — the same contract required_fields honours."""
+    mock_odoo.set_results("crm.lead", "nope", method="fields_get")
+
+    with pytest.raises(ToolExecutionError, match="fields_get returned str"):
+        tools_read.describe_model("crm.lead")
+
+
+# ------------------------------------------------------------------ schema
+def test_the_new_tools_describe_their_parameters_on_the_wire():
+    """The Args prose must not live only in the tool description: hosts read
+    the JSON Schema, and a property with no description explains nothing."""
+    mcp = MCPServer("test-wire-schema")
+    tools_read.register(mcp)
+
+    tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
+    by_prop = tools["group_records"].input_schema["properties"]
+
+    assert "granularity" in by_prop["group_by"]["description"]
+    assert "_signed" in by_prop["aggregate"]["description"]
+    assert "multi-company" in by_prop["company_ids"]["description"]
+    assert "domain" in by_prop["domain"]["description"]
+    assert "read live" in tools["describe_model"].input_schema["properties"][
+        "model"]["description"]

@@ -36,6 +36,8 @@ from weakref import WeakKeyDictionary
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from typing_extensions import Annotated
 
 # Same bootstrap as server.py: the nine scripts are flat modules imported by
 # bare name, from the repo and from an installed wheel alike.
@@ -221,7 +223,14 @@ def list_message_targets() -> str:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
-def read_conversation(channel_id: int, limit: int = MESSAGE_LIMIT) -> str:
+def read_conversation(
+    channel_id: Annotated[int, Field(description=(
+        "the Discuss channel, from list_message_targets. Reading does not "
+        "mark anything as read: the unread counter clears only from the "
+        "user's own client."))],
+    limit: Annotated[int, Field(description=(
+        "how many recent messages to return, newest first."))] = MESSAGE_LIMIT,
+) -> str:
     """Read what was said in a Discuss conversation, newest first.
 
     This is how you answer "what did they write to me" or "what is going on in
@@ -266,7 +275,13 @@ def _post(odoo: Odoo, channel_id: int, message: str) -> object:
     })
 
 
-def send_direct_message(user_id: int, message: str) -> str:
+def send_direct_message(
+    user_id: Annotated[int, Field(description=(
+        "res.users id of the recipient — from list_message_targets."))],
+    message: Annotated[str, Field(description=(
+        "the body, plain text or simple HTML. Delivered whatever the "
+        "recipient's notification setting says; sends no email at all."))],
+) -> str:
     """Send a 1-to-1 Discuss message that appears in the user's chat systray.
 
     This is the tool for "tell X", "message X", "warn X". It opens the private
@@ -322,7 +337,14 @@ def send_direct_message(user_id: int, message: str) -> str:
         return handle_odoo_exception(exc).deliver()
 
 
-def send_channel_message(channel_id: int, message: str) -> str:
+def send_channel_message(
+    channel_id: Annotated[int, Field(description=(
+        "from list_message_targets. Posting to a room of the wrong size is "
+        "not recoverable by deleting the message afterwards."))],
+    message: Annotated[str, Field(description=(
+        "the body, plain text or simple HTML. Everyone in the channel sees "
+        "this; members who are not employees are named in a refusal."))],
+) -> str:
     """Post to an EXISTING Discuss channel — everyone in it sees this.
 
     The channel is never created here: `list_message_targets` shows the ones

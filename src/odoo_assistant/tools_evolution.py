@@ -25,6 +25,8 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from typing_extensions import Annotated
 
 from odoo_assistant import paths, resources, server, tenant
 # Package-qualified, unlike the bare bootstrap the sibling modules use: a bare
@@ -76,7 +78,18 @@ def _bundled_references() -> Path:
     return Path(__file__).resolve().parents[2] / "references_public"
 
 
-def explore_module(module_name: str, action: str = "generate", models: str = "") -> str:
+def explore_module(
+    module_name: Annotated[str, Field(description=(
+        "Module to explore, e.g. \"helpdesk\". Must be a module slug, since "
+        "it names the reference file on \"generate\"; ignored on \"list\"."))],
+    action: Annotated[str, Field(description=(
+        '"generate" (the default) writes the reference document; "list" '
+        "ranks what is worth exploring."))] = "generate",
+    models: Annotated[str, Field(description=(
+        'Comma-separated models for a module the script does not know, e.g. '
+        '"superchat.message,superchat.template". Defaults to the script\'s '
+        "own grouping for module_name."))] = "",
+) -> str:
     """Discover a module's structure by interrogating the live instance.
 
     Args:

@@ -11,8 +11,8 @@ import pytest
 from odoo_assistant import server
 
 EXPECTED_TOOLS = {
-    "search_read", "read_record", "count_records", "instance_overview",
-    "required_fields",
+    "search_read", "read_record", "count_records", "group_records",
+    "instance_overview", "required_fields", "describe_model",
     "create_record", "write_record", "run_action", "cancel_record",
     "notify_user", "create_activity", "download_docs", "generate_pdf",
     "list_message_targets", "read_conversation", "send_direct_message",
@@ -28,11 +28,11 @@ def wired_server():
 
 
 def test_every_tool_module_is_on_the_server():
-    """Given the wired server, When its tools are listed, Then all 19 are there."""
+    """Given the wired server, When its tools are listed, Then all 21 are there."""
     listed = {tool.name for tool in anyio.run(server.mcp.list_tools)}
 
     assert listed == EXPECTED_TOOLS
-    assert len(listed) == 19
+    assert len(listed) == 21
 
 
 def test_the_reference_resources_are_on_the_server():

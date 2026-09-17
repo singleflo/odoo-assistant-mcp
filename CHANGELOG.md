@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-09-17
+
+### Added
+- **`group_records`** — grouping with counts (Odoo `read_group`). Measured on a real session: an agent building "records per state, per stage, per month" issued 138 `count_records` calls, one per bucket, half of them answering zero. This tool returns every existing bucket with its count — or an aggregate like `amount_total_signed:sum` — in one `read_group` call, always in `lazy=False` mode so the rows are flat and no follow-up call per group is needed. Odoo's per-row bookkeeping (`__domain`, `__range`, `__fold`) is stripped before the answer travels, and the count sits under a stable `count` key instead of a wire spelling that changes with the mode. `amount_total` is refused as an aggregate on `account.move` / `account.move.line` — per-record currency, the 11,9× lesson — pointing at the `_signed` twin.
+- **`describe_model`** — a model's field dictionary in one call (Odoo `fields_get`): name, type, relation, selection values, required starred. The alternative measured in the same session was 15 `search_read` calls against `ir.model.fields`. For what a `create` demands, `required_fields` still reads deeper.
+- **Parameter descriptions on the wire.** Both new tools declare their arguments with pydantic `Field` descriptions, so the JSON Schema properties a host reads carry the format and the caveats — the `Args` prose previously lived only in the tool description. pydantic is now declared as a direct dependency (it always arrived through the SDK).
+
+### Changed
+- **The truncation notice teaches the right remedy.** "use limit/offset" was the advice, and a measured session followed it — five identical `search_read` calls paging through a cut result. The notice now says: fewer fields, tighter domain, or `group_records` for counts. `count_records` and `search_read` docstrings route breakdowns to `group_records` in the same spirit.
+
 ## [0.3.2] - 2026-09-16
 
 ### Fixed

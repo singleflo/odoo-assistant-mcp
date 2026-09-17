@@ -30,6 +30,8 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
+from typing_extensions import Annotated
 
 from odoo_assistant import paths, server
 from odoo_assistant.server_errors import (
@@ -93,12 +95,22 @@ def _default_fields(odoo: Odoo, model: str) -> list[str]:
 
 
 def search_read(
-    model: str,
-    domain: list,
-    fields: list[str] | None = None,
-    limit: int = DEFAULT_LIMIT,
-    offset: int = 0,
-    company_ids: list[int] | None = None,
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". A model customised in-house reports '
+        "its own fields, read live."))],
+    domain: Annotated[list, Field(description=(
+        'Odoo domain, e.g. [["state", "=", "sale"]]. account.move and '
+        "account.move.line without a move_type filter are refused."))],
+    fields: Annotated[list[str] | None, Field(description=(
+        "Field names to return. The default asks for every field — slow, and "
+        "it can fail to serialise on wide models. Name them."))] = None,
+    limit: Annotated[int, Field(description=(
+        "Rows to return, hard-capped at 200."))] = DEFAULT_LIMIT,
+    offset: Annotated[int, Field(description=(
+        "Rows to skip — how to page past a truncated result."))] = 0,
+    company_ids: Annotated[list[int] | None, Field(description=(
+        "Companies to read from, e.g. [1, 2]. Omitting this on a "
+        "multi-company instance reports one company as the whole business."))] = None,
 ) -> str:
     """Search and read records in one call (Odoo `search_read`).
 
@@ -113,6 +125,10 @@ def search_read(
       and eight foreign-currency invoices once inflated a total 11,9×. Ask for
       `amount_total_signed` instead — any field with a `_signed` twin is
       stored in company currency, and the twin is the one to add up.
+
+    One line before you call: rows you only intend to count are a wasted read
+    — `count_records` answers totals, `group_records` answers totals per
+    value, and neither moves records through the context window.
 
     Args:
         model: Odoo model, e.g. "sale.order".
@@ -139,7 +155,16 @@ def search_read(
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
-def read_record(model: str, record_id: int, fields: list[str] | None = None) -> str:
+def read_record(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "sale.order". account.move and account.move.line '
+        "are refused here — the structural guard has nowhere to put a "
+        "move_type filter on a single id."))],
+    record_id: Annotated[int, Field(description="The record's database id.")],
+    fields: Annotated[list[str] | None, Field(description=(
+        "Field names to read. Omit for the usual state fields — never read "
+        "every field of a wide model."))] = None,
+) -> str:
     """Read one record by id, always with named fields (writing.md pattern 12).
 
     Omitting `fields` asks for a short list of state fields — never for all of
@@ -168,9 +193,16 @@ def read_record(model: str, record_id: int, fields: list[str] | None = None) -> 
 
 
 def count_records(
-    model: str,
-    domain: list | None = None,
-    company_ids: list[int] | None = None,
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "crm.lead". A model customised in-house reports '
+        "its own fields, read live."))],
+    domain: Annotated[list | None, Field(description=(
+        'Odoo domain. Omit to count everything the model holds. '
+        "account.move and account.move.line without a move_type filter are "
+        "refused."))] = None,
+    company_ids: Annotated[list[int] | None, Field(description=(
+        "Companies to count in, e.g. [1, 2]. Omitting this on a "
+        "multi-company instance reports one company as the whole business."))] = None,
 ) -> str:
     """Count the records matching a domain (Odoo `search_count`).
 
@@ -184,6 +216,10 @@ def count_records(
     * On a multi-company instance the count differs per company: pass
       `company_ids` or you are reporting one company as the whole business.
 
+    One value per call is all this gives. For a breakdown — how many per
+    state, per stage, per month — use `group_records`, which returns every
+    bucket's count in one call instead of one call per bucket.
+
     Args:
         model: Odoo model, e.g. "crm.lead".
         domain: Odoo domain. Omit to count everything the model holds.
@@ -196,6 +232,89 @@ def count_records(
         return tool_result(server._get_odoo().search_count(model, domain, context=context))
     except Exception as exc:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+
+# The models where `amount_total` is per-record currency. Elsewhere (sale.order
+# and friends) the total already sits in the company currency, and summing it
+# is legitimate — the refusal must not outlive the landmine that justifies it.
+GROUPED_TOTALS = frozenset({"account.move", "account.move.line"})
+
+
+def group_records(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "crm.lead". A model customised in-house reports '
+        "its own fields, read live."))],
+    domain: Annotated[list, Field(description=(
+        'Odoo domain, e.g. [["state", "=", "sale"]] or [["active", "in", '
+        "[true, false]] to include archived records."))],
+    group_by: Annotated[list[str], Field(description=(
+        'One or two fields, e.g. ["stage_id"] or ["create_date:month", '
+        '"stage_id"]. Date granularity: day, week, month, quarter, year.'))],
+    aggregate: Annotated[list[str] | None, Field(description=(
+        'Optional specs like ["amount_total_signed:sum"] — also :avg, :min, '
+        ":max. Never amount_total on account.move / account.move.line: "
+        "per-record currency, sum the _signed twin instead."))] = None,
+    company_ids: Annotated[list[int] | None, Field(description=(
+        "Companies to read from, e.g. [1, 2]. Omitting this on a "
+        "multi-company instance reports one company as the whole business."))] = None,
+) -> str:
+    """Group records and count (or aggregate) per bucket (Odoo `read_group`).
+
+    The tool for "how many per state / stage / month": one call returns every
+    existing bucket with its count. Issuing one `count_records` per value is
+    the pattern this tool exists to prevent — N round trips where one answers,
+    and on a live instance half of them come back zero.
+
+    Args:
+        model: Odoo model, e.g. "crm.lead".
+        domain: Odoo domain, e.g. [["state", "=", "sale"]].
+        group_by: one or two fields, e.g. ["stage_id"] or
+            ["create_date:month", "stage_id"]. Date granularity: day, week,
+            month, quarter, year.
+        aggregate: optional specs like ["amount_total_signed:sum"] — also
+            :avg, :min, :max. On `account.move` / `account.move.line`,
+            `amount_total` is refused: it is expressed in each record's own
+            currency, and summing it once inflated a total 11,9×. Aggregate
+            `amount_total_signed`, the company-currency twin, instead.
+        company_ids: Companies to read from, e.g. [1, 2]. On a multi-company
+            instance, omitting this reports one company as the whole business.
+    """
+    if not group_by or len(group_by) > 2:
+        raise ToolExecutionError(
+            'group_by takes one or two fields, e.g. ["stage_id"] or '
+            '["create_date:month", "stage_id"] — grouping by nothing is '
+            "count_records' job.")
+    if model in GROUPED_TOTALS and aggregate:
+        refused = [a for a in aggregate if a.split(":")[0] == "amount_total"]
+        if refused:
+            raise ToolExecutionError(
+                "amount_total is stored in each record's own currency — "
+                "summing it mixes currencies (measured: 11,9× off). Aggregate "
+                "amount_total_signed, the company-currency twin, instead.")
+    _gate_or_raise(model, "read_group", domain)
+    kwargs: dict[str, object] = {"lazy": False}
+    if company_ids:
+        kwargs["context"] = {"allowed_company_ids": company_ids}
+    try:
+        rows = server._get_odoo().call(
+            model, "read_group", [domain, aggregate or [], group_by], kwargs)
+    except Exception as exc:
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
+    # lazy=False is what makes the rows flat: the lazy default nests and would
+    # need one follow-up call per bucket, which is the round-trip pattern this
+    # tool exists to end. Odoo decorates every row with __domain (the whole
+    # query repeated), __range and __fold — none of that is the answer, and
+    # together it eats most of a 5000-char cap. The count moves under "count":
+    # its wire spelling changes between modes, and the model reading this never
+    # asked for Odoo's spelling.
+    cleaned = []
+    for row in rows if isinstance(rows, list) else []:
+        count = row.get("__count")
+        clean = {k: v for k, v in row.items() if not k.startswith("__")}
+        if count is not None:
+            clean["count"] = count
+        cleaned.append(clean)
+    return tool_result(cleaned)
 
 
 def _redirect_profiles() -> str:
@@ -214,7 +333,11 @@ def _redirect_profiles() -> str:
     return target
 
 
-def instance_overview(refresh: bool = False) -> str:
+def instance_overview(
+    refresh: Annotated[bool, Field(description=(
+        "Rebuild the profile from the connected instance instead of reusing "
+        "the cached one. Pass True after the instance has changed."))] = False,
+) -> str:
     """Summarise the connected instance: version, companies, volumes per area,
     in-house modules, anomalies.
 
@@ -276,7 +399,11 @@ def _distribution(odoo: Odoo, model: str, field: str) -> str:
     return ", ".join(counted) or "no records yet"
 
 
-def required_fields(model: str) -> str:
+def required_fields(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "crm.lead". Read live from the instance, so a '
+        "model customised in-house reports its own requirements."))],
+) -> str:
     """List the fields Odoo demands before it will accept a `create`, with the
     default it would apply and how existing records actually use it.
 
@@ -334,6 +461,56 @@ def required_fields(model: str) -> str:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
+def describe_model(
+    model: Annotated[str, Field(description=(
+        'Odoo model, e.g. "crm.lead". A model customised in-house reports '
+        "its own fields, read live."))],
+) -> str:
+    """List a model's fields as the live instance defines them (Odoo `fields_get`).
+
+    Answers "what can I filter, group or write on this model" in one call —
+    the alternative, reading `ir.model.fields` through `search_read`, takes
+    one call per batch of names and returns rows you then have to join.
+
+    Required fields are starred. For what a `create` demands — including the
+    default Odoo would apply and how existing records actually use it — use
+    `required_fields`, which reads deeper on exactly that question.
+
+    Args:
+        model: Odoo model, e.g. "crm.lead".
+    """
+    _gate_or_raise(model, "fields_get", [])
+    try:
+        odoo = server._get_odoo()
+        meta = odoo.fields_get(
+            model, [], ["string", "type", "required", "selection", "relation"])
+        if not isinstance(meta, dict):
+            raise ToolExecutionError(f"{model}: fields_get returned {type(meta).__name__}")
+        lines = [f"{model} — {len(meta)} fields (* = required):"]
+        for name in sorted(meta):
+            spec = meta[name] if isinstance(meta[name], dict) else {}
+            line = f"  {name}{'*' if spec.get('required') else ''}  {spec.get('type', '?')}"
+            if spec.get("relation"):
+                line += f" → {spec['relation']}"
+            selection = spec.get("selection")
+            if isinstance(selection, list) and selection:
+                values = [
+                    str(pair[0]) for pair in selection
+                    if isinstance(pair, (list, tuple)) and pair
+                ]
+                if values:
+                    line += f"  [{' | '.join(values)}]"
+            label = spec.get("string")
+            if label:
+                line += f"  ({label})"
+            lines.append(line)
+        return tool_result("\n".join(lines))
+    except ToolExecutionError:
+        raise
+    except Exception as exc:
+        return handle_odoo_exception(exc, phase="before_mutation").deliver()
+
+
 def register(mcp: MCPServer) -> None:
     """Attach the read tools to `mcp`. Called by server.py, never at import."""
     _redirect_profiles()
@@ -343,9 +520,11 @@ def register(mcp: MCPServer) -> None:
     mcp.add_tool(search_read, title="Search records", annotations=reads)
     mcp.add_tool(read_record, title="Read a record", annotations=reads)
     mcp.add_tool(count_records, title="Count records", annotations=reads)
+    mcp.add_tool(group_records, title="Group records", annotations=reads)
     mcp.add_tool(instance_overview, title="Instance overview", annotations=reads)
     mcp.add_tool(
         required_fields, title="Required fields for create", annotations=reads)
+    mcp.add_tool(describe_model, title="Describe a model", annotations=reads)
 
 
 _redirect_profiles()

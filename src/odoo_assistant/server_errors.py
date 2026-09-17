@@ -59,7 +59,10 @@ from odoo_client import (  # noqa: E402  (needs the bootstrap above)
 )
 
 MAX_RESULT_CHARS = 5000
-TRUNCATION_NOTICE = "\n... truncated, use limit/offset to narrow the result."
+TRUNCATION_NOTICE = (
+    "\n... truncated at 5000 chars — fewer fields, tighter domain, "
+    "or group_records for counts."
+)
 
 # A Literal, not a bool: `phase="after_mutation_possible"` names the claim it
 # licenses at the call site, where a bare `True` would name nothing.

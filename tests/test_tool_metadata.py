@@ -21,7 +21,7 @@ def wired_server():
 
 def test_every_tool_carries_a_title_and_store_grade_annotations():
     """Given the wired server, When tools are listed over the wire,
-    Then each of the 19 carries a non-empty title and annotations that
+    Then each of the 21 carries a non-empty title and annotations that
     satisfy both store checklists, and no tool was lost or renamed."""
     tools = anyio.run(server.mcp.list_tools)
 

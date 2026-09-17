@@ -3,7 +3,8 @@
 A tool result travels back through the model's context window, so an
 unbounded `search_read` is not a large answer — it is a destroyed
 conversation. The cap is a hard budget, and the notice must tell the caller
-the remedy (`limit`/`offset`) instead of leaving them with silent junk.
+a remedy that actually fixes the cause (narrower fields or domain, or a
+count instead of rows) instead of leaving them with silent junk.
 """
 import json
 
@@ -45,7 +46,8 @@ def test_twelve_kilobyte_payload_is_truncated_and_says_so():
     # Then it lands inside the budget, keeps the head, and names the remedy
     assert len(text) <= 5100
     assert text.startswith(raw[:MAX_RESULT_CHARS])
-    assert "... truncated, use limit/offset" in text
+    assert "... truncated at 5000 chars" in text
+    assert "group_records" in text
 
 
 def test_payload_exactly_at_the_cap_is_left_alone():

@@ -35,8 +35,17 @@ uv pip install git+https://github.com/singleflo/odoo-assistant-mcp
 
 ### 2. Configure Environment Variables
 
+> ### Don't have an API key yet?
+>
+> **[How to create an Odoo API key →](docs/api-key.md)** — seven steps, with a
+> screenshot of each.
+>
+> In short: *avatar → Preferences → Account Security → New API Key*. It is
+> never your account password, it belongs to one Odoo user and carries exactly
+> that user's permissions, and Odoo shows its value **exactly once**.
+
 * `ODOO_BASE_URL`: Mandatory always. The base URL of your Odoo instance, with no trailing slash (e.g., `https://mycompany.odoo.com`).
-* `ODOO_API_KEY`: Mandatory always. The Odoo API key (Odoo 14+, generate under Settings > Users > API Keys > New). An account password is not accepted. A key is per-user, scoped, and revocable on its own. Odoo 19 additionally requires a description and an expiry, max 3 months.
+* `ODOO_API_KEY`: Mandatory always. The Odoo API key (Odoo 14+ — see the box above, or [docs/api-key.md](docs/api-key.md)). An account password is not accepted. A key is per-user, scoped, and revocable on its own. Odoo 19 additionally requires a description and an expiry, max 3 months.
 * `ODOO_DB`: Mandatory on Odoo Online (SaaS, `*.odoo.com`), optional elsewhere. On Odoo Online, the database-list endpoint is disabled. Discovery cannot find the name, and every tool call fails with an opaque "Error executing tool" without hinting that the database is the problem. With `ODOO_DB` set, the same config connects immediately. The SaaS database name is not the pretty subdomain — it carries a suffix, in the shape `mycompany16-prod-12345678` — and you find it at `/web/database/selector` or in the Odoo.com account page. Elsewhere, it is discovered automatically when the instance serves exactly one database, and is required when it serves several.
 * `ODOO_USER`: Never mandatory. Omitted, the client probes `res.users` for uid 1 to 59 and keeps the one the key answers for. This adds up to 59 extra round trips on the first call, and it fails outright if the key owner's uid is 60 or higher. Setting it removes that cost. It must be the login (e.g. `jane@mycompany.com`), and a wrong value makes Odoo's `authenticate()` return False rather than raise — which reads like a permission error.
 * `ODOO_MCP_ALLOW`: Optional, default `*` — every method the deny list does not refuse. The single value `none` makes the server read-only, which is what you want when pointing an agent at live company data for reading. Anything else is a comma-separated list of method names. See "What the agent may do" below.
@@ -186,10 +195,8 @@ Two things changed between Odoo 16 and 17, and neither needs configuration:
 To generate an API key, log in to your Odoo instance and navigate to:
 **Preferences / My Profile → Account Security → New API Key**
 
-The key is shown in full exactly once, and it belongs to one user with exactly
-that user's permissions. [docs/api-key.md](docs/api-key.md) walks the same path
-in seven steps with a screenshot of each, and covers the duration field, the
-Odoo 19 expiry rule and how to revoke a key.
+The illustrated walkthrough is [docs/api-key.md](docs/api-key.md), which also
+covers the duration field, the Odoo 19 expiry rule and how to revoke a key.
 
 ### Transport & Deprecation Note
 The client automatically detects if the native JSON-2 API is available at `/json/2/<model>/<method>` (which uses `Authorization: bearer <API_KEY>`) and falls back to XML-RPC if it is not. Please note that XML-RPC and JSON-RPC are deprecated in Odoo 19 and scheduled for removal in Odoo 22.

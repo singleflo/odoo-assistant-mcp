@@ -104,7 +104,7 @@ How many sales orders did we book this month, and what is their total?
 ```
 
 ```text
-Tell Ana in a direct message that the quarterly report is ready.
+Who can I message in Odoo right now, and who is online?
 ```
 
 ## URLs

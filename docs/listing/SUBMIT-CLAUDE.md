@@ -69,7 +69,7 @@ The portal walks through sequential steps. Fill each field using the values from
 | API key | `<fresh key, generated for this review, revoked after>` |
 | Database name | `<only when the instance serves more than one database>` |
 
-Include a summary of visible fixture data (demo companies, draft/sent quotations, sales orders, posted customer invoice, Reviewer Two user).
+Include a summary of visible fixture data: the companies, the draft quotations, the confirmed sales orders, the customer invoices, the project tasks spread across their stages, and the second internal user the messaging case writes to.
 
 - Confirm you have tested all 22 tools using MCP Inspector or custom connectors.
 

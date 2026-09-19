@@ -64,28 +64,84 @@ Fill in public listing details from `docs/listing/README.md`:
 
 ### 3. Prompts Tab
 
-Add 3 starter prompts from dossier section `Starter prompts` (each under 128 chars):
+Add 3 starter prompts from dossier section `Starter prompts` (each under 128
+chars). ChatGPT prepends the plugin mention itself when it displays them, so
+none of the three carries an `@`:
+
 1. `Which quotations are waiting for confirmation this week?`
 2. `How many sales orders did we book this month, and what is their total?`
-3. `Tell Ana in a direct message that the quarterly report is ready.`
+3. `Who can I message in Odoo right now, and who is online?`
+
+The third one used to name a person — "Tell Ana …" — which reads well and
+fails on contact: a reviewer who presses it finds no Ana, and the plugin
+correctly answers that the recipient does not exist. Correct behaviour, poor
+first impression. The replacement exercises the same Discuss surface,
+presence included, against whatever users the connected instance actually
+has.
 
 ### 4. Testing Tab
 
-Paste the 5 positive and 3 negative test cases from dossier section `Test cases` and `Reviewer test account (TEMPLATE — the owner fills this before submitting)`:
+The tab has three parts: one free-text **Test credentials** box, **exactly 5**
+positive cases with four fields each — Scenario, User prompt, Tool triggered,
+Expected output — and **exactly 3** negative cases with two fields each,
+Description and User prompt.
 
-#### Positive Test Cases:
-1. **Quotations awaiting confirmation**: Prompt `Which quotations are waiting for confirmation this week?` -> tool `search_read` on `sale.order`.
-2. **Instance overview**: Prompt `Give me an overview of this Odoo instance.` -> tool `instance_overview`.
-3. **What a create demands**: Prompt `What do I need to fill in to create a new CRM lead?` -> tool `required_fields` on `crm.lead`.
-4. **Create with duplicate reuse**: Prompt `Create a contact named Reviewer Test Partner with the email reviewer@example.com.` -> tool `create_record` on `res.partner` with `unique_on`.
-5. **Direct message**: Prompt `Send a direct message to Reviewer Two saying the quarterly report is ready.` -> tools `list_message_targets` then `send_direct_message`.
+**A negative case here is not a refusal.** The portal means a prompt the
+plugin should NOT be invoked for at all — a near miss the model may think is
+relevant. A refusal is the opposite: the plugin correctly invoked, correctly
+declining. Putting refusals in these three boxes answers a question nobody
+asked, and the cases below are genuine near misses instead. The structural
+refusals this server is built around are described in the credentials box, as
+behaviour to expect rather than report as a fault.
 
-#### Negative Test Cases:
-1. **Delete request**: Prompt `Delete the contact Reviewer Test Partner.` -> refusal: `res.partner.unlink: Deletion is never available on the hosted server; use a local install with ODOO_MCP_ALLOW_UNLINK=yes.`
-2. **Cancel on read-only connection**: Prompt `Cancel quotation S00001.` (on read-only) -> refusal: `sale.order.action_cancel: this connection was authorised as read-only; reconnect and choose the standard policy to allow it.`
-3. **Invoice query without move_type**: Prompt `What is our total invoiced amount?` -> refusal: `account.move query without an explicit 'move_type' filter.`
+The copy is in the dossier's `Test cases` section, which is the source of
+truth — `tests/test_submit_guides.py` fails when a prompt here and a prompt
+there disagree.
 
-Include demo credentials for the reviewer (URL, endpoint `https://mcp.singleflo.com/mcp`, login, API key, database name).
+#### Test credentials (the free-text box)
+
+There is no password and no Odoo login page, so the placeholder's shape does
+not fit. Paste this instead, with the two placeholders filled:
+
+```text
+Sign-in URL: none to visit — your client opens the consent page at
+https://mcp.singleflo.com/consent when you first use the plugin.
+Odoo instance URL: <review instance base URL, no trailing slash>
+API key: <fresh key generated for this review>
+Database: leave empty (this host serves exactly one database)
+Odoo login: leave empty (discovered from the API key)
+Password: none — this server accepts an API key only, never a password.
+
+Sign-in steps:
+1. Start any of the test cases below. The client opens the consent page.
+2. Type the Odoo instance URL and the API key into the two fields.
+3. Under "What the assistant may do" choose STANDARD. Cases 4 and 5 write,
+   and the read-only choice refuses them by design. Deletion is not offered
+   under either choice.
+4. Press Connect. There is no MFA, no SMS, no email confirmation and no
+   private network: the key authenticates on its own.
+
+One behaviour to expect rather than report as a fault: asking for a total
+invoiced amount is REFUSED, naming account.move and asking for an explicit
+move_type filter. That Odoo model mixes customer invoices, vendor bills,
+credit notes and journal entries, so a total across all of them matches
+nothing the user sees on screen. The assistant is expected to re-ask with the
+filter and then answer.
+```
+
+#### Positive test cases
+
+1. **Quotations awaiting confirmation** — prompt `Which quotations are waiting for confirmation?` → `search_read` on `sale.order` filtered to `state in (draft, sent)` → a short list with number, customer, amount and state; six draft quotations on the review instance.
+2. **Instance overview** — prompt `Give me an overview of this Odoo instance.` → `instance_overview` → edition and version, companies, record volumes per business area, in-house modules, and an explicit list of what the instance does NOT have.
+3. **Totals per bucket in one call** — prompt `How many maintenance tasks are in each stage?` → `group_records` on `project.task` grouped by `stage_id` → one row per stage with its count, seven stages on the review instance, in a single call that never moves the records themselves.
+4. **What a create demands, then the create** — prompt `Add a contact called Reviewer Test Partner, email reviewer@example.com.` → `required_fields` on `res.partner`, then `create_record` with `unique_on` → the new partner's id, and the same id again on a second identical request instead of a duplicate.
+5. **A message that reaches a colleague** — prompt `Send a direct message to Administrator saying the quarterly report is ready.` → `list_message_targets` then `send_direct_message` → a confirmation carrying recipient, channel and message id, and the delivery route; `read_conversation` then shows it once.
+
+#### Negative test cases
+
+1. **The price of Odoo itself** — prompt `How much does Odoo Enterprise cost per user, and what is included?` The prompt names Odoo, which is what makes it a near miss, but it asks about the vendor's commercial terms rather than the user's records. Nothing in the connected instance can answer it.
+2. **Code that talks to Odoo** — prompt `Write me a Python script that connects to Odoo over XML-RPC and lists all contacts.` The strongest near miss in the set: it names Odoo, contacts and a read, and the plugin does all three. The user asked for source code, not for their data.
+3. **Figures that are in the conversation** — prompt `Summarise the sales figures in the spreadsheet I just uploaded.` "Sales figures" overlaps exactly with what this plugin reads. The data the user pointed at is in the attachment; reaching into Odoo would replace their numbers with other numbers under the same heading.
 
 ### 5. Global Tab
 

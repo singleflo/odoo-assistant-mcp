@@ -106,6 +106,15 @@ def test_guides_urls_liveness():
                         f"ODOO_REMOTE_OPENAI_CHALLENGE is unset; it gets its"
                         f" value when OpenAI issues the challenge token")
                     break
+                # The consent page answers 400 to a request carrying no
+                # pending authorisation, which is the whole point of it: the
+                # `req` id is 192 bits handed only to the browser that came
+                # through /authorize, and a page that rendered a credential
+                # form for anyone who typed the URL would be the bug. Cited
+                # in a guide as the address the reviewer's client opens for
+                # them, so the link is live and the refusal is correct.
+                if e.code == 400 and url.rstrip("/").endswith("/consent"):
+                    break
                 if e.code in (502, 503, 504) and attempt + 1 < attempts:
                     time.sleep(15)
                     continue

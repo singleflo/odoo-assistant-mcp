@@ -216,7 +216,7 @@ the plugin is correctly invoked and correctly declines.
   states (`state` in `draft`, `sent`).
 - Expected result: a short list of quotations — number, customer, amount,
   state — or an explicit "no quotations are waiting" when the list is empty.
-  On the review instance this returns six draft quotations.
+  The review instance holds twelve of them.
 - Fixture data: at least one `sale.order` in state `draft` or `sent`.
 
 ### Positive test case 2: instance overview

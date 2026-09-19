@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-09-19
+
+### Added
+- **The consent page now shows how to create an API key**, in seven steps with a screenshot of each. Until now it said the path in one sentence and promised illustrated steps "coming soon" — which is thin help on the one page where it matters: someone who does not have a key cannot connect at all, and this page is the only place they are certain to be standing. The walkthrough sits with the API key field rather than at the end of the page, stays collapsed so a reader who already has a key still sees a short form, and is titled as that reader's own question — *I don't have an API key — how do I make one?* — so the one who needs it recognises what to open. It covers what a key is (one user, that user's permissions, revocable on its own, never a password), the identity confirmation Odoo asks for, the duration field and what happens when it elapses, and the fact that the value is shown exactly once. The screens are Odoo 18 and the note names the Odoo 19 difference: description and expiry both required, three months at most.
+- **`docs/api-key.md`** is the same walkthrough for the reader who never reaches the consent page: someone configuring a local install edits a host config file and never sees the hosted server. The README's *API Key Generation Path* keeps its one-line answer and now links there. The page reuses the screenshots already in the package rather than copying them, and `docs/` is excluded from the sdist, so this costs the distribution nothing.
+- **`/img/<name>`** serves those screenshots from this origin, so the Content Security Policy stays `default-src 'none'` with no third party invited onto a page where an API key is typed. The route answers only the seven names it knows — the request never reaches a filesystem read unless it matched the list first — and the version rides on the query, like the stylesheet, so a deploy invalidates the year-long immutable cache.
+
 ## [0.3.4] - 2026-09-17
 
 ### Added

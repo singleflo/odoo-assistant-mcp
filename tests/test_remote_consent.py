@@ -37,6 +37,7 @@ from cryptography.fernet import Fernet  # noqa: E402
 from mcp.shared.auth import OAuthClientInformationFull  # noqa: E402
 from pydantic import AnyUrl  # noqa: E402
 
+import odoo_assistant  # noqa: E402
 from odoo_assistant.remote import consent  # noqa: E402
 from odoo_assistant.remote.consent import ConsentDeps  # noqa: E402
 from odoo_assistant.remote.store import (  # noqa: E402
@@ -672,3 +673,82 @@ def test_the_child_reports_the_resolved_login_over_the_pipe(monkeypatch):
 
     assert parent.recv() == ("ok", "owner@acme.com")
     assert seen["login"] == "jane@acme.com"
+
+
+# --------------------------------------------- the API-key walkthrough
+def test_the_page_carries_the_seven_illustrated_steps(store, provider):
+    """Someone who has no API key cannot connect, and the page that asks for
+    one is the only place they are certain to be. The walkthrough is that
+    answer: seven steps, each with the screenshot it describes."""
+    from odoo_assistant.remote import ui
+
+    shown = client(store, provider).get("/consent?req=pend-1").text
+
+    assert shown.count('<li class="step">') == 7
+    assert len(consent._WALKTHROUGH_STEPS) == len(ui.WALKTHROUGH_IMAGES)
+    for name in ui.WALKTHROUGH_IMAGES:
+        assert f'src="/img/{name}?v={odoo_assistant.__version__}"' in shown
+
+
+#: What each step is a picture of, written out rather than derived from the
+#: code under test. Zipping the two tuples in the source pairs them by
+#: position whatever the order is, so a test that reads that order back can
+#: never see a swap — this list is the independent side of the comparison.
+EXPECTED_PAIRING = (
+    ("Open the user menu", "01-home-avatar.jpg"),
+    ("Choose Preferences", "02-menu-preferences.jpg"),
+    ("The preferences window opens", "03-preferences-modal.jpg"),
+    ("Go to Account Security", "04-account-security.jpg"),
+    ("Confirm it is you", "05-security-control-password.jpg"),
+    ("Name the key and set how long it lasts", "06-new-api-key-form.jpg"),
+    ("Copy it now — it is shown once", "07-api-key-ready.jpg"),
+)
+
+
+def test_each_step_shows_the_screenshot_of_that_step(store, provider):
+    """A picture on the wrong sentence is worse than no picture, because the
+    reader follows the picture. Every heading must be followed by ITS own
+    screenshot, before the next heading starts."""
+    shown = client(store, provider).get("/consent?req=pend-1").text
+
+    for title, name in EXPECTED_PAIRING:
+        heading = shown.index(f"<h3>{title}</h3>")
+        following = shown.find("<h3>", heading + 1)
+        section = shown[heading:following if following != -1 else len(shown)]
+        assert f'src="/img/{name}?' in section, title
+
+
+def test_the_steps_are_shown_in_order(store, provider):
+    """Seven numbered steps read in sequence or they teach nothing."""
+    shown = client(store, provider).get("/consent?req=pend-1").text
+
+    placements = [shown.index(f"<h3>{title}</h3>")
+                  for title, _name in EXPECTED_PAIRING]
+
+    assert placements == sorted(placements)
+    assert [f">{n}</span>" in shown for n in range(1, 8)] == [True] * 7
+
+
+def test_the_walkthrough_is_collapsed_and_titled_as_a_question(store,
+                                                               provider):
+    """Closed, so a reader who already has a key sees a short form; phrased
+    as their own question, so a reader who does not recognises it as the
+    thing to open; and a real heading, so it reaches the document outline
+    and a screen reader's list of headings."""
+    shown = client(store, provider).get("/consent?req=pend-1").text
+
+    assert '<details class="help walkthrough">' in shown
+    assert " open" not in shown[shown.index("walkthrough"):][:40]
+    assert "<summary><h2>I don't have an API key" in shown
+    # It sits with the API key field, not at the end of the page.
+    assert shown.index("walkthrough") < shown.index('id="login"')
+
+
+def test_the_walkthrough_images_do_not_reflow_the_form(store, provider):
+    """The screenshots load lazily under a form someone is typing into.
+    Without intrinsic dimensions each arrival reflows the page."""
+    shown = client(store, provider).get("/consent?req=pend-1").text
+
+    assert shown.count('loading="lazy"') == 7
+    assert shown.count('width="1256" height="952"') == 7
+    assert shown.count("<img") == shown.count("alt=")  # every one described

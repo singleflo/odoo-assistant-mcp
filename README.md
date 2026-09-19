@@ -186,6 +186,11 @@ Two things changed between Odoo 16 and 17, and neither needs configuration:
 To generate an API key, log in to your Odoo instance and navigate to:
 **Preferences / My Profile → Account Security → New API Key**
 
+The key is shown in full exactly once, and it belongs to one user with exactly
+that user's permissions. [docs/api-key.md](docs/api-key.md) walks the same path
+in seven steps with a screenshot of each, and covers the duration field, the
+Odoo 19 expiry rule and how to revoke a key.
+
 ### Transport & Deprecation Note
 The client automatically detects if the native JSON-2 API is available at `/json/2/<model>/<method>` (which uses `Authorization: bearer <API_KEY>`) and falls back to XML-RPC if it is not. Please note that XML-RPC and JSON-RPC are deprecated in Odoo 19 and scheduled for removal in Odoo 22.
 

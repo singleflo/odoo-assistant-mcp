@@ -450,6 +450,94 @@ _NO_TYPING_HELP = ('autocapitalize="off" autocorrect="off"'
 _PUBLISHER_FALLBACK = "the odoo-assistant maintainers"
 
 
+# The seven steps, paired with the screenshot each one is of. The order is
+# the order of `ui.WALKTHROUGH_IMAGES`, and the two are checked against each
+# other by the suite — a step whose picture drifted onto the wrong sentence
+# is worse than no picture, because the reader follows the picture.
+_WALKTHROUGH_STEPS = (
+    ("Open the user menu",
+     "In Odoo, click your <strong>avatar</strong> at the top right — your"
+     " profile picture, or your initials.",
+     "Odoo home screen, the avatar at the top right"),
+    ("Choose Preferences",
+     "In the menu that drops down, choose <strong>Preferences</strong>. Some"
+     " versions call it <em>My Profile</em>.",
+     "The user menu open, with Preferences in it"),
+    ("The preferences window opens",
+     "It opens on the <strong>Preferences</strong> tab. The one you want is"
+     " next to it.",
+     "The Change My Preferences window, Preferences tab"),
+    ("Go to Account Security",
+     "Switch to the <strong>Account Security</strong> tab and scroll to"
+     " <strong>API Keys</strong>. Keys you already have are listed by"
+     " description and date — never by value — and the button you want is"
+     " <strong>New API Key</strong>.",
+     "The Account Security tab showing the API Keys section"),
+    ("Confirm it is you",
+     "Odoo asks for your own password before it will make a key. This"
+     " confirms your identity to Odoo; it is not shared with anyone, and"
+     " this page never asks you for it.",
+     "The Security Control window asking for the password"),
+    ("Name the key and set how long it lasts",
+     "The <strong>name</strong> is the only way you will recognise this key"
+     " later, so say what it is for — <em>Odoo Assistant</em> does the job."
+     " Then pick a <strong>duration</strong>. When it elapses the key is"
+     " deleted and the connection stops working, so choose a period you are"
+     " willing to renew. Press <strong>Generate key</strong>.",
+     "The New API Key window, with a name and a duration"),
+    ("Copy it now — it is shown once",
+     "The key appears in full exactly once. Copy it straight into the"
+     " <strong>API key</strong> field above, or into your password manager."
+     " Once you close this window Odoo cannot show it again: a key you lose"
+     " is a key you replace.",
+     "The API Key Ready screen with the generated key"),
+)
+
+
+def _walkthrough_html() -> str:
+    """The illustrated walkthrough, collapsed behind one question.
+
+    It is a `<details>` rather than always-on prose because most of the page
+    is already asking a lot of a person who came here to connect a tool: a
+    reader who has a key should see a short form, and a reader who has not
+    should see, in the place where the key is asked for, that the way to make
+    one is one click away. The summary is phrased as the reader's own
+    question for that reason, and carries a heading so it appears in the
+    document outline and in a screen reader's list of headings.
+
+    Dimensions are on every image because they load lazily: without them the
+    page reflows as each one arrives, under a form someone is typing into.
+    """
+    steps = []
+    for number, ((title, body, alt), name) in enumerate(
+            zip(_WALKTHROUGH_STEPS, ui.WALKTHROUGH_IMAGES), start=1):
+        steps.append(
+            "<li class=\"step\">"
+            f"<h3>{html.escape(title)}</h3>"
+            f"<p>{body}</p>"
+            f"<img src=\"{ui.asset(f'/img/{name}')}\" alt=\"{html.escape(alt)}\""
+            " width=\"1256\" height=\"952\" loading=\"lazy\""
+            " decoding=\"async\">"
+            f"<span class=\"step-number\" aria-hidden=\"true\">{number}</span>"
+            "</li>")
+    return (
+        "<details class=\"help walkthrough\">"
+        "<summary><h2>I don't have an API key — how do I make one?</h2>"
+        "<span class=\"summary-hint\">Seven steps, with a screenshot of"
+        " each</span></summary>"
+        "<p class=\"walkthrough-lead\">An API key belongs to one Odoo user"
+        " and carries exactly that user's permissions. You can create several"
+        " and revoke any of them on its own, at any time, without touching"
+        " your password. The screens below are Odoo 18; 14 through 19 differ"
+        " only in wording, and the path is the same on Odoo Online.</p>"
+        f"<ol class=\"steps\">{''.join(steps)}</ol>"
+        "<p class=\"walkthrough-note\">On <strong>Odoo 19</strong> the"
+        " description and an expiry date are both required, and the expiry"
+        " can be at most three months away — so a connection made there needs"
+        " a new key every quarter.</p>"
+        "</details>")
+
+
 def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
     error = (f'<p class="error" role="alert">{html.escape(shown.error)}</p>'
              if shown.error else "")
@@ -492,24 +580,7 @@ def _form_html(deps: ConsentDeps, shown: _FormState) -> str:
         "<span class=\"field-help\">An Odoo API key — never your"
         " password.</span></p>"
 
-        "<details class=\"help\">"
-        "<summary>Where to generate an API key in Odoo</summary>"
-        "<p>Open the avatar menu in Odoo, then <strong>My Profile</strong>"
-        " (called Preferences on some versions), the <strong>Account"
-        " Security</strong> tab, then <strong>New API Key</strong>. The key"
-        " belongs to one user and carries exactly that user's permissions,"
-        " and you can revoke it on its own at any time.</p>"
-        "<ul class=\"versions\">"
-        "<li><strong>Odoo 16</strong> <em>illustrated steps coming"
-        " soon</em></li>"
-        "<li><strong>Odoo 17</strong> <em>illustrated steps coming"
-        " soon</em></li>"
-        "<li><strong>Odoo 18</strong> <em>illustrated steps coming"
-        " soon</em></li>"
-        "<li><strong>Odoo 19</strong> — a description and an expiry date are"
-        " required, three months at most. <em>illustrated steps coming"
-        " soon</em></li>"
-        "</ul></details>"
+        f"{_walkthrough_html()}"
 
         "<p class=\"field\">"
         "<label for=\"login\">Odoo login"

@@ -359,6 +359,23 @@ def _serve_style() -> Response:
         "Cache-Control": "public, max-age=31536000, immutable"})
 
 
+def _serve_image(name: str) -> Response:
+    """One screenshot of the API-key walkthrough on the consent page.
+
+    The name is checked against `ui.WALKTHROUGH_IMAGES` and never joined onto
+    a path until it matched. This route is public and unauthenticated, and
+    the files sit beside `style.css` inside the installed package — a name
+    taken from the request and handed to a filesystem read is how that
+    becomes an arbitrary-file endpoint.
+    """
+    if name not in ui.WALKTHROUGH_IMAGES:
+        return PlainTextResponse("Not Found", status_code=404)
+    data = (importlib_resources.files("odoo_assistant.remote.pages")
+            / "img" / name).read_bytes()
+    return Response(data, media_type="image/jpeg", headers={
+        "Cache-Control": "public, max-age=31536000, immutable"})
+
+
 def _landing_page(settings: RemoteSettings) -> Response:
     endpoint = html.escape(f"{settings.public_url}/mcp")
     return HTMLResponse(ui.layout(
@@ -553,6 +570,11 @@ def build_app(settings: RemoteSettings) -> Starlette:
         return _serve_style()
 
     mcp.custom_route("/style.css", methods=["GET"])(style)
+
+    async def image(request: Request) -> Response:
+        return _serve_image(request.path_params["name"])
+
+    mcp.custom_route("/img/{name}", methods=["GET"])(image)
 
     mcp.custom_route("/", methods=["GET"])(landing)
     for name in ("privacy", "terms", "support"):

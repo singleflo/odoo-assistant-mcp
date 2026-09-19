@@ -81,6 +81,33 @@ _MARK = (
 _NAV = (("/", "Overview"), ("/privacy", "Privacy"), ("/terms", "Terms"),
         ("/support", "Support"))
 
+# The seven screenshots of the API-key walkthrough, in the order the consent
+# page shows them. This tuple is also the ALLOW LIST the `/img` route checks
+# a requested name against, which is why it is spelled out rather than read
+# from the directory: `/img` is public and unauthenticated, and a name that
+# reaches a filesystem read without first matching a fixed list is how a
+# screenshot route becomes an arbitrary-file one.
+WALKTHROUGH_IMAGES = (
+    "01-home-avatar.jpg",
+    "02-menu-preferences.jpg",
+    "03-preferences-modal.jpg",
+    "04-account-security.jpg",
+    "05-security-control-password.jpg",
+    "06-new-api-key-form.jpg",
+    "07-api-key-ready.jpg",
+)
+
+
+def asset(path: str) -> str:
+    """A same-origin asset URL carrying the version.
+
+    Both `/style.css` and `/img/*` answer with a year-long immutable cache,
+    which is only safe because the version rides on the query: a deploy
+    changes every URL, so nobody reads a new page through an old stylesheet
+    or an old screenshot.
+    """
+    return f"{path}?v={_version()}"
+
 
 def layout(title: str, body: str, *, publisher: str,
            active: str | None = None, lead: str | None = None) -> str:
@@ -107,7 +134,7 @@ def layout(title: str, body: str, *, publisher: str,
         "<meta name=\"color-scheme\" content=\"light dark\">"
         f"<title>{html.escape(title)} — Odoo Assistant</title>"
         f"<link rel=\"icon\" href=\"{_MARK}\">"
-        f"<link rel=\"stylesheet\" href=\"/style.css?v={_version()}\">"
+        f"<link rel=\"stylesheet\" href=\"{asset('/style.css')}\">"
         "</head>"
         "<body>"
         "<header class=\"site-header\">"

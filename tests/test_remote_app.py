@@ -729,3 +729,42 @@ def test_support_destination_renders_as_link(tmp_path):
     
     for page in (support, privacy, terms):
         assert '<a href="mailto:help@example.com"' in page.text
+
+
+# ------------------------------------------------- the walkthrough screenshots
+def test_every_walkthrough_screenshot_is_served_from_this_origin(tmp_path):
+    """The consent page shows seven screenshots. They must all be packaged and
+    reachable: a missing one leaves a broken image on the page where someone
+    is being asked for the API key of a production ERP."""
+    from odoo_assistant.remote import ui
+
+    with make_client(tmp_path) as client:
+        answers = {name: client.get(f"/img/{name}")
+                   for name in ui.WALKTHROUGH_IMAGES}
+
+    assert len(answers) == 7
+    for name, answer in answers.items():
+        assert answer.status_code == 200, name
+        assert answer.headers["content-type"] == "image/jpeg", name
+        assert "immutable" in answer.headers["cache-control"], name
+        assert len(answer.content) > 1000, name
+
+
+def test_the_image_route_serves_only_the_names_it_knows(tmp_path):
+    """The route is public and unauthenticated, and the files sit inside the
+    installed package next to the stylesheet. A name taken from the request
+    and handed to a filesystem read is how this becomes an arbitrary-file
+    endpoint, so only the allow list answers."""
+    with make_client(tmp_path) as client:
+        unknown = client.get("/img/not-a-screenshot.jpg")
+        sibling = client.get("/img/style.css")
+        escaped = client.get("/img/..%2Fstyle.css")
+        encoded = client.get("/img/%2E%2E%2F%2E%2E%2Fapp.py")
+
+    assert unknown.status_code == 404
+    assert sibling.status_code == 404
+    assert escaped.status_code == 404
+    assert encoded.status_code == 404
+
+
+

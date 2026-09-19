@@ -198,129 +198,157 @@ than from a bounded workspace owned by the publisher.
 ## Test cases
 
 Runnable by a reviewer with the test account below, no internal context
-needed. The negative cases name the exact refusal text the server produces —
-the reviewer should see those words, not a paraphrase.
+needed. Every one of the five was executed end to end against the review
+instance **through the hosted server**, not against a local build, and the
+expected results below are what came back.
+
+The two kinds of case mean different things in the OpenAI portal, and
+conflating them is how a submission gets marked down. A **positive** case is
+a prompt the plugin should answer. A **negative** case is a prompt the plugin
+should **not be invoked for at all** — a near miss the model may think is
+relevant. It is not a refusal: refusals happen inside a positive case, when
+the plugin is correctly invoked and correctly declines.
 
 ### Positive test case 1: quotations awaiting confirmation
 
-- Prompt: Which quotations are waiting for confirmation this week?
+- Prompt: Which quotations are waiting for confirmation?
 - Expected tool: `search_read` on `sale.order`, filtered to the quotation
   states (`state` in `draft`, `sent`).
-- Expected result: a short list of quotations — name, customer, amount,
+- Expected result: a short list of quotations — number, customer, amount,
   state — or an explicit "no quotations are waiting" when the list is empty.
-- Fixture data: at least one `sale.order` in state `draft` or `sent` in the
-  demo database.
+  On the review instance this returns six draft quotations.
+- Fixture data: at least one `sale.order` in state `draft` or `sent`.
 
 ### Positive test case 2: instance overview
 
 - Prompt: Give me an overview of this Odoo instance.
 - Expected tool: `instance_overview`.
-- Expected result: the Odoo version, the companies on the instance, record
-  volumes per business area and any installed in-house modules.
-- Fixture data: none beyond the connected demo instance.
+- Expected result: the Odoo edition and version, the companies, record
+  volumes per business area, the in-house modules, and an explicit list of
+  what the instance does NOT have — so the assistant says "no inventory here"
+  instead of asking the user to clarify.
+- Fixture data: none beyond the connected instance.
 
-### Positive test case 3: what a create demands
+### Positive test case 3: totals per bucket in one call
 
-- Prompt: What do I need to fill in to create a new CRM lead?
-- Expected tool: `required_fields` on `crm.lead`.
-- Expected result: the required fields with their types and allowed values,
-  the default Odoo would apply to each, and how existing records actually
-  use them — on the demo instance this surfaces that `crm.lead.type`
-  defaults to `lead`.
-- Fixture data: none; a handful of existing leads makes the usage
-  distribution line meaningful.
+- Prompt: How many maintenance tasks are in each stage?
+- Expected tool: `group_records` on `project.task`, grouped by `stage_id`.
+- Expected result: one row per stage with its count — on the review instance
+  seven stages, from 46 in the first to 1 in the last. The point of the tool
+  is that this is ONE call: the records themselves never cross the context
+  window, only the totals.
+- Fixture data: a project with tasks spread over several stages.
 
-### Positive test case 4: create with duplicate reuse
+### Positive test case 4: what a create demands, then the create
 
-- Prompt: Create a contact named Reviewer Test Partner with the email
+- Prompt: Add a contact called Reviewer Test Partner, email
   reviewer@example.com.
-- Expected tool: `create_record` on `res.partner`, with `unique_on` the
-  email.
-- Expected result: the partner's id plus a re-read proving the field values;
-  running the same request again returns the SAME id, not a duplicate.
-- Fixture data: none. A contact from an earlier reviewer's run may already
-  exist — the tool reusing it is the expected behaviour, not a failure.
+- Expected tool: `required_fields` on `res.partner` to learn what Odoo
+  demands and what it would default to, then `create_record` with
+  `unique_on` the email.
+- Expected result: the new partner's id, and — this is the behaviour worth
+  checking — running the same request a second time returns the **same id**
+  rather than a duplicate contact.
+- Fixture data: none. A contact from an earlier run may already exist; the
+  tool reusing it is the expected behaviour, not a failure.
 
-### Positive test case 5: direct message
+### Positive test case 5: a message that reaches a colleague
 
-- Prompt: Send a direct message to Reviewer Two saying the quarterly report
+- Prompt: Send a direct message to Administrator saying the quarterly report
   is ready.
-- Expected tool: `list_message_targets` to resolve the recipient, then
-  `send_direct_message`.
-- Expected result: a confirmation with the message id; opening Discuss as
-  Reviewer Two shows the message in the chat systray in real time, with no
-  email involved.
-- Fixture data: a second internal user named "Reviewer Two" with Discuss
-  enabled.
+- Expected tool: `list_message_targets` to resolve the recipient and see who
+  is online, then `send_direct_message`.
+- Expected result: a confirmation carrying the recipient, the channel and the
+  message id, and stating the delivery route — Discuss chat, real time, no
+  email, persists while the recipient is offline. `read_conversation` on that
+  channel then shows the message, exactly once.
+- Fixture data: a second internal user with Discuss enabled. On the review
+  instance, `Administrator`.
 
-### Negative test case 1: a delete request
+### Negative test case 1: the price of Odoo itself
 
-- Prompt: Delete the contact Reviewer Test Partner.
-- Expected tool: none runs to completion. The connector exposes no delete
-  tool; if the model attempts Odoo's `unlink` through a write-path tool, the
-  gate refuses before Odoo sees the call.
-- Expected result: a refusal naming the deletion policy — on the hosted
-  server, exactly: `res.partner.unlink: Deletion is never available on the
-  hosted server; use a local install with ODOO_MCP_ALLOW_UNLINK=yes.` The
-  contact still exists afterwards.
-- Fixture data: the contact from positive test case 4.
-- Why not: deletion cannot be undone; the hosted server never grants it, and
-  a local install grants it only through a variable the operator sets
-  deliberately.
+- Prompt: How much does Odoo Enterprise cost per user, and what is included?
+- Expected tool: none. The prompt names Odoo, which is what makes it a near
+  miss, but it asks about the vendor's commercial terms — a question about
+  the software, not about the user's own records.
+- Expected result: the model answers from general knowledge and the plugin is
+  never invoked. Nothing in the connected instance can answer this.
+- Fixture data: none.
+- Why not: the plugin reads one company's business records. A pricing page is
+  not one of them, and invoking it here would spend a tool call to discover
+  that.
 
-### Negative test case 2: a cancel on a read-only connection
+### Negative test case 2: code that talks to Odoo
 
-- Prompt: Cancel quotation S00001. (Reviewer is connected under the
-  read-only policy.)
-- Expected tool: `cancel_record` (attempted).
-- Expected result: a refusal naming the connection's policy — exactly:
-  `sale.order.action_cancel: this connection was authorised as read-only;
-  reconnect and choose the standard policy to allow it.` The quotation stays
-  in its state.
-- Fixture data: a draft or sent quotation; for this case the reviewer picks
-  the read-only policy on the consent page when connecting.
-- Why not: the reviewer authorised a read-only connection; the server
-  refuses writes instead of silently widening its own mandate.
+- Prompt: Write me a Python script that connects to Odoo over XML-RPC and
+  lists all contacts.
+- Expected tool: none. This is the strongest near miss in the set: it names
+  Odoo, contacts and a read, and the plugin does all three.
+- Expected result: the model writes the script. It must not call the plugin:
+  the user asked for source code, not for their data, and the script has to
+  run against the user's own credentials rather than this connection.
+- Fixture data: none.
+- Why not: a code-generation request is satisfied by writing code. Reading
+  live records would answer a question nobody asked and put real data in an
+  answer meant to be a snippet.
 
-### Negative test case 3: an invoice query without move_type
+### Negative test case 3: figures that are in the conversation
 
-- Prompt: What is our total invoiced amount?
-- Expected tool: `search_read` or `count_records` on `account.move` without
-  a `move_type` filter.
-- Expected result: a structural refusal — begins exactly: `account.move
-  query without an explicit 'move_type' filter.` and explains that the model
-  mixes customer invoices, vendor bills, credit notes and raw journal
-  entries, so counting them together produces a number matching nothing on
-  screen. A well-behaved model then re-asks with
-  `[["move_type", "=", "out_invoice"]]` and returns the customer-invoice
-  total.
-- Fixture data: at least one posted customer invoice in the demo database.
-- Why not: the mixed total is not an error, it is a wrong number — the guard
-  refuses a meaningless read the same way it refuses a forbidden write.
+- Prompt: Summarise the sales figures in the spreadsheet I just uploaded.
+- Expected tool: none. "Sales figures" overlaps exactly with what this plugin
+  reads, which is what makes it tempting.
+- Expected result: the model reads the attached file and summarises it. The
+  plugin is not invoked, and the numbers in the answer are the ones in the
+  attachment — not different numbers pulled from Odoo, which would silently
+  answer a different question.
+- Fixture data: any spreadsheet attached to the conversation.
+- Why not: the data the user pointed at is in the conversation. Reaching into
+  Odoo instead would replace their figures with other figures under the same
+  heading.
 
 ## Reviewer test account (TEMPLATE — the owner fills this before submitting)
 
-Fill every placeholder from a dedicated demo user on the development
-instance. Never a production instance, never a real customer's data, never a
-real person's login. Generate a fresh API key for the review and revoke it
-when the review closes.
+Fill every placeholder from a demo user on a non-production instance. Never a
+production instance, never a real customer's data. Generate a fresh API key
+for the review, give it the longest expiry the Odoo version offers — a key
+that lapses mid-review, or during the ongoing testing that follows approval,
+kills the reviewer's access with no warning — and revoke it when the review
+closes.
+
+**The API key is deliberately not written down here.** It goes into the
+submission portal and nowhere else; `tests/test_listing_copy.py` fails if a
+40-hex string appears in this file.
 
 | Field | Value |
 |---|---|
-| Odoo instance URL | `<dev instance base URL, no trailing slash>` |
+| Odoo instance URL | `<review instance base URL, no trailing slash>` |
 | MCP endpoint | `https://mcp.singleflo.com/mcp` |
-| Login | `<demo user login>` |
 | API key | `<fresh key, generated for this review, revoked after>` |
-| Database name | `<only when the instance serves more than one database>` |
+| Database name | leave empty when the host serves exactly one database |
+| Odoo login | leave empty when the key owner's uid is below 60 |
 
-What the account can see: `<one paragraph — the demo companies, the draft
-and sent quotations, the sales orders, the one posted customer invoice, the
-Reviewer Two user>`.
+**There is no password, and no Odoo login page to visit.** The reviewer signs
+in once on the server's own consent page, which their client opens for them,
+and types two values: the Odoo URL and the API key. Both optional fields
+above are discovered — verified against the review instance, which serves one
+database and a key owner well inside the probe range. No MFA, no SMS, no
+email confirmation, no private network: the key authenticates on its own.
 
-The connection offers two policies on the consent page: read-only (needed
-for negative test case 2) and standard (needed for positive test case 4).
-The reviewer connects twice, once per policy. No MFA, email confirmation or
-private-network access is involved — the key authenticates on its own.
+At that same consent page the reviewer chooses what the assistant may do.
+**Pick `standard`** — positive cases 4 and 5 write, and `read` refuses them
+by design. Deletion is not offered under either choice.
+
+What the account can see: `<one paragraph — the companies, the draft
+quotations, the confirmed sales orders, the customer invoices, the project
+tasks across their stages, and the second internal user used for the
+messaging case>`.
+
+One behaviour to expect rather than report as a fault: a question like "what
+is our total invoiced amount" is **refused**, naming `account.move` and
+asking for an explicit `move_type` filter. That model mixes customer
+invoices, vendor bills, credit notes and journal entries, so a total over all
+of them matches nothing the user sees on screen. The assistant is expected to
+re-ask with the filter and then answer.
 
 ## Icon
 

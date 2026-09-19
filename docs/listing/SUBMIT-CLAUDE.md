@@ -30,7 +30,7 @@ The portal walks through sequential steps. Fill each field using the values from
 - **URL Reach**: Universal URL (the same URL for every user).
 
 ### Step 3: Tools
-- Select **Sync Tools**. The portal automatically reads the 19 tools exposed by `https://mcp.singleflo.com/mcp` and verifies that every tool carries a title and valid annotations (`readOnlyHint` and `destructiveHint`).
+- Select **Sync Tools**. The portal automatically reads the 22 tools exposed by `https://mcp.singleflo.com/mcp` and verifies that every tool carries a title and valid annotations. Claude requires `title` plus one of `readOnlyHint` / `destructiveHint`; this server publishes all three hints on all 22, which also satisfies OpenAI's stricter rule.
 
 ### Step 4: Listing
 - **Name**: `Odoo Assistant` (from dossier section `Identity` -> `Name`, 100 characters max).
@@ -71,7 +71,7 @@ The portal walks through sequential steps. Fill each field using the values from
 
 Include a summary of visible fixture data (demo companies, draft/sent quotations, sales orders, posted customer invoice, Reviewer Two user).
 
-- Confirm you have tested all 19 tools using MCP Inspector or custom connectors.
+- Confirm you have tested all 22 tools using MCP Inspector or custom connectors.
 
 ### Step 10: Compliance
 - Attest to all seven policy acknowledgments.
@@ -89,8 +89,19 @@ During review, Anthropic verifies:
 
 ## What Happens After Submission
 
+Submission is no longer one human gate. An automated scan runs first, and a
+server that passes it is listed as a **Community Connector** without anyone
+testing it by hand. Anthropic may then escalate a connector it considers
+highly useful to **Verified**, a slower review where a person exercises every
+tool. The two labels differ in the signal they give a user, not in what the
+connector may do once connected — so the listing is live at the first
+outcome, and the badge is a second, separate event that is not applied for.
+
 - **Submissions Dashboard**: Track progress and reviewer messages at `https://claude.ai/admin-settings/directory/submissions`.
 - **Publication**: Once approved and published, your listing slug becomes permanent and public.
+- **No domain verification**: unlike OpenAI, Anthropic asks for no DNS record
+  and no `.well-known` challenge here. The `/.well-known/openai-apps-challenge`
+  route this server carries is for the OpenAI submission alone.
 - **Health & Usage Dashboard**: Access server health metrics and invocation volume analytics from the dashboard.
 
 ## Custom Connector Fallback (While Waiting)

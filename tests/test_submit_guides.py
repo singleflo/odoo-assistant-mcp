@@ -136,3 +136,41 @@ def test_guides_urls_liveness():
            if pending_deploy else ""))
     if pending_deploy:
         print("EXPECTED-PENDING-DEPLOY (not failures):", pending_deploy)
+
+
+# ------------------------------------------------------------ the tool count
+# Both guides tell the submitter how many tools the portal will find, and one
+# of them lists every name. That number drifted from 19 to 22 unnoticed while
+# the dossier stayed right, because the dossier is compared against the live
+# server by test_listing_copy and these guides were compared against nothing.
+def _live_tool_names() -> list[str]:
+    import anyio
+
+    from odoo_assistant import server
+
+    server._register_all()
+    return [tool.name for tool in anyio.run(server.mcp.list_tools)]
+
+
+def test_every_tool_count_in_the_guides_matches_the_live_server():
+    """A submitter reading "19 tools" and seeing 22 in the portal cannot tell
+    which side is wrong. The count in the guides is the server's, or it is a
+    lie that survives to the review."""
+    expected = len(_live_tool_names())
+
+    wrong = []
+    for path in (SUBMIT_CLAUDE_PATH, SUBMIT_OPENAI_PATH):
+        for count in re.findall(r"(\d+)\s+tools\b", _guide_text(path)):
+            if int(count) != expected:
+                wrong.append(f"{path}: says {count} tools, server exposes {expected}")
+    assert not wrong, wrong
+
+
+def test_the_openai_guide_lists_every_tool_by_name():
+    """The MCP tab's snapshot is the reviewed contract, so the guide spells it
+    out. A tool missing from that list is a tool nobody checked."""
+    names = _live_tool_names()
+    text = _guide_text(SUBMIT_OPENAI_PATH)
+
+    missing = [name for name in names if f"`{name}`" not in text]
+    assert not missing, f"{SUBMIT_OPENAI_PATH} never names: {missing}"

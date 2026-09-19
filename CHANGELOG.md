@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-09-19
+
+### Fixed
+- **A Discuss message that was delivered now says so.** Measured live on an Odoo 18 Enterprise instance: `message_post` answers with a value Odoo's own XML-RPC layer cannot serialise, so the client raised `OdooExecutedButUnserializable` — on **every** send, not only the first, and with the message already sitting in the channel. The caller therefore heard `COMMITTED but result unserializable … Verified state: NOT RE-READ`, which is accurate and useless: it reads as a malfunction, and the one thing it carries — do not retry — is exactly what a re-read settles for good. `send_direct_message` and `send_channel_message` now answer that exception the way this repo answers every write whose result is in doubt, by reading the record back: the message id returned comes out of the channel itself, which is stronger proof of delivery than the return value would ever have been. The post is never repeated. When the re-read cannot find the message — the newest in the channel is somebody else's — the exception passes through untouched and the cautious text is what the caller gets, because at that point nothing proves ours landed.
+
 ## [0.3.5] - 2026-09-19
 
 ### Added

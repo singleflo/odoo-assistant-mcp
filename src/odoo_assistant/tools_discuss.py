@@ -30,6 +30,8 @@ Two properties here are structural rather than promised:
 guesses at ids. Ask it first: it answers who exists, who is online, and which
 conversations are already open.
 """
+import html as html_module
+import re
 import sys
 from pathlib import Path
 from weakref import WeakKeyDictionary
@@ -51,7 +53,7 @@ from odoo_assistant.server_errors import (  # noqa: E402
 )
 from odoo_assistant.server_safety import gate  # noqa: E402
 
-from odoo_client import Odoo  # noqa: E402
+from odoo_client import Odoo, OdooExecutedButUnserializable  # noqa: E402
 
 DISCUSS_CHANNEL_MODEL = "discuss.channel"
 MAIL_CHANNEL_MODEL = "mail.channel"
@@ -263,16 +265,68 @@ def read_conversation(
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
 
 
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def _plain(text: object) -> str:
+    """Markup and spacing removed, so what was sent can be compared with what
+    Odoo stored — it wraps a plain body in `<p>…</p>` and escapes entities."""
+    if not isinstance(text, str):
+        return ""
+    return " ".join(html_module.unescape(_TAGS.sub(" ", text)).split())
+
+
+def _posted_message_id(odoo: Odoo, channel_model: str, channel_id: int,
+                       message: str) -> int | None:
+    """The id of the message just posted, proven by reading the channel.
+
+    Returns None when the newest message is not the one we sent, which is the
+    only honest answer: something else is the newest, so nothing here proves
+    ours landed. The caller then reports uncertainty rather than success.
+    """
+    rows = _rows(odoo.search_read(
+        "mail.message",
+        [["model", "=", channel_model], ["res_id", "=", channel_id]],
+        ["id", "body"], limit=1, order="id desc"))
+    if not rows:
+        return None
+    sent, stored = _plain(message), _plain(rows[0].get("body"))
+    if not sent or sent not in stored:
+        return None
+    return int(rows[0]["id"])
+
+
 def _post(odoo: Odoo, channel_id: int, message: str) -> object:
     """The one place a Discuss message is written. See the module docstring
-    for why `message_type` is spelled out and `partner_ids` is absent."""
+    for why `message_type` is spelled out and `partner_ids` is absent.
+
+    Measured live on Odoo 18 Enterprise: `message_post` answers with a value
+    its own XML-RPC layer cannot serialise, so the client raises
+    `OdooExecutedButUnserializable` — on EVERY send, not only the first, and
+    with the message already sitting in the channel. Passing that through
+    would be accurate and useless: it reads as a malfunction, and the one
+    thing it tells the caller — do not retry — is exactly what a re-read
+    settles for good. So the exception is answered the way this repo answers
+    every write whose result is in doubt: by reading the record back. The id
+    returned below came out of the channel itself, which is a stronger proof
+    of delivery than the return value would ever have been.
+
+    When the re-read cannot find our message the exception is re-raised
+    untouched, and `handle_odoo_exception` reports the uncertainty.
+    """
     channel_model = _discuss_models(odoo)[0]
     _gate_or_raise(channel_model, "message_post", [channel_id])
-    return odoo.call(channel_model, "message_post", [[channel_id]], {
-        "body": message,
-        "message_type": "comment",
-        "subtype_xmlid": "mail.mt_comment",
-    })
+    try:
+        return odoo.call(channel_model, "message_post", [[channel_id]], {
+            "body": message,
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_comment",
+        })
+    except OdooExecutedButUnserializable:
+        posted = _posted_message_id(odoo, channel_model, channel_id, message)
+        if posted is None:
+            raise
+        return posted
 
 
 def send_direct_message(

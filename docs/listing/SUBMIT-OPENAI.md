@@ -6,7 +6,8 @@ Step-by-step instructions for submitting Odoo Assistant to the universal OpenAI 
 
 Before submitting to the Plugin Directory, confirm you have:
 
-1. **Verified Developer Identity**: Completed individual or business verification under organization settings at `https://platform.openai.com/settings/organization/general`.
+1. **Verified Developer Identity**: Completed individual or business verification under organization settings at `https://platform.openai.com/settings/organization/general`. **Done** — the organization is verified as a **Business**, under the name **Persevida SL**, which is therefore the developer name the directory will display. The same string is what the hosted server prints on its own legal pages (`ODOO_REMOTE_PUBLISHER`), so portal, privacy notice and terms name one publisher and not three.
+   One further prerequisite is decided at the organization level and blocks the submission outright rather than failing review: the project must **not** be on EU data residency, because an EU-residency project cannot submit a plugin carrying an MCP server. Use a global-residency project.
 2. **Apps Management Write Role**: Your user role in the OpenAI Platform must have **Apps Management** set to **Write** under `https://platform.openai.com/settings/organization/people/roles` (Organization Owners have this by default).
 3. **Prepared Materials**: Have the dossier ready (`docs/listing/README.md`), along with logo assets, starter prompts, and test cases.
 
@@ -58,7 +59,8 @@ Fill in public listing details from `docs/listing/README.md`:
 - **Authentication**: OAuth 2.0 with PKCE (`oauth_dcr`).
 - Click **Scan Tools**.
   - The scan snapshots the server's tool metadata.
-  - Snapshot contents: 19 tools (`search_read`, `read_record`, `count_records`, `instance_overview`, `required_fields`, `create_record`, `write_record`, `run_action`, `cancel_record`, `notify_user`, `create_activity`, `download_docs`, `generate_pdf`, `list_message_targets`, `read_conversation`, `send_direct_message`, `send_channel_message`, `explore_module`, `list_known_modules`), along with their `title`, `description`, `inputSchema`, `readOnlyHint`, `destructiveHint`, and `openWorldHint` (refer to dossier section `Tool annotations`).
+  - Snapshot contents: 22 tools (`search_read`, `read_record`, `read_long_field`, `count_records`, `group_records`, `instance_overview`, `required_fields`, `describe_model`, `create_record`, `write_record`, `run_action`, `cancel_record`, `notify_user`, `create_activity`, `download_docs`, `generate_pdf`, `list_message_targets`, `read_conversation`, `send_direct_message`, `send_channel_message`, `explore_module`, `list_known_modules`), along with their `title`, `description`, `inputSchema`, `readOnlyHint`, `destructiveHint`, and `openWorldHint` (refer to dossier section `Tool annotations`).
+- The portal asks for a **written justification per annotation**, not one per tool. The dossier's `Tool annotations` table carries the `readOnlyHint` and `destructiveHint` reasoning in its `Why` column, row by row; the `openWorldHint` justification is stated once above the table, because it is the same sentence for all 22 — every tool answers from an operator-supplied Odoo instance rather than from a workspace this publisher owns.
 
 ### 3. Prompts Tab
 

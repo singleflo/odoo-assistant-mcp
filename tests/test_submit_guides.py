@@ -81,8 +81,11 @@ def test_guides_urls_liveness():
         # swapped — a liveness check that calls that a broken link fails its
         # own push. Measured window: over 30 s, under 3 min. So for OUR host
         # a transient 5xx is a deploy window to wait out, bounded; every
-        # other host is checked strictly, first answer counts.
-        attempts = 9 if host in EXPECTED_PENDING_HOSTS else 1
+        # other host is checked strictly: an HTTP answer counts on the first
+        # try. A connection that never gets an answer is not an answer, and
+        # twice in a row a runner timed out on a host this machine reaches in
+        # 0,15 s — so that one shape is retried, up to 5 times, backing off.
+        attempts = 9 if host in EXPECTED_PENDING_HOSTS else 5
         for attempt in range(attempts):
             try:
                 with urllib.request.urlopen(req, timeout=10) as resp:
@@ -131,6 +134,12 @@ def test_guides_urls_liveness():
                 # fail in CI. A typo in one of these paths still fails
                 # strictly once the host is live, because that arrives as an
                 # HTTP status (404) and never reaches this branch.
+                # 3 s, 6 s, 9 s, 12 s — capped at 5 tries however many the
+                # 5xx path is allowed, so a host that is genuinely down costs
+                # 30 s of waiting rather than two minutes.
+                if attempt + 1 < min(attempts, 5):
+                    time.sleep(3 * (attempt + 1))
+                    continue
                 if host in EXPECTED_PENDING_HOSTS:
                     pending_deploy.append(
                         f"{url} -> {type(e).__name__} ({getattr(e, 'reason', e)}) "

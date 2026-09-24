@@ -462,11 +462,18 @@ def test_register_publishes_the_four_tools_with_truthful_annotations():
     assert set(hints) == {"create_record", "write_record", "run_action",
                           "cancel_record"}
     assert hints["create_record"] == ToolAnnotations(
+        title="Create a record",
         read_only_hint=False, destructive_hint=False, idempotent_hint=False,
         open_world_hint=True)
     assert hints["write_record"] == ToolAnnotations(
+        title="Update a record",
         read_only_hint=False, destructive_hint=True, idempotent_hint=True,
         open_world_hint=True)
-    assert hints["run_action"] == hints["cancel_record"] == ToolAnnotations(
+    assert hints["run_action"] == ToolAnnotations(
+        title="Run a workflow action",
+        read_only_hint=False, destructive_hint=True, idempotent_hint=False,
+        open_world_hint=True)
+    assert hints["cancel_record"] == ToolAnnotations(
+        title="Cancel a record",
         read_only_hint=False, destructive_hint=True, idempotent_hint=False,
         open_world_hint=True)

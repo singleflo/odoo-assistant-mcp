@@ -448,14 +448,25 @@ def send_channel_message(
 
 def register(mcp: MCPServer) -> None:
     """Register the four Discuss tools on `mcp`."""
-    reads = ToolAnnotations(
-        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    posting = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=False,
-        open_world_hint=True)
-    mcp.add_tool(list_message_targets, title="List message targets", annotations=reads)
-    mcp.add_tool(read_conversation, title="Read a conversation", annotations=reads)
+    def _read(title: str) -> ToolAnnotations:
+        return ToolAnnotations(
+            title=title, read_only_hint=True, destructive_hint=False,
+            idempotent_hint=True, open_world_hint=True)
+
+    def _posting(title: str) -> ToolAnnotations:
+        return ToolAnnotations(
+            title=title, read_only_hint=False, destructive_hint=False,
+            idempotent_hint=False, open_world_hint=True)
+
     mcp.add_tool(
-        send_direct_message, title="Send a direct message", annotations=posting)
-    mcp.add_tool(send_channel_message, title="Post to a channel", annotations=posting)
+        list_message_targets, title="List message targets",
+        annotations=_read("List message targets"))
+    mcp.add_tool(
+        read_conversation, title="Read a conversation",
+        annotations=_read("Read a conversation"))
+    mcp.add_tool(
+        send_direct_message, title="Send a direct message",
+        annotations=_posting("Send a direct message"))
+    mcp.add_tool(
+        send_channel_message, title="Post to a channel",
+        annotations=_posting("Post to a channel"))

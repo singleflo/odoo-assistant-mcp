@@ -125,14 +125,18 @@ def register(mcp: MCPServer) -> None:
     # explore_module writes a persistent reference document to disk (and
     # re-running it rewrites the same file), so MCP semantics make it a
     # non-read-only, idempotent write; list_known_modules stays a pure read.
-    writes_reference = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    reads = ToolAnnotations(
-        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    mcp.add_tool(explore_module, title="Explore a module", annotations=writes_reference)
-    mcp.add_tool(list_known_modules, title="List known modules", annotations=reads)
+    mcp.add_tool(
+        explore_module, title="Explore a module",
+        annotations=ToolAnnotations(
+            title="Explore a module", read_only_hint=False,
+            destructive_hint=False, idempotent_hint=True,
+            open_world_hint=True))
+    mcp.add_tool(
+        list_known_modules, title="List known modules",
+        annotations=ToolAnnotations(
+            title="List known modules", read_only_hint=True,
+            destructive_hint=False, idempotent_hint=True,
+            open_world_hint=True))
 
 
 def _explore(module_name: str, action: str, models: str) -> ToolOutcome:

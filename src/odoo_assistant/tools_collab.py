@@ -392,18 +392,20 @@ def register(mcp: MCPServer) -> None:
     # server as 15-minute links backed by stored files, on stdio as files on
     # disk — so MCP semantics make it a write, not a read. generate_pdf runs
     # a print wizard that can SEND the document, so it is not read-only either.
-    people = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=False,
-        open_world_hint=True)
-    delivers_files = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    pdf = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    mcp.add_tool(notify_user, title="Notify users on a record", annotations=people)
-    mcp.add_tool(create_activity, title="Schedule an activity", annotations=people)
+    def _ann(title: str, *, idempotent: bool) -> ToolAnnotations:
+        return ToolAnnotations(
+            title=title, read_only_hint=False, destructive_hint=False,
+            idempotent_hint=idempotent, open_world_hint=True)
+
+    mcp.add_tool(
+        notify_user, title="Notify users on a record",
+        annotations=_ann("Notify users on a record", idempotent=False))
+    mcp.add_tool(
+        create_activity, title="Schedule an activity",
+        annotations=_ann("Schedule an activity", idempotent=False))
     mcp.add_tool(
         download_docs, title="Download a record's documents",
-        annotations=delivers_files)
-    mcp.add_tool(generate_pdf, title="Generate a record's PDF", annotations=pdf)
+        annotations=_ann("Download a record's documents", idempotent=True))
+    mcp.add_tool(
+        generate_pdf, title="Generate a record's PDF",
+        annotations=_ann("Generate a record's PDF", idempotent=True))

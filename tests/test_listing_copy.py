@@ -132,6 +132,13 @@ def test_annotation_table_matches_the_live_wire_annotations():
     live = {}
     for tool in anyio.run(server.mcp.list_tools):
         assert tool.annotations is not None, tool.name
+        # Anthropic's directory reads the title from the annotations object,
+        # not from the tool's own title field, and flags every tool whose
+        # annotations.title is empty — measured: 22 of 22 flagged on a real
+        # submission where Tool.title was set but annotations.title was not.
+        assert tool.annotations.title, (
+            f"annotations.title missing on {tool.name} — the connector "
+            "directory rejects a tool without it")
         live[tool.name] = (
             tool.annotations.read_only_hint,
             tool.annotations.destructive_hint,

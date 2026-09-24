@@ -246,17 +246,23 @@ def register(mcp: MCPServer) -> None:
     the same place. Actions transition state one way, so nothing about them is
     idempotent. All four reach an external system, hence the open world.
     """
-    additive = ToolAnnotations(
-        read_only_hint=False, destructive_hint=False, idempotent_hint=False,
-        open_world_hint=True)
-    overwriting = ToolAnnotations(
-        read_only_hint=False, destructive_hint=True, idempotent_hint=True,
-        open_world_hint=True)
-    transition = ToolAnnotations(
-        read_only_hint=False, destructive_hint=True, idempotent_hint=False,
-        open_world_hint=True)
+    def _ann(
+        title: str, *, destructive: bool, idempotent: bool,
+    ) -> ToolAnnotations:
+        return ToolAnnotations(
+            title=title, read_only_hint=False, destructive_hint=destructive,
+            idempotent_hint=idempotent, open_world_hint=True)
 
-    mcp.add_tool(create_record, title="Create a record", annotations=additive)
-    mcp.add_tool(write_record, title="Update a record", annotations=overwriting)
-    mcp.add_tool(run_action, title="Run a workflow action", annotations=transition)
-    mcp.add_tool(cancel_record, title="Cancel a record", annotations=transition)
+    mcp.add_tool(
+        create_record, title="Create a record",
+        annotations=_ann("Create a record", destructive=False, idempotent=False))
+    mcp.add_tool(
+        write_record, title="Update a record",
+        annotations=_ann("Update a record", destructive=True, idempotent=True))
+    mcp.add_tool(
+        run_action, title="Run a workflow action",
+        annotations=_ann(
+            "Run a workflow action", destructive=True, idempotent=False))
+    mcp.add_tool(
+        cancel_record, title="Cancel a record",
+        annotations=_ann("Cancel a record", destructive=True, idempotent=False))

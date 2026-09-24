@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-09-24
+
+### Fixed
+- **Every tool now carries its title inside `annotations.title`.** The titles were there all along — but in the tool object's own `title` field, where the local hosts read them, and Anthropic's connector directory reads `annotations.title` instead and flags every tool without one: measured on the real submission portal, all 22 came back *"Missing title annotation"*. The hints were right, the grouping was right, and the one field that names a tool for a directory listing was sitting where that directory does not look. Both places now carry it: `Tool.title` keeps serving the hosts that read the tool field, `ToolAnnotations.title` the stores that read the annotations. The dossier test asserts a non-empty title per tool, so a tool registered without one fails the suite rather than a submission.
+
 ## [0.3.6] - 2026-09-19
 
 ### Fixed

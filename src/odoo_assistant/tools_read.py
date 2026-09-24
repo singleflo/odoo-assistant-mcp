@@ -593,19 +593,36 @@ def describe_model(
 def register(mcp: MCPServer) -> None:
     """Attach the read tools to `mcp`. Called by server.py, never at import."""
     _redirect_profiles()
-    reads = ToolAnnotations(
-        read_only_hint=True, destructive_hint=False, idempotent_hint=True,
-        open_world_hint=True)
-    mcp.add_tool(search_read, title="Search records", annotations=reads)
-    mcp.add_tool(read_record, title="Read a record", annotations=reads)
+    # All pure reads: nothing they run can change data, every repeat of the
+    # call lands in the same place, and the answers come from an open-ended
+    # external system. The title lives INSIDE the annotations: Anthropic's
+    # directory reads annotations.title and flags its absence per tool,
+    # while Tool.title serves the hosts that read the tool field instead.
+    def _read(title: str) -> ToolAnnotations:
+        return ToolAnnotations(
+            title=title, read_only_hint=True, destructive_hint=False,
+            idempotent_hint=True, open_world_hint=True)
+
     mcp.add_tool(
-        read_long_field, title="Read a long text field", annotations=reads)
-    mcp.add_tool(count_records, title="Count records", annotations=reads)
-    mcp.add_tool(group_records, title="Group records", annotations=reads)
-    mcp.add_tool(instance_overview, title="Instance overview", annotations=reads)
+        search_read, title="Search records", annotations=_read("Search records"))
     mcp.add_tool(
-        required_fields, title="Required fields for create", annotations=reads)
-    mcp.add_tool(describe_model, title="Describe a model", annotations=reads)
+        read_record, title="Read a record", annotations=_read("Read a record"))
+    mcp.add_tool(
+        read_long_field, title="Read a long text field",
+        annotations=_read("Read a long text field"))
+    mcp.add_tool(
+        count_records, title="Count records", annotations=_read("Count records"))
+    mcp.add_tool(
+        group_records, title="Group records", annotations=_read("Group records"))
+    mcp.add_tool(
+        instance_overview, title="Instance overview",
+        annotations=_read("Instance overview"))
+    mcp.add_tool(
+        required_fields, title="Required fields for create",
+        annotations=_read("Required fields for create"))
+    mcp.add_tool(
+        describe_model, title="Describe a model",
+        annotations=_read("Describe a model"))
 
 
 _redirect_profiles()

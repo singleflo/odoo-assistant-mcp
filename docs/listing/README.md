@@ -63,25 +63,27 @@ One text for both stores (Claude caps at 2,000 characters, OpenAI at 4,000 —
 the shorter limit wins).
 
 ```text
-Odoo Assistant connects your AI host to your own Odoo instance over the Model Context Protocol. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a method-name gate you own before it reaches Odoo.
+Odoo Assistant connects your AI host to your own Odoo instance over the Model Context Protocol. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.
 
-Twenty-two tools cover the working day: search, read and count any model; a long text field read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
+Twenty-two tools cover the working day: search, read and count any model; long text fields read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
 
-Safety is structural, not advisory. Deletion is refused unless a separate operator variable grants it. The default deny list blocks cancelling, archiving and mass mailing. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided and the variable that would change the answer — and the lists live in the operator's configuration, read at call time, out of the model's reach.
+Safety is structural, not advisory. You sign in once with your Odoo address and an API key — never a password — and choose what the assistant may do: read only, or standard, which adds creating, updating, confirming and messaging. Deletion is never available. Cancelling, archiving and mass mailing are refused. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided it and what would change the answer.
 
-Authentication uses your Odoo API key, never a password. Works with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license.
+Works with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com — the same server behind this connector.
 ```
 
 ## Categories
 
 Claude asks for one to five categories, picked in the submission portal —
-the picker's labels govern, so confirm these against it at submission time:
+the picker's labels govern. Measured against the picker on 2026-09-24: it
+offers no "Business" and no "Operations", so the submitted five are the
+closest labels it does offer:
 
-1. Business
-2. Productivity
-3. Data & analytics
-4. Developer tools
-5. Operations
+1. Productivity
+2. Communication
+3. Data & Analytics
+4. Development tools
+5. Sales and marketing
 
 OpenAI takes one category, already carried by
 `plugins/odoo-assistant/plugin.json`:

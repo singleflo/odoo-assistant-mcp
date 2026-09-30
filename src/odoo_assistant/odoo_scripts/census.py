@@ -76,8 +76,19 @@ def fingerprint(odoo):
 def has_model(odoo, model):
     # Verified live: querying an absent model writes an ERROR traceback into
     # someone else's production log, so establish existence without provoking it.
-    if not odoo.search_count("ir.model", [["model", "=", model]]):
-        return False
+    # That catalog probe is admin-gated, though: measured on Odoo 18, a plain
+    # Internal User cannot read ir.model at all, and the AccessError killed
+    # census — so instance_overview, the first call of every fresh install —
+    # for every non-admin while admins never saw it. When the catalog is
+    # unreadable the model itself is probed directly: an absent model and a
+    # forbidden one both raise, and either way this census cannot count it,
+    # at the cost of the log line the catalog probe exists to avoid — paid
+    # only where a non-admin profiles a model the instance does not carry.
+    try:
+        if not odoo.search_count("ir.model", [["model", "=", model]]):
+            return False
+    except OdooError:
+        pass  # no access to the catalog: decide by probing the model itself
     try:
         odoo.search_count(model, [])
         return True

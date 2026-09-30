@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-09-30
+
+### Fixed
+- **A non-admin can finally take the first call.** Measured live on Odoo 18: a plain Internal User cannot read `ir.model` at all, and `has_model()` opened every census by counting `ir.model` — so `instance_overview`, the first call of a fresh install, died for every non-admin with `ir.model.search_count: Se necessario, contattare l'amministratore per richiedere l'accesso`, while admins never saw it. The catalog probe is what keeps an absent model's ERROR traceback out of the server log, so it stays first; when the catalog itself is unreadable the model is now probed directly, where an absent model and a forbidden one both raise and either way means "this census cannot count it". The trade — a log line on instances where a non-admin profiles a model the instance does not carry — is paid only by that case. Re-proven live with a dedicated Internal-User-only account: connect, census and the rendered overview now complete, reporting exactly the areas that user may read (partners and projects, no accounting), each count filtered by their record rules.
+
 ## [0.3.7] - 2026-09-24
 
 ### Fixed

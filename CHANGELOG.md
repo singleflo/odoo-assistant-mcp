@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-10-02
+
+### Fixed
+- **`explore_module` now declares itself destructive.** It carried `destructiveHint: false` on the reasoning that it only writes a reference document — but `generate` replaces everything above the `## NOTES` marker of an existing reference, so the earlier generation is gone and only the hand-written notes survive. That is a destructive update in MCP's own terms, and OpenAI's plugin scanner flagged exactly this: *"marked destructiveHint: false, but its behavior appears to cause material loss or a hard-to-reverse change."* The hint is now `true` (still idempotent: the same input rewrites the same file), the `action` description says that `generate` replaces the earlier generation and that `list` writes nothing, and the dossier's annotation row says the same.
+
 ## [0.3.8] - 2026-09-30
 
 ### Fixed

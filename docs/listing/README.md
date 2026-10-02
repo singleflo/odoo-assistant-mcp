@@ -194,7 +194,7 @@ than from a bounded workspace owned by the publisher.
 | `read_conversation` | yes | no | yes | Returns the messages of one conversation, newest first; nothing is sent or altered. |
 | `send_direct_message` | no | no | yes | Posts a new 1-to-1 message, an additive write that alters no existing record. |
 | `send_channel_message` | no | no | yes | Posts a new message to an existing channel, an additive write only. |
-| `explore_module` | no | no | yes | Interrogates the live instance and writes a persistent reference document to disk — a durable artifact, so it is not read-only; regenerating rewrites the same document, and nothing existing is destroyed. |
+| `explore_module` | no | yes | yes | Interrogates the live instance and writes a persistent reference document to disk — a durable artifact, so it is not read-only; regenerating replaces the generated part of the earlier document (only its hand-written NOTES section is carried over), so the previous generation is lost. |
 | `list_known_modules` | yes | no | yes | Lists the module references this server has already generated, from local files. |
 
 ## Test cases

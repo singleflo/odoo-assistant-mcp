@@ -6,12 +6,12 @@
     "url": "https://github.com/singleflo/odoo-assistant-mcp",
     "source": "github"
   },
-      "version": "0.3.8",
+      "version": "0.3.9",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "odoo-assistant",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "transport": {
         "type": "stdio"
       },

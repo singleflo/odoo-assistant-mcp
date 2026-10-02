@@ -83,8 +83,9 @@ def explore_module(
         "Module to explore, e.g. \"helpdesk\". Must be a module slug, since "
         "it names the reference file on \"generate\"; ignored on \"list\"."))],
     action: Annotated[str, Field(description=(
-        '"generate" (the default) writes the reference document; "list" '
-        "ranks what is worth exploring."))] = "generate",
+        '"generate" (the default) writes the reference document, replacing '
+        "the generated part of an earlier one (its NOTES section is kept); "
+        '"list" ranks what is worth exploring and writes nothing.'))] = "generate",
     models: Annotated[str, Field(description=(
         'Comma-separated models for a module the script does not know, e.g. '
         '"superchat.message,superchat.template". Defaults to the script\'s '
@@ -97,7 +98,9 @@ def explore_module(
             slug, since it names the reference file on "generate"; ignored
             on "list".
         action: "generate" (the default) writes the reference document,
-            "list" ranks what is worth exploring.
+            replacing the generated part of an earlier one (its NOTES
+            section is kept); "list" ranks what is worth exploring and
+            writes nothing.
         models: Comma-separated models for a module the script does not know,
             e.g. "superchat.message,superchat.template". Defaults to the
             script's own grouping for `module_name`.
@@ -122,14 +125,17 @@ def register(mcp: MCPServer) -> None:
     global _mcp
     _mcp = mcp
     _redirect_references()
-    # explore_module writes a persistent reference document to disk (and
-    # re-running it rewrites the same file), so MCP semantics make it a
-    # non-read-only, idempotent write; list_known_modules stays a pure read.
+    # explore_module writes a persistent reference document to disk, so it is
+    # not read-only. Regenerating REPLACES everything above the NOTES marker:
+    # the earlier generation is gone, which MCP calls a destructive update —
+    # OpenAI's scanner flagged the former `destructive_hint=False` for exactly
+    # that. Same input, same file, so it stays idempotent.
+    # list_known_modules stays a pure read.
     mcp.add_tool(
         explore_module, title="Explore a module",
         annotations=ToolAnnotations(
             title="Explore a module", read_only_hint=False,
-            destructive_hint=False, idempotent_hint=True,
+            destructive_hint=True, idempotent_hint=True,
             open_world_hint=True))
     mcp.add_tool(
         list_known_modules, title="List known modules",

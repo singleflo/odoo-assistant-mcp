@@ -1,6 +1,6 @@
 # Submission Guide: Claude Connectors Directory
 
-Step-by-step instructions for submitting Odoo Assistant to the Anthropic Connectors Directory. All copy and values referenced below map directly to the dossier in `docs/listing/README.md`.
+Step-by-step instructions for submitting Singleflo for Odoo to the Anthropic Connectors Directory. All copy and values referenced below map directly to the dossier in `docs/listing/README.md`.
 
 ## Prerequisites
 
@@ -33,8 +33,8 @@ The portal walks through sequential steps. Fill each field using the values from
 - Select **Sync Tools**. The portal automatically reads the 22 tools exposed by `https://mcp.singleflo.com/mcp` and verifies that every tool carries a title and valid annotations. Claude requires `title` plus one of `readOnlyHint` / `destructiveHint`; this server publishes all three hints on all 22, which also satisfies OpenAI's stricter rule.
 
 ### Step 4: Listing
-- **Name**: `Odoo Assistant` (from dossier section `Identity` -> `Name`, 100 characters max).
-- **Tagline**: `An Odoo virtual employee — query, create, act, verify` (from dossier section `Identity` -> `Tagline`, 55 characters max).
+- **Name**: `Singleflo for Odoo` (from dossier section `Identity` -> `Name`, 100 characters max). It replaced "Odoo Assistant" after OpenAI rejected that name as implying an affiliation with Odoo; an existing Claude listing needs the same name, tagline and description edited in the portal.
+- **Tagline**: `Query, create and act on your own Odoo records` (from dossier section `Identity` -> `Tagline`, 55 characters max).
 - **Description**: Copy the exact text from dossier section `Identity` -> `Long description` (2,000 characters max).
 - **Categories**: Select 1 to 5 categories from the portal dropdown (recommended from dossier section `Categories`: Business, Productivity, Data & analytics, Developer tools, Operations).
 - **Documentation URL**: `https://github.com/singleflo/odoo-assistant-mcp` (from dossier section `URLs` -> `Documentation URL`).

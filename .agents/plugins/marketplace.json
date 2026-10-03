@@ -1,7 +1,7 @@
 {
   "name": "odoo-assistant",
   "interface": {
-    "displayName": "Odoo Assistant"
+    "displayName": "Singleflo for Odoo"
   },
   "plugins": [
     {

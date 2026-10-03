@@ -636,7 +636,7 @@ def _page_handler(name: str,
 def main() -> None:
     """Entry point of the `odoo-assistant-remote` console script."""
     if "--help" in sys.argv[1:] or "-h" in sys.argv[1:]:
-        print("usage: odoo-assistant-remote\n\nRun the hosted Odoo Assistant MCP server.")
+        print("usage: odoo-assistant-remote\n\nRun the hosted Singleflo for Odoo MCP server.")
         return
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO,

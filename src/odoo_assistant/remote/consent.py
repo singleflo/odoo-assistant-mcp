@@ -480,7 +480,7 @@ _WALKTHROUGH_STEPS = (
      "The Security Control window asking for the password"),
     ("Name the key and set how long it lasts",
      "The <strong>name</strong> is the only way you will recognise this key"
-     " later, so say what it is for — <em>Odoo Assistant</em> does the job."
+     " later, so say what it is for — <em>Singleflo for Odoo</em> does the job."
      " Then pick a <strong>duration</strong>. When it elapses the key is"
      " deleted and the connection stops working, so choose a period you are"
      " willing to renew. Press <strong>Generate key</strong>.",

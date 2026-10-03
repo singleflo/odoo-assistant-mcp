@@ -20,24 +20,31 @@ Submission pages: Claude
 The connector name in Claude's directory (100 characters max).
 
 ```text
-Odoo Assistant
+Singleflo for Odoo
 ```
 
 ### Plugin name
 
-The plugin name in OpenAI's portal (64 characters max).
+The package `name` in OpenAI's portal (64 characters max). The plugin was
+first submitted through the old form, so the portal assigned this identifier;
+a ZIP upload must keep it. The PyPI package and the repository stay
+`odoo-assistant`.
 
 ```text
-odoo-assistant
+app-6aaeb521e51c81919c8549eead8d9ce2
 ```
 
 ### Display name
 
-OpenAI display name (30 characters max). Already carried by
-`plugins/odoo-assistant/plugin.json` as `displayName`.
+OpenAI display name (30 characters max). Carried by the OpenAI package in
+`docs/listing/openai/` and by `plugins/odoo-assistant/plugin.json`.
+
+The first submission, "Odoo Assistant", was rejected because the name read
+as an official Odoo product. The name now leads with the publisher's own
+brand, and Odoo appears only to say which software the plugin works with.
 
 ```text
-Odoo Assistant
+Singleflo for Odoo
 ```
 
 ### Tagline
@@ -45,16 +52,17 @@ Odoo Assistant
 Claude only, 55 characters max.
 
 ```text
-An Odoo virtual employee — query, create, act, verify
+Query, create and act on your own Odoo records
 ```
 
 ### Short description
 
-OpenAI only, 30 characters max. Already carried by
-`plugins/odoo-assistant/plugin.json` as `shortDescription`.
+OpenAI only, 30 characters max. Carried by the OpenAI package and by
+`plugins/odoo-assistant/plugin.json`. OpenAI's guidelines forbid appending
+"MCP" to a name, so the subtitle says what the plugin does instead.
 
 ```text
-Odoo ERP via MCP
+Work on your own Odoo records
 ```
 
 ### Long description
@@ -63,13 +71,15 @@ One text for both stores (Claude caps at 2,000 characters, OpenAI at 4,000 —
 the shorter limit wins).
 
 ```text
-Odoo Assistant connects your AI host to your own Odoo instance over the Model Context Protocol. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.
+Singleflo for Odoo is an assistant that works on your own Odoo instance, with your own API key and the permissions of your own Odoo user. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.
 
 Twenty-two tools cover the working day: search, read and count any model; long text fields read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
 
 Safety is structural, not advisory. You sign in once with your Odoo address and an API key — never a password — and choose what the assistant may do: read only, or standard, which adds creating, updating, confirming and messaging. Deletion is never available. Cancelling, archiving and mass mailing are refused. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided it and what would change the answer.
 
-Works with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com — the same server behind this connector.
+Works with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com.
+
+Singleflo for Odoo is an independent project, not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.
 ```
 
 ## Categories
@@ -143,16 +153,34 @@ worldwide
 
 ## Release notes
 
-Initial submission.
+Resubmission after the first review.
 
 ```text
-This is the initial submission of the Odoo Assistant plugin.
+Version 0.3.10 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
 
-Odoo Assistant connects ChatGPT and Codex to the user's own Odoo instance over the Model Context Protocol. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
+Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
+
+Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; and explore_module is now declared destructive, because regenerating a reference replaces the previous one.
 
 Every write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy.
+```
 
-Reviewers: use the test account under the test cases below. The demo data covers quotations, sales orders, one posted customer invoice and two internal users for the messaging tests.
+## OpenAI package
+
+OpenAI takes the listing as a ZIP. Its source is `docs/listing/openai/`: the
+manifest `.codex-plugin/plugin.json` — Codex format, the shape the portal's
+*Download release ZIP* returned for this plugin — and the two icons under
+`assets/`. Display name, short description, long description, starter
+prompts and release notes are copies of the sections above, and
+`tests/test_listing_copy.py` fails when they drift. The website and support
+URLs are the product page on singleflo.com, as accepted at the first review.
+
+Test cases, the demo video and reviewer credentials are not in the package:
+they were entered in the dashboard at the first submission, and a ZIP that
+omits them leaves them as they are. Build the upload with:
+
+```bash
+cd docs/listing/openai && rm -f ../singleflo-for-odoo.zip && zip -r -X ../singleflo-for-odoo.zip .codex-plugin assets
 ```
 
 ## Tool annotations
@@ -355,10 +383,10 @@ re-ask with the filter and then answer.
 ## Icon
 
 Rendered by `uv run python scripts/make_icon.py` (Pillow, dev dependency
-group only): a 512×512 flat PNG with the letters "OA" — no Odoo trademark,
-nothing to inflate the wheel. The script writes `docs/listing/icon.png` and
-the two copies `plugins/odoo-assistant/assets/icon.png` and `logo.png`,
-which `plugins/odoo-assistant/plugin.json` references.
+group only): a 512×512 flat PNG with the letters "SF", for Singleflo — no
+Odoo trademark, nothing to inflate the wheel. The script writes
+`docs/listing/icon.png` and the copies `plugins/odoo-assistant/assets/` and
+`docs/listing/openai/assets/` reference as `icon.png` and `logo.png`.
 
 - Claude: the Listing step of the submission portal takes the icon upload —
   https://claude.com/docs/connectors/building/submission

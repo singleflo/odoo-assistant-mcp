@@ -1,13 +1,15 @@
 <!-- mcp-name: io.github.singleflo/odoo-assistant -->
-# Odoo Assistant MCP Server
+# Singleflo for Odoo
 
-An Odoo virtual employee via the Model Context Protocol (MCP). This server exposes Odoo's business logic, records, and workflows to LLMs, allowing them to query, create, update, and act on Odoo data safely.
+An Odoo virtual employee via the Model Context Protocol (MCP), published as the `odoo-assistant` package. This server exposes Odoo's business logic, records, and workflows to LLMs, allowing them to query, create, update, and act on Odoo data safely.
+
+Singleflo for Odoo is an independent project, not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A., named here only to say which software this server works with.
 
 ## Quickstart
 
 **Install with your AI agent.** If you already have an AI coding assistant —
 Claude Code, Claude Desktop, Cursor, opencode, any of the hosts below —
-paste this link into your agent and ask it to set up Odoo Assistant:
+paste this link into your agent and ask it to set up Singleflo for Odoo:
 `https://raw.githubusercontent.com/singleflo/odoo-assistant-mcp/main/docs/INSTALL-WITH-YOUR-AGENT.md`
 That page is written for the agent rather than for you: it asks you for the
 Odoo URL and an API key, installs `uv`, writes the configuration file its own
@@ -467,7 +469,7 @@ Pro, Plus, Business, Enterprise and Education accounts, on the web:
 3. ChatGPT starts the sign-in, which lands on the server's consent page:
    enter your Odoo URL and API key and choose **read** or **standard**.
 4. In a conversation, choose **Developer mode** from the plus menu and select
-   the Odoo Assistant app.
+   the Singleflo for Odoo app.
 
 There is deliberately no local snippet here: developer mode connects to remote
 MCP servers over HTTPS only, so the stdio configuration of the other sections

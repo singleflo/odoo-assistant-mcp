@@ -1,6 +1,6 @@
-# Contributing to Odoo Assistant MCP Server
+# Contributing to Singleflo for Odoo
 
-Thank you for contributing to the Odoo Assistant MCP Server. Please follow these guidelines to set up your development environment, run tests, and submit changes.
+Thank you for contributing to Singleflo for Odoo, the `odoo-assistant` MCP server. Please follow these guidelines to set up your development environment, run tests, and submit changes.
 
 ## Development Environment Setup
 

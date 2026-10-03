@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-10-03
+
+### Changed
+- **The public name is now "Singleflo for Odoo".** OpenAI rejected version 0.3.6 of the plugin because "Odoo Assistant" implied an affiliation with Odoo, whose name is a trademark of Odoo S.A. The listing, the hosted pages' title and header, the consent page's key-naming hint, the README, the marketplace manifests and the submission dossier now say "Singleflo for Odoo", lead with the publisher's own brand, and state that the project is independent of Odoo S.A. The subtitle "Odoo ERP via MCP" became "Work on your own Odoo records", because OpenAI's guidelines forbid appending "MCP" to a name, and the icon's letters went from "OA" to "SF". The PyPI package, the `uvx odoo-assistant` command and the repository keep their names, so nothing installed breaks.
+
+### Added
+- **`docs/listing/openai/`, the source of the ZIP OpenAI now takes.** The portal moved from a web form to plugin packages; this directory holds the Codex-format manifest the portal's own export uses for this plugin, with its icons, and the dossier gives the one-line command that builds the upload. `tests/test_listing_copy.py` fails when its name, descriptions, starter prompts or release notes drift from the dossier, or an icon is missing or not square.
+
 ## [0.3.9] - 2026-10-02
 
 ### Fixed

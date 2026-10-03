@@ -1,5 +1,6 @@
 .venv/
 dist/
+docs/listing/singleflo-for-odoo.zip
 __pycache__/
 *.pyc
 .pytest_cache/

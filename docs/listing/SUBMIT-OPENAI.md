@@ -1,6 +1,8 @@
 # Submission Guide: OpenAI Plugin Directory
 
-Step-by-step instructions for submitting Odoo Assistant to the universal OpenAI Plugin Directory (serving both ChatGPT and Codex). All copy and values referenced below map directly to the dossier in `docs/listing/README.md`.
+Step-by-step instructions for submitting Singleflo for Odoo to the universal OpenAI Plugin Directory (serving both ChatGPT and Codex). All copy and values referenced below map directly to the dossier in `docs/listing/README.md`.
+
+The first submission (version 0.3.6, named "Odoo Assistant", through the old form) was rejected because the name implied an affiliation with Odoo. The portal has since moved to ZIP packages: listing text, icons and release notes now travel in the ZIP described in the dossier's `OpenAI package` section, while the MCP server, test cases, demo video and reviewer credentials stay as configured in the dashboard.
 
 ## Prerequisites
 
@@ -13,10 +15,10 @@ Before submitting to the Plugin Directory, confirm you have:
 
 ## Portal Path
 
-Navigate to the plugin portal:
-1. Open [https://platform.openai.com/plugins](https://platform.openai.com/plugins).
-2. Click **Create plugin**.
-3. Select **With MCP** (for remote MCP-only or MCP with skills).
+1. Build the ZIP with the command in the dossier's `OpenAI package` section.
+2. Open [https://platform.openai.com/plugins](https://platform.openai.com/plugins) and the existing plugin.
+3. In **Metadata & Skills**, press **Upload plugin to make changes** and choose the ZIP.
+4. Wait for the metadata checks, read any **Issues**, fix them in `docs/listing/openai/` and upload again.
 
 ## Domain Verification
 
@@ -37,18 +39,17 @@ Plugins with MCP must verify ownership of the host domain (`mcp.singleflo.com`):
 
 ## Portal Fields (In Portal Order)
 
-### 1. Info Tab
+### 1. Listing (from the ZIP)
 
-Fill in public listing details from `docs/listing/README.md`:
-- **Plugin name**: `odoo-assistant` (from dossier section `Identity` -> `Plugin name`, 64 characters max).
-- **Display name**: `Odoo Assistant` (from dossier section `Identity` -> `Display name`, 30 characters max).
-- **Short description**: `Odoo ERP via MCP` (from dossier section `Identity` -> `Short description`, 30 characters max).
-- **Long description**: Copy exact text from dossier section `Identity` -> `Long description` (4,000 characters max).
-- **Developer Identity**: Select your verified developer/business identity.
-- **Logo**: Upload production-ready brand assets (from dossier section `Icon`: `docs/listing/icon.png` or `plugins/odoo-assistant/assets/logo.png`).
+The portal reads these from `docs/listing/openai/.codex-plugin/plugin.json` and shows them read-only; change them in the package, not in the portal:
+- **Plugin name**: `app-6aaeb521e51c81919c8549eead8d9ce2` (from dossier section `Identity` -> `Plugin name`, assigned by the portal at the first submission).
+- **Display name**: `Singleflo for Odoo` (from dossier section `Identity` -> `Display name`, 30 characters max).
+- **Short description**: `Work on your own Odoo records` (from dossier section `Identity` -> `Short description`, 30 characters max).
+- **Long description**: dossier section `Identity` -> `Long description` (4,000 characters max).
+- **Developer name**: `Persevida SL`, the verified business identity.
+- **Logo and composer icon**: `assets/logo.png` and `assets/icon.png` (from dossier section `Icon`).
 - **Category**: `Business & Operations` (from dossier section `Categories`).
-- **Website URL**: `https://github.com/singleflo/odoo-assistant-mcp` (from dossier section `URLs` -> `Documentation URL`).
-- **Support URL**: `https://github.com/singleflo/odoo-assistant-mcp/issues` (from dossier section `URLs` -> `Support URL`).
+- **Website URL**: `https://singleflo.com/en/odoo-assistant`; **Support URL**: `https://singleflo.com/en/odoo-assistant#support`.
 - **Privacy Policy URL**: `https://mcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
 - **Terms URL**: `https://mcp.singleflo.com/terms` (from dossier section `URLs` -> `Terms URL`).
 
@@ -64,9 +65,9 @@ Fill in public listing details from `docs/listing/README.md`:
 
 ### 3. Prompts Tab
 
-Add 3 starter prompts from dossier section `Starter prompts` (each under 128
-chars). ChatGPT prepends the plugin mention itself when it displays them, so
-none of the three carries an `@`:
+The 3 starter prompts from dossier section `Starter prompts` (each under 128
+chars) are carried by the ZIP as `defaultPrompt`. ChatGPT prepends the plugin
+mention itself when it displays them, so none of the three carries an `@`:
 
 1. `Which quotations are waiting for confirmation this week?`
 2. `How many sales orders did we book this month, and what is their total?`
@@ -149,8 +150,8 @@ filter and then answer.
 
 ### 6. Submit Tab
 
-- **Release Notes**: Copy text from dossier section `Release notes` (Initial submission summary).
-- Complete policy attestations and click **Submit for Review**.
+- **Release Notes**: carried by the ZIP from dossier section `Release notes`.
+- In **Review information → Review details**, check that the test cases, demo video and reviewer credentials from the first submission are still there, then complete the policy attestations and click **Submit for Review**.
 
 ## After Approval & Publishing
 
@@ -160,7 +161,7 @@ filter and then answer.
 
 ## Versioning Note
 
-Remote MCP plugins publish a snapshot of reviewed server metadata. If you rename a tool, add tools, or modify schema signatures, you must re-scan the server in the portal, submit a new version for review, and publish the update upon approval.
+After publication OpenAI scans the hosted server daily: a tool change goes live by itself once it passes the automated checks, or is held for review. Use **Rescan** in the **MCPs** tab right after a deploy. Listing text, icons and skills change only through a new ZIP, which is reviewed on its own.
 
 ---
 

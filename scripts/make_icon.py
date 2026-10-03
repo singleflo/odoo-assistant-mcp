@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Render the listing icon: 512x512, flat background, the letters "OA".
+"""Render the listing icon: 512x512, flat background, the letters "SF".
 
-Writes docs/listing/icon.png and copies it over the two plugin asset paths
-(plugins/odoo-assistant/assets/icon.png and logo.png), which the OpenAI
-plugin manifest references. Idempotent: the same input renders the same
+"SF" is Singleflo, the brand the listing is named after ("Singleflo for
+Odoo"). Writes docs/listing/icon.png and copies it over the plugin asset
+paths — plugins/odoo-assistant/assets/ and the OpenAI package in
+docs/listing/openai/assets/, each as icon.png and logo.png — which the
+plugin manifests reference. Idempotent: the same input renders the same
 bytes, so re-running the script only rewrites identical files. The mark is
 plain text on a flat field — no Odoo logo or trademark is used.
 """
@@ -17,13 +19,15 @@ from PIL import Image, ImageDraw, ImageFont
 SIZE = 512
 BACKGROUND = (30, 41, 59)  # flat slate, no gradient
 FOREGROUND = (248, 250, 252)
-TEXT = "OA"
+TEXT = "SF"
 
 REPO = Path(__file__).resolve().parent.parent
 TARGETS = (
     REPO / "docs" / "listing" / "icon.png",
     REPO / "plugins" / "odoo-assistant" / "assets" / "icon.png",
     REPO / "plugins" / "odoo-assistant" / "assets" / "logo.png",
+    REPO / "docs" / "listing" / "openai" / "assets" / "icon.png",
+    REPO / "docs" / "listing" / "openai" / "assets" / "logo.png",
 )
 
 # Bold system faces, first match wins; load_default(size=) covers the rest.

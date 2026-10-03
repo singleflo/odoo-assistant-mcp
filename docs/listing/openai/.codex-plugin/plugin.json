@@ -1,0 +1,34 @@
+{
+  "name": "app-6aaeb521e51c81919c8549eead8d9ce2",
+  "version": "0.3.10",
+  "description": "Singleflo for Odoo is an assistant that works on your own Odoo instance, with your own API key and the permissions of your own Odoo user. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.\n\nTwenty-two tools cover the working day: search, read and count any model; long text fields read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.\n\nSafety is structural, not advisory. You sign in once with your Odoo address and an API key — never a password — and choose what the assistant may do: read only, or standard, which adds creating, updating, confirming and messaging. Deletion is never available. Cancelling, archiving and mass mailing are refused. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided it and what would change the answer.\n\nWorks with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com.\n\nSingleflo for Odoo is an independent project, not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.",
+  "author": {
+    "name": "Persevida SL"
+  },
+  "interface": {
+    "displayName": "Singleflo for Odoo",
+    "shortDescription": "Work on your own Odoo records",
+    "longDescription": "Singleflo for Odoo is an assistant that works on your own Odoo instance, with your own API key and the permissions of your own Odoo user. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.\n\nTwenty-two tools cover the working day: search, read and count any model; long text fields read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.\n\nSafety is structural, not advisory. You sign in once with your Odoo address and an API key — never a password — and choose what the assistant may do: read only, or standard, which adds creating, updating, confirming and messaging. Deletion is never available. Cancelling, archiving and mass mailing are refused. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided it and what would change the answer.\n\nWorks with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com.\n\nSingleflo for Odoo is an independent project, not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.",
+    "developerName": "Persevida SL",
+    "category": "Business & Operations",
+    "capabilities": [],
+    "websiteURL": "https://singleflo.com/en/odoo-assistant",
+    "supportURL": "https://singleflo.com/en/odoo-assistant#support",
+    "privacyPolicyURL": "https://mcp.singleflo.com/privacy",
+    "termsOfServiceURL": "https://mcp.singleflo.com/terms",
+    "defaultPrompt": [
+      "Which quotations are waiting for confirmation this week?",
+      "How many sales orders did we book this month, and what is their total?",
+      "Who can I message in Odoo right now, and who is online?"
+    ],
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png"
+  },
+  "extensions": {
+    "com.openai": {
+      "publication": {
+        "release_notes": "Version 0.3.10 resubmits the plugin first reviewed as version 0.3.6 under the name \"Odoo Assistant\", which was rejected because the name implied an affiliation with Odoo. It is now named \"Singleflo for Odoo\": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.\n\nSingleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.\n\nServer changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; and explore_module is now declared destructive, because regenerating a reference replaces the previous one.\n\nEvery write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy."
+      }
+    }
+  }
+}

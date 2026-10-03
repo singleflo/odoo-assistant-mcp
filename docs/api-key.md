@@ -49,7 +49,7 @@ for it.
 ## 6. Name the key and set how long it lasts
 
 The **name** is the only way you will recognise this key later, so say what it
-is for — *Odoo Assistant* does the job. Then pick a **duration**: when it
+is for — *Singleflo for Odoo* does the job. Then pick a **duration**: when it
 elapses the key is deleted and the connection stops working, so choose a period
 you are willing to renew. Press **Generate key**.
 

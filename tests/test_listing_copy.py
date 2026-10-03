@@ -10,6 +10,7 @@ table row that no longer equals what `list_tools()` returns on the wire.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import pytest
 from odoo_assistant import server
 
 LISTING = Path(__file__).resolve().parent.parent / "docs" / "listing" / "README.md"
+OPENAI_MANIFEST = LISTING.parent / "openai" / ".codex-plugin" / "plugin.json"
 
 API_KEY_PATTERN = re.compile(r"\b[0-9a-f]{40}\b")
 CASE_LABELS = ("Prompt:", "Expected tool:", "Expected result:", "Fixture data:")
@@ -166,3 +168,30 @@ def test_urls_sections_and_no_real_credentials():
     assert "screenshots are not required" in text.lower()
     assert not API_KEY_PATTERN.search(text), (
         "a 40-hex string that looks like a real API key sits in the dossier")
+
+
+def test_openai_package_carries_the_dossier_copy():
+    """The ZIP uploaded to OpenAI is built from docs/listing/openai/, and the
+    review reads that ZIP, not this dossier. A name or description fixed here
+    but not there ships the rejected copy again; a missing icon fails the
+    portal's "App icon required" check."""
+    from PIL import Image
+
+    blocks = _blocks_by_heading(LISTING.read_text(encoding="utf-8"))
+    manifest = json.loads(OPENAI_MANIFEST.read_text(encoding="utf-8"))
+    interface = manifest["interface"]
+
+    assert manifest["name"] == _first(blocks, "Plugin name")
+    assert interface["displayName"] == _first(blocks, "Display name")
+    assert interface["shortDescription"] == _first(blocks, "Short description")
+    long_description = _first(blocks, "Long description")
+    assert interface["longDescription"] == long_description
+    assert manifest["description"] == long_description
+    assert interface["defaultPrompt"] == blocks["Starter prompts"]
+    assert (manifest["extensions"]["com.openai"]["publication"]["release_notes"]
+            == _first(blocks, "Release notes"))
+    for field in ("logo", "composerIcon"):
+        path = OPENAI_MANIFEST.parent.parent / interface[field]
+        with Image.open(path) as image:
+            width, height = image.size
+        assert width == height >= 48, f"{field} is {width}x{height}"

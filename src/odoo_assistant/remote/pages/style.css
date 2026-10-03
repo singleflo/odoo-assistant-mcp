@@ -1,5 +1,5 @@
 /* 
-   Odoo Assistant MCP — Hosted Server Stylesheet
+   Singleflo for Odoo — Hosted Server Stylesheet
    Design: Neutral-first palette with Odoo's hues carried only by actions, links and selected states.
    The dark scheme is a derivation of ours because Odoo ships no dark mode ($enable-dark-mode: false in its own SCSS) — a reader should not think we are mirroring an official dark palette.
    Responsive: 320px to wide desktop.

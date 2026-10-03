@@ -1,4 +1,4 @@
-# Install Odoo Assistant — instructions for the AI agent reading this
+# Install Singleflo for Odoo — instructions for the AI agent reading this
 
 You were given this URL by a person who wants Odoo connected to you. Work
 through the steps below in order and do the work yourself: they should not have

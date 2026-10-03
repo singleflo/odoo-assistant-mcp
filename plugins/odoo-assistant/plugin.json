@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "odoo-assistant",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "An Odoo virtual employee via MCP: query, create, modify records, run workflows",
   "author": {
     "name": "Roberto Crotti"
@@ -13,8 +13,8 @@
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Odoo Assistant",
-        "shortDescription": "Odoo ERP via MCP",
+        "displayName": "Singleflo for Odoo",
+        "shortDescription": "Work on your own Odoo records",
         "category": "Business & Operations",
         "websiteURL": "https://github.com/singleflo/odoo-assistant-mcp",
         "privacyPolicyURL": "https://mcp.singleflo.com/privacy",

@@ -1,6 +1,6 @@
 # odoo-assistant plugin
 
-Odoo Assistant as an installable plugin for Claude Code and Codex, straight
+Singleflo for Odoo as an installable plugin for Claude Code and Codex, straight
 from this repository — no store, no review. The plugin wraps the same stdio
 MCP server that `uvx odoo-assistant` runs.
 

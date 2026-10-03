@@ -91,11 +91,15 @@ from odoo_assistant import tools_collab, tools_discuss, tools_evolution, tools_r
 from odoo_assistant.server import _VERSION
 
 INSTRUCTIONS = (
-    "An Odoo virtual employee: query, count, create, update and act on the "
-    "records of the Odoo instance the user connected during authorization, "
-    "summarise the instance, notify colleagues, render PDFs and generate "
-    "reference documentation. The connection's URL, API key and write policy "
-    "come from the consent page at setup, not from this conversation."
+    "Works on the records of the Odoo instance the user connected when "
+    "signing in, with that user's own Odoo permissions. Read tools search, "
+    "count and summarise records. Write tools create and update records, run "
+    "workflow steps, post notes, schedule activities and send Discuss "
+    "messages, and only when the user chose standard access at sign-in. "
+    "Deleting, cancelling, archiving and mass mailing are always refused. "
+    "Confirm with the user before a write that changes or sends something. "
+    "The Odoo address and API key are entered on the sign-in page: never ask "
+    "the user to paste an API key or a password into the conversation."
 )
 
 # Refused before anything else starts: one of these in the environment turns

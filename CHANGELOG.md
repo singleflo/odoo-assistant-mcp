@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.11] - 2026-10-03
+
+### Changed
+- **`run_action` describes what it does to the user's data, not the operator's config.** OpenAI's plugin scan held the tool for manual review. Its description spoke in environment variables (`ODOO_MCP_DENY`, `ODOO_MCP_ALLOW_UNLINK`) that a hosted user never sees, told the model to name one of them on a refusal, and never said plainly that a step changes records and usually cannot be undone. It now says what a step is (the method behind a button such as Confirm or Post), that it changes the user's records, that the model should confirm with the user first, that a step runs once and must not be retried, and what the connection's write policy refuses. The gate itself is unchanged.
+- **The hosted server's instructions state the plugin's scope.** The scan held them for review too. "An Odoo virtual employee" became a plain account of what the plugin reads and writes, with the user's own permissions and only under standard access; it names what is always refused, asks for confirmation before a write that changes or sends something, and tells the model never to ask for an API key or password in the conversation, since both are entered on the sign-in page.
+
 ## [0.3.10] - 2026-10-03
 
 ### Changed

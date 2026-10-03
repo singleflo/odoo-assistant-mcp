@@ -170,27 +170,33 @@ def write_record(
 
 def run_action(
     model: Annotated[str, Field(description=(
-        'Odoo model, e.g. "sale.order". Unlink is decided before the '
-        "allow/deny lists and only ODOO_MCP_ALLOW_UNLINK grants it."))],
+        'Odoo model of the records, e.g. "sale.order" or "account.move".'))],
     method: Annotated[str, Field(description=(
-        'Workflow method name, e.g. "action_post" or "action_confirm". '
-        "Judged by exact name against the operator's allow/deny lists; "
-        "methods starting with _ are always refused."))],
+        "The workflow method behind a button, e.g. \"action_confirm\" on a "
+        "quotation or \"action_post\" on an invoice. Methods starting with _ "
+        "are always refused."))],
     record_ids: Annotated[list[int], Field(description=(
-        "The records to run it on. A transition is one-way — calling it "
-        "twice raises instead of doing nothing."))],
+        "IDs of the records to run the step on."))],
 ) -> str:
-    """Run a workflow method and report the state it left behind.
+    """Run a workflow step on Odoo records — the method behind a button such
+    as Confirm on a quotation or Post on an invoice — and report the state each
+    record is in afterwards.
 
-    The gate follows `method`: a name in ODOO_MCP_DENY — the default list
-    refuses `action_cancel` and friends — or `unlink` without
-    ODOO_MCP_ALLOW_UNLINK=yes, never reaches Odoo.
+    Side effects: this changes records in the user's Odoo, and most steps
+    cannot be undone from here (a posted invoice stays posted). Confirm the
+    records and the step with the user before calling it. A step runs once:
+    calling it again on the same records fails instead of doing nothing, so
+    never retry — re-read the records to see whether it already ran.
 
-    Two behaviours come from the Writer and are worth knowing: a returned dict
-    carrying `res_model` is a wizard to follow rather than a result, and a
-    transition is one-way — calling it twice raises instead of doing nothing.
+    If the answer carries `res_model`, Odoo opened a wizard that needs more
+    input; it is not a finished result.
 
-    When the gate refuses, tell the user which entry of ODOO_MCP_DENY (or ODOO_MCP_ALLOW_UNLINK) would allow it and stop; never retry with another method name.
+    What may run is decided by the connection's write policy, not by this
+    call: a read-only connection refuses every step; cancelling, archiving,
+    reversing, resetting to draft and mass mailing are refused by default;
+    deletion is refused unless a local operator enabled it, and never on the
+    hosted server. When a step is refused, tell the user the reason the
+    refusal gives and stop; never try another method name to get around it.
     """
     _guard(model, method, record_ids)
     try:

@@ -179,11 +179,11 @@ worldwide
 Resubmission after the first review.
 
 ```text
-Version 0.3.10 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
+Version 0.3.11 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
 
 Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
 
-Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; and explore_module is now declared destructive, because regenerating a reference replaces the previous one.
+Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; explore_module is now declared destructive, because regenerating a reference replaces the previous one; run_action's description now states its side effects, asks for the user's confirmation and names what the write policy refuses; and the server instructions describe the plugin's scope in plain terms and tell the model never to ask for an API key or password in the conversation.
 
 Every write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy.
 ```

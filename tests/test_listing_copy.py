@@ -19,7 +19,8 @@ import pytest
 
 from odoo_assistant import server
 
-LISTING = Path(__file__).resolve().parent.parent / "docs" / "listing" / "README.md"
+ROOT = Path(__file__).resolve().parent.parent
+LISTING = ROOT / "docs" / "listing" / "README.md"
 OPENAI_MANIFEST = LISTING.parent / "openai" / ".codex-plugin" / "plugin.json"
 
 API_KEY_PATTERN = re.compile(r"\b[0-9a-f]{40}\b")
@@ -170,32 +171,38 @@ def test_urls_sections_and_no_real_credentials():
         "a 40-hex string that looks like a real API key sits in the dossier")
 
 
-def test_openai_package_carries_the_dossier_copy():
-    """The ZIP uploaded to OpenAI is built from docs/listing/openai/, and the
-    review reads that ZIP, not this dossier. A name or description fixed here
-    but not there ships the rejected copy again; a missing icon fails the
-    portal's "App icon required" check."""
+def test_openai_package_matches_the_dossier():
+    """The ZIP uploaded to OpenAI is rendered from this dossier by
+    scripts/build_openai_package.py, and the review reads the ZIP, not the
+    dossier: copy fixed here but not re-rendered ships the rejected text
+    again. The package must also declare the MCP server — a plugin created
+    from a ZIP without one can never gain one — and carry square icons."""
+    import importlib.util
+
     from PIL import Image
 
-    blocks = _blocks_by_heading(LISTING.read_text(encoding="utf-8"))
-    manifest = json.loads(OPENAI_MANIFEST.read_text(encoding="utf-8"))
-    interface = manifest["interface"]
+    spec = importlib.util.spec_from_file_location(
+        "build_openai_package", ROOT / "scripts" / "build_openai_package.py")
+    assert spec and spec.loader
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    manifest, mcp = builder.render(LISTING.read_text(encoding="utf-8"))
 
-    assert manifest["name"] == _first(blocks, "Plugin name")
-    assert interface["displayName"] == _first(blocks, "Display name")
-    assert interface["shortDescription"] == _first(blocks, "Short description")
-    long_description = _first(blocks, "Long description")
-    assert interface["longDescription"] == long_description
-    assert manifest["description"] == long_description
-    capabilities = _first(blocks, "Capabilities").splitlines()
-    assert interface["capabilities"] == capabilities
-    assert len(capabilities) <= 20
-    assert all(0 < len(c) <= 120 for c in capabilities), capabilities
-    assert interface["defaultPrompt"] == blocks["Starter prompts"]
-    assert (manifest["extensions"]["com.openai"]["publication"]["release_notes"]
-            == _first(blocks, "Release notes"))
+    assert json.loads(OPENAI_MANIFEST.read_text(encoding="utf-8")) == manifest, (
+        "docs/listing/openai is stale: run scripts/build_openai_package.py")
+    assert json.loads(builder.MCP_CONFIG.read_text(encoding="utf-8")) == mcp
+    assert mcp["mcpServers"], "the package declares no MCP server"
+
+    interface = manifest["interface"]
+    assert len(interface["displayName"]) <= 30
+    assert len(interface["shortDescription"]) <= 30
+    assert len(interface["capabilities"]) <= 20
+    assert all(0 < len(c) <= 120 for c in interface["capabilities"])
+    cases = manifest["extensions"]["com.openai"]["review"]["test_cases"]
+    assert len(cases["positive"]) == 5 and len(cases["negative"]) == 3
+    for case in cases["positive"]:
+        assert case["tools_triggered"] and case["expected_behavior"], case
     for field in ("logo", "composerIcon"):
-        path = OPENAI_MANIFEST.parent.parent / interface[field]
-        with Image.open(path) as image:
+        with Image.open(OPENAI_MANIFEST.parent.parent / interface[field]) as image:
             width, height = image.size
         assert width == height >= 48, f"{field} is {width}x{height}"

@@ -2,7 +2,7 @@
 
 Step-by-step instructions for submitting Singleflo for Odoo to the universal OpenAI Plugin Directory (serving both ChatGPT and Codex). All copy and values referenced below map directly to the dossier in `docs/listing/README.md`.
 
-The first submission (version 0.3.6, named "Odoo Assistant", through the old form) was rejected because the name implied an affiliation with Odoo. The portal has since moved to ZIP packages: listing text, icons and release notes now travel in the ZIP described in the dossier's `OpenAI package` section, while the MCP server, test cases, demo video and reviewer credentials stay as configured in the dashboard.
+The first submission (version 0.3.6, named "Odoo Assistant", through the old form) was rejected because the name implied an affiliation with Odoo, and that plugin has since been deleted. The portal now takes ZIP packages: listing text, icons, the MCP server declaration, test cases, the demo video and release notes all travel in the ZIP described in the dossier's `OpenAI package` section. Only the reviewer credentials are typed into the portal.
 
 ## Prerequisites
 
@@ -15,10 +15,10 @@ Before submitting to the Plugin Directory, confirm you have:
 
 ## Portal Path
 
-1. Build the ZIP with the command in the dossier's `OpenAI package` section.
-2. Open [https://platform.openai.com/plugins](https://platform.openai.com/plugins) and the existing plugin.
-3. In **Metadata & Skills**, press **Upload plugin to make changes** and choose the ZIP.
-4. Wait for the metadata checks, read any **Issues**, fix them in `docs/listing/openai/` and upload again.
+1. Build the ZIP: `uv run python scripts/build_openai_package.py`.
+2. Open [https://platform.openai.com/plugins](https://platform.openai.com/plugins) and select **Upload new or existing plugin**, choose the developer identity **Persevida SL**, and upload `docs/listing/singleflo-for-odoo.zip`.
+3. In **Metadata & Skills**, read any **Issues**, fix them in the dossier, rebuild and upload again with **Upload plugin to fix issues**.
+4. In **MCPs**, select the server, press **Connect**, complete domain verification (below) and the OAuth sign-in, then wait for the tool scan.
 
 ## Domain Verification
 
@@ -42,7 +42,7 @@ Plugins with MCP must verify ownership of the host domain (`mcp.singleflo.com`):
 ### 1. Listing (from the ZIP)
 
 The portal reads these from `docs/listing/openai/.codex-plugin/plugin.json` and shows them read-only; change them in the package, not in the portal:
-- **Plugin name**: `app-6aaeb521e51c81919c8549eead8d9ce2` (from dossier section `Identity` -> `Plugin name`, assigned by the portal at the first submission).
+- **Plugin name**: `singleflo-for-odoo` (from dossier section `Identity` -> `Plugin name`).
 - **Display name**: `Singleflo for Odoo` (from dossier section `Identity` -> `Display name`, 30 characters max).
 - **Short description**: `Work on your own Odoo records` (from dossier section `Identity` -> `Short description`, 30 characters max).
 - **Long description**: dossier section `Identity` -> `Long description` (4,000 characters max).

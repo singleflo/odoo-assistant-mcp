@@ -1,10 +1,11 @@
 {
-  "name": "app-6aaeb521e51c81919c8549eead8d9ce2",
+  "name": "singleflo-for-odoo",
   "version": "0.3.10",
   "description": "Singleflo for Odoo lets you work with your company's Odoo data by asking in plain language. Connect your own Odoo instance once, then look things up, update records and keep your team informed without switching to Odoo.\n\nWhat you can do:\n- Find and review records: look up customers, quotations, sales orders, invoices, tasks or any other record, and see totals by stage, status or month.\n- Get an overview of your Odoo: which apps are installed, which companies are set up and how much data each area holds.\n- Create and update records: add contacts, fill in fields and correct values. Before creating a record, the assistant checks what Odoo requires, and it reuses an existing match instead of creating a duplicate.\n- Move work forward: confirm a quotation, post an invoice or run another workflow step, and see the state the record is in afterwards.\n- Keep your team informed: post notes on a record, schedule activities for colleagues, and send direct or channel messages in Odoo Discuss.\n- Work with documents: download the files attached to a record and generate PDF reports such as quotations and invoices.\n\nSafe by design:\nYou connect with an Odoo API key, never a password, and the assistant can only do what your own Odoo user is allowed to do. When you connect, you choose read-only access or standard access, which also allows creating, updating, confirming and messaging. Deleting records is never possible, and cancelling, archiving and mass mailing are blocked. When a request is refused, the assistant tells you why and what would allow it.\n\nWorks with Odoo 14 to 19, whether self-hosted, on Odoo.sh or on Odoo Online. Open source under the MIT license, published by Persevida SL.\n\nSingleflo for Odoo is an independent project and is not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.",
   "author": {
     "name": "Persevida SL"
   },
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Singleflo for Odoo",
     "shortDescription": "Work on your own Odoo records",
@@ -34,7 +35,61 @@
   },
   "extensions": {
     "com.openai": {
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Quotations awaiting confirmation",
+              "prompt": "Which quotations are waiting for confirmation?",
+              "tools_triggered": "search_read",
+              "expected_behavior": "A short list of quotations — number, customer, amount, state — or an explicit \"no quotations are waiting\" when the list is empty. The review instance holds twelve of them."
+            },
+            {
+              "description": "Instance overview",
+              "prompt": "Give me an overview of this Odoo instance.",
+              "tools_triggered": "instance_overview",
+              "expected_behavior": "The Odoo edition and version, the companies, record volumes per business area, the in-house modules, and an explicit list of what the instance does NOT have — so the assistant says \"no inventory here\" instead of asking the user to clarify."
+            },
+            {
+              "description": "Totals per bucket in one call",
+              "prompt": "How many maintenance tasks are in each stage?",
+              "tools_triggered": "group_records",
+              "expected_behavior": "One row per stage with its count — on the review instance seven stages, from 46 in the first to 1 in the last. The point of the tool is that this is ONE call: the records themselves never cross the context window, only the totals."
+            },
+            {
+              "description": "What a create demands, then the create",
+              "prompt": "Add a contact called Reviewer Test Partner, email reviewer@example.com.",
+              "tools_triggered": "required_fields, create_record",
+              "expected_behavior": "The new partner's id, and — this is the behaviour worth checking — running the same request a second time returns the **same id** rather than a duplicate contact."
+            },
+            {
+              "description": "A message that reaches a colleague",
+              "prompt": "Send a direct message to Administrator saying the quarterly report is ready.",
+              "tools_triggered": "list_message_targets, send_direct_message",
+              "expected_behavior": "A confirmation carrying the recipient, the channel and the message id, and stating the delivery route — Discuss chat, real time, no email, persists while the recipient is offline. `read_conversation` on that channel then shows the message, exactly once."
+            }
+          ],
+          "negative": [
+            {
+              "description": "The price of Odoo itself. The plugin reads one company's business records. A pricing page is not one of them, and invoking it here would spend a tool call to discover that.",
+              "prompt": "How much does Odoo Enterprise cost per user, and what is included?"
+            },
+            {
+              "description": "Code that talks to Odoo. A code-generation request is satisfied by writing code. Reading live records would answer a question nobody asked and put real data in an answer meant to be a snippet.",
+              "prompt": "Write me a Python script that connects to Odoo over XML-RPC and lists all contacts."
+            },
+            {
+              "description": "Figures that are in the conversation. The data the user pointed at is in the conversation. Reaching into Odoo instead would replace their figures with other figures under the same heading.",
+              "prompt": "Summarise the sales figures in the spreadsheet I just uploaded."
+            }
+          ]
+        },
+        "demo_recording_url": "https://github.com/singleflo/odoo-assistant-mcp/blob/main/docs/demo/odoo-assistant-demo.mov",
+        "commerce": false,
+        "commerce_description": "This plugin does not sell products or process payments."
+      },
       "publication": {
+        "countries": [],
         "release_notes": "Version 0.3.10 resubmits the plugin first reviewed as version 0.3.6 under the name \"Odoo Assistant\", which was rejected because the name implied an affiliation with Odoo. It is now named \"Singleflo for Odoo\": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.\n\nSingleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.\n\nServer changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; and explore_module is now declared destructive, because regenerating a reference replaces the previous one.\n\nEvery write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy."
       }
     }

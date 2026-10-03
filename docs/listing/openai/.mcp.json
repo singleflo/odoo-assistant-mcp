@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "singleflo-for-odoo": {
+      "url": "https://mcp.singleflo.com/mcp"
+    }
+  }
+}

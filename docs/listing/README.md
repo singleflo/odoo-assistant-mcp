@@ -25,13 +25,12 @@ Singleflo for Odoo
 
 ### Plugin name
 
-The package `name` in OpenAI's portal (64 characters max). The plugin was
-first submitted through the old form, so the portal assigned this identifier;
-a ZIP upload must keep it. The PyPI package and the repository stay
-`odoo-assistant`.
+The package `name` in OpenAI's portal (64 characters max): a stable
+identifier, separate from the display name. The PyPI package and the
+repository stay `odoo-assistant`.
 
 ```text
-app-6aaeb521e51c81919c8549eead8d9ce2
+singleflo-for-odoo
 ```
 
 ### Display name
@@ -191,21 +190,22 @@ Every write passes a method-name gate owned by the instance operator before it r
 
 ## OpenAI package
 
-OpenAI takes the listing as a ZIP. Its source is `docs/listing/openai/`: the
-manifest `.codex-plugin/plugin.json` — Codex format, the shape the portal's
-*Download release ZIP* returned for this plugin — and the two icons under
-`assets/`. Display name, short description, long description, starter
-prompts and release notes are copies of the sections above, and
-`tests/test_listing_copy.py` fails when they drift. The website and support
-URLs are the product page on singleflo.com, as accepted at the first review.
+OpenAI takes the listing as a ZIP, rendered from this dossier by
+`uv run python scripts/build_openai_package.py` into `docs/listing/openai/`
+and zipped to `docs/listing/singleflo-for-odoo.zip` (git-ignored). The
+package holds the Codex-format manifest `.codex-plugin/plugin.json`, the MCP
+declaration `.mcp.json` pointing at `https://mcp.singleflo.com/mcp`, and the
+two icons under `assets/`. The manifest carries the listing copy above, the
+five positive and three negative test cases below, the demo video and the
+release notes; `tests/test_listing_copy.py` fails when the committed files
+drift from what the script would write.
 
-Test cases, the demo video and reviewer credentials are not in the package:
-they were entered in the dashboard at the first submission, and a ZIP that
-omits them leaves them as they are. Build the upload with:
-
-```bash
-cd docs/listing/openai && rm -f ../singleflo-for-odoo.zip && zip -r -X ../singleflo-for-odoo.zip .codex-plugin assets
-```
+**The MCP declaration must be in the ZIP that creates the plugin.** The
+portal attaches a server only from that first upload, and a plugin created
+without one can never gain one — measured: the first ZIP, built from the
+old form's export, had no `.mcp.json`, and its plugin showed "No MCPs
+connected" for good. Reviewer credentials never go in the package: enter
+them in the portal under Review information → Review details.
 
 ## Tool annotations
 

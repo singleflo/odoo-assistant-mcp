@@ -68,18 +68,42 @@ Work on your own Odoo records
 ### Long description
 
 One text for both stores (Claude caps at 2,000 characters, OpenAI at 4,000 —
-the shorter limit wins).
+the shorter limit wins). Written for the person who installs the plugin:
+OpenAI's metadata check rejected an earlier, tool-by-tool version with
+"Explain what users can do with the plugin."
 
 ```text
-Singleflo for Odoo is an assistant that works on your own Odoo instance, with your own API key and the permissions of your own Odoo user. It reads records, creates and updates them, runs workflow actions and reaches your team on the record chatter and in Discuss — and every write passes a safety gate before it reaches Odoo.
+Singleflo for Odoo lets you work with your company's Odoo data by asking in plain language. Connect your own Odoo instance once, then look things up, update records and keep your team informed without switching to Odoo.
 
-Twenty-two tools cover the working day: search, read and count any model; long text fields read in windows; totals per state, stage or month in one grouped call; a field dictionary per model; an instance overview; a required-fields check before any create; record creation that reuses an existing match instead of duplicating; verified writes; workflow actions and cancellation; chatter notes and scheduled activities; document download and PDF rendering; direct and channel messaging; and live module exploration with generated references.
+What you can do:
+- Find and review records: look up customers, quotations, sales orders, invoices, tasks or any other record, and see totals by stage, status or month.
+- Get an overview of your Odoo: which apps are installed, which companies are set up and how much data each area holds.
+- Create and update records: add contacts, fill in fields and correct values. Before creating a record, the assistant checks what Odoo requires, and it reuses an existing match instead of creating a duplicate.
+- Move work forward: confirm a quotation, post an invoice or run another workflow step, and see the state the record is in afterwards.
+- Keep your team informed: post notes on a record, schedule activities for colleagues, and send direct or channel messages in Odoo Discuss.
+- Work with documents: download the files attached to a record and generate PDF reports such as quotations and invoices.
 
-Safety is structural, not advisory. You sign in once with your Odoo address and an API key — never a password — and choose what the assistant may do: read only, or standard, which adds creating, updating, confirming and messaging. Deletion is never available. Cancelling, archiving and mass mailing are refused. A query that mixes customer invoices, vendor bills and journal entries is refused, because counting them together produces a number that matches nothing on screen. Every refusal names the call, the rule that decided it and what would change the answer.
+Safe by design:
+You connect with an Odoo API key, never a password, and the assistant can only do what your own Odoo user is allowed to do. When you connect, you choose read-only access or standard access, which also allows creating, updating, confirming and messaging. Deleting records is never possible, and cancelling, archiving and mass mailing are blocked. When a request is refused, the assistant tells you why and what would allow it.
 
-Works with Odoo 14 through 19, self-hosted, on Odoo.sh and on Odoo Online. Open source under the MIT license, published by Persevida SL and hosted by Singleflo at mcp.singleflo.com.
+Works with Odoo 14 to 19, whether self-hosted, on Odoo.sh or on Odoo Online. Open source under the MIT license, published by Persevida SL.
 
-Singleflo for Odoo is an independent project, not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.
+Singleflo for Odoo is an independent project and is not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.
+```
+
+### Capabilities
+
+OpenAI only, shown on the listing: up to 20 labels of at most 120 characters,
+one per line below. Carried by the OpenAI package as `capabilities`.
+
+```text
+Search and review records
+Summarize totals by stage, status or month
+Create and update records
+Run workflow steps
+Post notes and schedule activities
+Send messages in Odoo Discuss
+Download documents and generate PDFs
 ```
 
 ## Categories

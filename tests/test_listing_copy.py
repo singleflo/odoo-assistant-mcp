@@ -187,6 +187,10 @@ def test_openai_package_carries_the_dossier_copy():
     long_description = _first(blocks, "Long description")
     assert interface["longDescription"] == long_description
     assert manifest["description"] == long_description
+    capabilities = _first(blocks, "Capabilities").splitlines()
+    assert interface["capabilities"] == capabilities
+    assert len(capabilities) <= 20
+    assert all(0 < len(c) <= 120 for c in capabilities), capabilities
     assert interface["defaultPrompt"] == blocks["Starter prompts"]
     assert (manifest["extensions"]["com.openai"]["publication"]["release_notes"]
             == _first(blocks, "Release notes"))

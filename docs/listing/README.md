@@ -179,11 +179,11 @@ worldwide
 Resubmission after the first review.
 
 ```text
-Version 0.3.11 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
+Version 0.3.12 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
 
 Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
 
-Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; explore_module is now declared destructive, because regenerating a reference replaces the previous one; run_action's description now states its side effects, asks for the user's confirmation and names what the write policy refuses; and the server instructions describe the plugin's scope in plain terms and tell the model never to ask for an API key or password in the conversation.
+Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; explore_module is now declared destructive, because regenerating a reference replaces the previous one; run_action's description now states its side effects, asks for the user's confirmation and names what the write policy refuses; the server instructions describe the plugin's scope in plain terms and tell the model never to ask for an API key or password in the conversation; and send_direct_message, send_channel_message and notify_user now preview the message and send it only after the user approves, through a single-use token bound to the exact previewed message.
 
 Every write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy.
 ```
@@ -238,14 +238,14 @@ than from a bounded workspace owned by the publisher.
 | `write_record` | no | yes | yes | Overwrites field values on an existing record, so the previous values are lost — destructive even though no record is removed. |
 | `run_action` | no | yes | yes | Runs a workflow method that can post, confirm or otherwise transition a record, a state change the record does not undo by itself. |
 | `cancel_record` | no | yes | yes | Cancels a record through `action_cancel`, ending its draft or open state. |
-| `notify_user` | no | no | yes | Posts a new note on a record's chatter and notifies the users named; the record itself is untouched. |
+| `notify_user` | no | no | yes | Posts a new note on a record's chatter and notifies the users named; the record itself is untouched. The first call only previews; it posts after the user approves. |
 | `create_activity` | no | no | yes | Schedules a new activity record with a deadline; existing data is untouched. |
 | `download_docs` | no | no | yes | Saves every document of a record as a delivered file on the machine running the server — a durable artifact outside Odoo, so it is not read-only; re-running it reproduces the same files and changes no existing data. |
 | `generate_pdf` | no | no | yes | Renders a record's report through Odoo's print wizard, which can have side effects such as sending mail, so it is not read-only, though the record itself is unchanged. |
 | `list_message_targets` | yes | no | yes | Reads who can be messaged and where, presence included; a pure read. |
 | `read_conversation` | yes | no | yes | Returns the messages of one conversation, newest first; nothing is sent or altered. |
-| `send_direct_message` | no | no | yes | Posts a new 1-to-1 message, an additive write that alters no existing record. |
-| `send_channel_message` | no | no | yes | Posts a new message to an existing channel, an additive write only. |
+| `send_direct_message` | no | no | yes | Posts a new 1-to-1 message, an additive write that alters no existing record. The first call only previews; it sends after the user approves. |
+| `send_channel_message` | no | no | yes | Posts a new message to an existing channel, an additive write only. The first call only previews; it posts after the user approves. |
 | `explore_module` | no | yes | yes | Interrogates the live instance and writes a persistent reference document to disk — a durable artifact, so it is not read-only; regenerating replaces the generated part of the earlier document (only its hand-written NOTES section is carried over), so the previous generation is lost. |
 | `list_known_modules` | yes | no | yes | Lists the module references this server has already generated, from local files. |
 
@@ -311,8 +311,12 @@ the plugin is correctly invoked and correctly declines.
 - Prompt: Send a direct message to Administrator saying the quarterly report
   is ready.
 - Expected tool: `list_message_targets` to resolve the recipient and see who
-  is online, then `send_direct_message`.
-- Expected result: a confirmation carrying the recipient, the channel and the
+  is online, then `send_direct_message` twice: the first call sends nothing
+  and returns a preview with a confirmation token; the second, after the
+  user approves, sends.
+- Expected result: before anything is sent, a preview naming the recipient,
+  the route and the message, and a question asking the user to approve it.
+  After approval, a confirmation carrying the recipient, the channel and the
   message id, and stating the delivery route — Discuss chat, real time, no
   email, persists while the recipient is offline. `read_conversation` on that
   channel then shows the message, exactly once.

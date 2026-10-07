@@ -27,7 +27,7 @@ from odoo_assistant.tools_collab import (
     register,
 )
 from odoo_client import OdooError, OdooExecutedButUnserializable
-from tests.conftest import MockOdoo
+from tests.conftest import MockOdoo, approved
 
 PDF_BYTES = b"%PDF-1.4 pretend invoice"
 PDF_B64 = base64.b64encode(PDF_BYTES).decode()
@@ -137,7 +137,7 @@ def test_a_note_reaches_the_named_user_without_touching_followers(odoo):
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
     odoo.set_results("sale.order", True, method="message_post")
 
-    notify_user("sale.order", 42, "checked", [7])
+    approved(notify_user, "sale.order", 42, "checked", [7])
 
     assert call_named(odoo, "message_post")["kwargs"]["partner_ids"] == [5]
     assert "message_subscribe" not in methods_called(odoo)
@@ -148,7 +148,7 @@ def test_a_note_reports_who_was_actually_reached(odoo):
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
     odoo.set_results("sale.order", True, method="message_post")
 
-    payload = json.loads(notify_user("sale.order", 42, "checked", [7]))
+    payload = json.loads(approved(notify_user, "sale.order", 42, "checked", [7]))
 
     assert payload["subtype"] == "note"
     assert payload["audience"]["external"] == [CUSTOMER[1]]
@@ -188,7 +188,7 @@ def test_force_posts_the_comment_despite_the_external_follower(odoo):
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
     odoo.set_results("sale.order", True, method="message_post")
 
-    payload = json.loads(notify_user("sale.order", 42, "<p>hi</p>", [7],
+    payload = json.loads(approved(notify_user, "sale.order", 42, "<p>hi</p>", [7],
                                      subtype="comment", force=True))
 
     posted = call_named(odoo, "message_post")
@@ -201,7 +201,7 @@ def test_a_comment_needs_no_force_when_every_follower_is_an_employee(odoo):
     program_chatter(odoo, followers=[ALICE])
     odoo.set_results("sale.order", True, method="message_post")
 
-    payload = json.loads(notify_user("sale.order", 42, "<p>hi</p>", [7],
+    payload = json.loads(approved(notify_user, "sale.order", 42, "<p>hi</p>", [7],
                                      subtype="comment"))
 
     assert payload["audience"]["external"] == []
@@ -488,7 +488,7 @@ def test_a_note_is_posted_as_an_internal_chatter_note(odoo):
     program_chatter(odoo, followers=[ALICE, CUSTOMER])
     odoo.set_results("sale.order", True, method="message_post")
 
-    notify_user("sale.order", 42, "checked", [7])
+    approved(notify_user, "sale.order", 42, "checked", [7])
 
     posted = call_named(odoo, "message_post")
     assert posted["kwargs"]["subtype_xmlid"] == "mail.mt_note"
@@ -511,7 +511,7 @@ def test_the_inbox_subtype_notifies_without_writing_on_the_record(odoo):
     odoo.set_results("sale.order", True, method="message_notify")
 
     payload = json.loads(
-        notify_user("sale.order", 42, "ping", [7], subtype="inbox"))
+        approved(notify_user, "sale.order", 42, "ping", [7], subtype="inbox"))
 
     assert call_named(odoo, "message_notify")["kwargs"]["partner_ids"] == [5]
     assert "message_post" not in methods_called(odoo)

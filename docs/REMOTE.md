@@ -222,7 +222,7 @@ everything up to the click.
 * https://claude.com/docs/connectors/custom/remote-mcp
 * https://claude.com/docs/connectors/building/directory-vs-custom
 * https://claude.com/docs/connectors/building/testing
-* https://developers.openai.com/api/docs/guides/developer-mode
+* https://developers.openai.com/plugins/deploy/connect-chatgpt
 * https://developers.openai.com/codex/cli/reference
 * https://code.claude.com/docs/en/mcp
 * https://modelcontextprotocol.io/registry/remote-servers

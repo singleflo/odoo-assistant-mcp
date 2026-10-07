@@ -72,7 +72,7 @@ from typing_extensions import Annotated
 # bare name, from the repo and from an installed wheel alike.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
-from odoo_assistant import paths, tenant  # noqa: E402
+from odoo_assistant import confirmation, paths, tenant  # noqa: E402
 from odoo_assistant.remote import files  # noqa: E402
 from odoo_assistant.server_errors import (  # noqa: E402
     ToolOutcome,
@@ -129,6 +129,24 @@ def _tenant_dir(subject: str) -> Path:
     return Path(tempfile.mkdtemp(dir=root))
 
 
+_ROUTES = {
+    "note": "internal note in the record's chatter, visible to internal "
+            "users; no customer is emailed",
+    "inbox": "notification only, to the people named; nothing appears on "
+             "the record",
+    "comment": "message in the record's chatter, visible to everyone and "
+               "EMAILED to every follower",
+}
+
+
+def _user_names(user_ids: list[int]) -> list[object]:
+    """The names behind `user_ids`, for the preview; the ids when unreadable."""
+    rows = _odoo().search_read("res.users", [["id", "in", user_ids]], ["name"])
+    names = [row["name"] for row in rows if isinstance(row, dict) and row.get("name")] \
+        if isinstance(rows, list) else []
+    return names or list(user_ids)
+
+
 def notify_user(
     model: Annotated[str, Field(description=(
         'the Odoo model, e.g. "sale.order".'))],
@@ -148,8 +166,20 @@ def notify_user(
         "refused while one exists, unless force=True."))] = "note",
     force: Annotated[bool, Field(description=(
         "post the comment anyway, knowing those people get an email."))] = False,
+    confirmation_token: Annotated[str, Field(description=(
+        "leave empty to get a preview: nothing is posted and the answer "
+        "carries a token. Pass that token, with the same arguments, only "
+        "after the user has seen the preview and approved posting."))] = "",
 ) -> str:
-    """Write a note on a record's chatter and notify the users you name.
+    """Write a note on a record's chatter and notify the users you name, on
+    the user's behalf.
+
+    Two calls, so the user approves before anything is posted. The first,
+    with no confirmation_token, posts NOTHING: it answers with a preview — the
+    record, the people notified, who would be emailed and the message — and a
+    token. Show the preview to the user and ask, and say plainly when it
+    lists people who will receive an email. Only once they approve, call
+    again with the same arguments and the token; that call posts.
 
     Both subtypes post a message that IS VISIBLE in the record's chatter. The
     difference is who it reaches beyond the people you name.
@@ -181,7 +211,11 @@ def notify_user(
             `mail.mt_comment` and is refused while an external follower
             exists, unless force=True.
         force: post the comment anyway, knowing those people get an email.
+        confirmation_token: empty for the preview; the preview's token to post.
     """
+    tool = "notify_user"
+    arguments = {"model": model, "record_id": record_id, "message": message,
+                 "user_ids": user_ids, "subtype": subtype, "force": force}
     match subtype:
         case "note":
             method, emails_followers = "message_post", False
@@ -211,6 +245,22 @@ def notify_user(
         return ToolOutcome(
             True, _external_refusal(model, record_id, audience["external"])
         ).deliver()
+
+    if not confirmation_token:
+        return tool_result(confirmation.preview(tool, arguments, {
+            "record": f"{model}/{record_id}",
+            "subtype": subtype,
+            "route": _ROUTES[subtype],
+            "notified_users": _user_names(user_ids),
+            "emailed_external_followers": (
+                audience["external"] if emails_followers else []),
+            "note": ("Each notified user is reached through their own Odoo "
+                     "setting, inbox or email."),
+            "message": message,
+        }))
+    refused = confirmation.redeem(confirmation_token, tool, arguments)
+    if refused:
+        return ToolOutcome(True, confirmation.refusal(refused, tool)).deliver()
 
     try:
         delivery = (

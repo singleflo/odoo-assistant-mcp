@@ -136,7 +136,7 @@ filter and then answer.
 2. **Instance overview** — prompt `Give me an overview of this Odoo instance.` → `instance_overview` → edition and version, companies, record volumes per business area, in-house modules, and an explicit list of what the instance does NOT have.
 3. **Totals per bucket in one call** — prompt `How many maintenance tasks are in each stage?` → `group_records` on `project.task` grouped by `stage_id` → one row per stage with its count, seven stages on the review instance, in a single call that never moves the records themselves.
 4. **What a create demands, then the create** — prompt `Add a contact called Reviewer Test Partner, email reviewer@example.com.` → `required_fields` on `res.partner`, then `create_record` with `unique_on` → the new partner's id, and the same id again on a second identical request instead of a duplicate.
-5. **A message that reaches a colleague** — prompt `Send a direct message to Administrator saying the quarterly report is ready.` → `list_message_targets` then `send_direct_message` → a confirmation carrying recipient, channel and message id, and the delivery route; `read_conversation` then shows it once.
+5. **A message that reaches a colleague** — prompt `Send a direct message to Administrator saying the quarterly report is ready.` → `list_message_targets`, then `send_direct_message` twice → first a preview of recipient, route and message for the user to approve, nothing sent; after approval, a confirmation carrying recipient, channel and message id, and the delivery route; `read_conversation` then shows it once.
 
 #### Negative test cases
 
@@ -169,4 +169,4 @@ After publication OpenAI scans the hosted server daily: a tool change goes live 
 
 - https://developers.openai.com/plugins/deploy/submission
 - https://developers.openai.com/plugins/deploy/app-review
-- https://developers.openai.com/api/docs/guides/developer-mode
+- https://developers.openai.com/plugins/deploy/connect-chatgpt

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.12] - 2026-10-03
+
+### Changed
+- **A message waits for the user's approval before it leaves.** Anthropic's directory review asked for it: `send_direct_message`, `send_channel_message` and `notify_user` speak for the user — to a colleague, a whole channel, a record's followers, and on the comment path by email — and nothing let the user see a message before it went. Each now takes two calls. The first, without a `confirmation_token`, runs every check it ran before, sends nothing, and answers with a preview — recipients, route, the people who would get an email, the full message — and a token. Only a second call with the same arguments and that token sends. The token is an HMAC over the exact arguments and the hosted tenant, so a message edited after approval, a different recipient or another tenant's token is refused; it is single-use and expires after ten minutes. The direct-message preview stops before `channel_get`, which creates the private chat when none exists. Refusals — an outsider in the channel, an external follower on a comment, a read-only connection — still come before any preview, so no token can push them through.
+
+### Fixed
+- **A dead OpenAI documentation link.** The developer-mode guide moved to `https://developers.openai.com/plugins/deploy/connect-chatgpt`; the README, `docs/REMOTE.md` and the submission guide pointed at the old address, and the link-liveness test failed on it.
+
 ## [0.3.11] - 2026-10-03
 
 ### Changed

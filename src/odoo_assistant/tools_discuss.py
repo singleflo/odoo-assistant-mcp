@@ -45,6 +45,7 @@ from typing_extensions import Annotated
 # bare name, from the repo and from an installed wheel alike.
 sys.path.insert(0, str(Path(__file__).parent / "odoo_scripts"))
 
+from odoo_assistant import confirmation  # noqa: E402
 from odoo_assistant.server_errors import (  # noqa: E402
     ToolExecutionError,
     ToolOutcome,
@@ -329,14 +330,29 @@ def _post(odoo: Odoo, channel_id: int, message: str) -> object:
         return posted
 
 
+_TOKEN_DESCRIPTION = (
+    "leave empty to get a preview: nothing is sent and the answer carries a "
+    "token. Pass that token, with the same arguments, only after the user "
+    "has seen the preview and approved sending.")
+
+
 def send_direct_message(
     user_id: Annotated[int, Field(description=(
         "res.users id of the recipient — from list_message_targets."))],
     message: Annotated[str, Field(description=(
         "the body, plain text or simple HTML. Delivered whatever the "
         "recipient's notification setting says; sends no email at all."))],
+    confirmation_token: Annotated[str, Field(description=_TOKEN_DESCRIPTION)] = "",
 ) -> str:
-    """Send a 1-to-1 Discuss message that appears in the user's chat systray.
+    """Send a 1-to-1 Discuss message, on the user's behalf, that appears in
+    the recipient's chat systray.
+
+    Two calls, so the user approves before anything is sent. The first, with
+    no confirmation_token, sends NOTHING: it answers with a preview — the
+    recipient, the route and the message — and a token. Show the preview to
+    the user and ask. Only once they approve, call again with the same
+    arguments and the token; that call sends. A changed message or recipient
+    needs a new preview.
 
     This is the tool for "tell X", "message X", "warn X". It opens the private
     chat with that user — reusing the existing one, `channel_get` matches on
@@ -350,7 +366,10 @@ def send_direct_message(
     Args:
         user_id: res.users id of the recipient — from `list_message_targets`.
         message: the body, plain text or simple HTML.
+        confirmation_token: empty for the preview; the preview's token to send.
     """
+    tool = "send_direct_message"
+    arguments = {"user_id": user_id, "message": message}
     odoo = _odoo()
     rows = _rows(odoo.search_read("res.users", [["id", "=", user_id]],
                                   ["name", "partner_id", "share"]))
@@ -368,9 +387,20 @@ def send_direct_message(
             f"needs to open a chat. Nothing was sent."
         )).deliver()
 
+    channel_model = _discuss_models(odoo)[0]
+    _gate_or_raise(channel_model, "channel_get", [[partner[0]]])
+    if not confirmation_token:
+        return tool_result(confirmation.preview(tool, arguments, {
+            "recipient": recipient["name"],
+            "route": "Discuss private chat — real time, no email, persists "
+                     "while the recipient is offline",
+            "message": message,
+        }))
+    refused = confirmation.redeem(confirmation_token, tool, arguments)
+    if refused:
+        return ToolOutcome(True, confirmation.refusal(refused, tool)).deliver()
+
     try:
-        channel_model = _discuss_models(odoo)[0]
-        _gate_or_raise(channel_model, "channel_get", [[partner[0]]])
         opened = odoo.call(channel_model, "channel_get", [[partner[0]]])
         channels = opened.get(channel_model) if isinstance(opened, dict) else None
         if not channels:
@@ -398,8 +428,17 @@ def send_channel_message(
     message: Annotated[str, Field(description=(
         "the body, plain text or simple HTML. Everyone in the channel sees "
         "this; members who are not employees are named in a refusal."))],
+    confirmation_token: Annotated[str, Field(description=_TOKEN_DESCRIPTION)] = "",
 ) -> str:
-    """Post to an EXISTING Discuss channel — everyone in it sees this.
+    """Post to an EXISTING Discuss channel, on the user's behalf — everyone
+    in it sees this.
+
+    Two calls, so the user approves before anything is posted. The first,
+    with no confirmation_token, posts NOTHING: it answers with a preview — the
+    channel, how many members it reaches and the message — and a token. Show
+    the preview to the user and ask. Only once they approve, call again with
+    the same arguments and the token; that call posts. A changed message or
+    channel needs a new preview.
 
     The channel is never created here: `list_message_targets` shows the ones
     that exist, and posting to a room of the wrong size is not recoverable by
@@ -412,7 +451,10 @@ def send_channel_message(
     Args:
         channel_id: from `list_message_targets`.
         message: the body, plain text or simple HTML.
+        confirmation_token: empty for the preview; the preview's token to post.
     """
+    tool = "send_channel_message"
+    arguments = {"channel_id": channel_id, "message": message}
     odoo = _odoo()
     channel_model = _discuss_models(odoo)[0]
     rows = _rows(odoo.search_read(channel_model, [["id", "=", channel_id]],
@@ -433,6 +475,20 @@ def send_channel_message(
             f"instance: {', '.join(outside)}.\nNothing was posted. Use "
             f"send_direct_message to reach a colleague privately."
         )).deliver()
+
+    _gate_or_raise(channel_model, "message_post", [channel_id])
+    if not confirmation_token:
+        return tool_result(confirmation.preview(tool, arguments, {
+            "channel": channel["name"],
+            "channel_type": channel["channel_type"],
+            "members_reached": channel.get("member_count"),
+            "route": "Discuss channel — every member sees it in real time, "
+                     "no email",
+            "message": message,
+        }))
+    refused = confirmation.redeem(confirmation_token, tool, arguments)
+    if refused:
+        return ToolOutcome(True, confirmation.refusal(refused, tool)).deliver()
 
     try:
         message_id = _post(odoo, channel_id, message)

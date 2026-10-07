@@ -36,6 +36,7 @@ from odoo_assistant import (
 )
 from odoo_assistant.odoo_scripts import explore_module as explorer
 from odoo_assistant.server_errors import ToolExecutionError
+from tests.conftest import approved
 
 from odoo_client import connect  # noqa: E402  (conftest bootstraps the path)
 
@@ -387,7 +388,8 @@ def test_live_collab_on_a_self_created_partner(live_odoo, monkeypatch, tmp_path)
         assert followers() == [owner]
 
         told = json.loads(
-            tools_collab.notify_user(
+            approved(
+                tools_collab.notify_user,
                 "res.partner", partner_id, f"{summary}: internal note",
                 [live_odoo.uid], subtype="note",
             )
@@ -648,7 +650,8 @@ def test_live_direct_message_reaches_a_user_without_email(live_odoo):
     before = live_odoo.search_count("mail.mail", [])
 
     sent = json.loads(
-        tools_discuss.send_direct_message(
+        approved(
+            tools_discuss.send_direct_message,
             live_odoo.uid, f"{TEST_PREFIX} direct message probe"
         )
     )

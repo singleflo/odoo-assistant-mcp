@@ -227,14 +227,14 @@ The server exposes 22 tools and 2 resource types:
 10. `write_record`: Write field values to one record and report what actually changed.
 11. `run_action`: Run a workflow method and report the state it left behind.
 12. `cancel_record`: Cancel a record through `action_cancel`, following the wizard it returns.
-13. `notify_user`: Notify users on a record's chatter. Internal by default.
+13. `notify_user`: Notify users on a record's chatter. Internal by default. Previews first and posts only with the user's approval (see below).
 14. `create_activity`: Schedule an activity: the only notification that carries a deadline.
 15. `download_docs`: Save every document of a record to disk, chatter files included.
 16. `generate_pdf`: Render the PDF of a record and return where it was saved.
 17. `list_message_targets`: List who can be messaged and where, including internal users with presence (online/away/offline) and the caller's open conversations. Ask this before sending.
 18. `read_conversation`: Read a Discuss conversation, newest first.
-19. `send_direct_message`: Send a 1-to-1 Discuss message that appears in the user's chat systray in real time. This sends no email and reaches them whatever their notification setting says.
-20. `send_channel_message`: Post to an existing Discuss channel, refusing a room that holds a non-employee.
+19. `send_direct_message`: Send a 1-to-1 Discuss message that appears in the user's chat systray in real time. This sends no email and reaches them whatever their notification setting says. Previews first and sends only with the user's approval.
+20. `send_channel_message`: Post to an existing Discuss channel, refusing a room that holds a non-employee. Previews first and posts only with the user's approval.
 21. `explore_module`: Discover a module's structure by interrogating the live instance.
 22. `list_known_modules`: List the modules this server has learned: name, generation date, records.
 
@@ -242,6 +242,15 @@ Tools 13-14 (`notify_user`, `create_activity`) notify ABOUT a record and land
 in the Inbox bell; tools 17-20 are Discuss conversations that land in the chat
 systray. "Message user X" is the second kind, which uses `send_direct_message`, not
 `notify_user`.
+
+The three tools that speak for the user — `notify_user`,
+`send_direct_message`, `send_channel_message` — take two calls. The first,
+without a `confirmation_token`, sends nothing: it validates the request and
+answers with a preview (recipients, route, who would get an email, the full
+message) and a token. The agent shows the preview and asks; only after the
+user approves does it call again with the same arguments and the token. The
+token approves exactly the previewed arguments, once, for ten minutes, so a
+message changed after approval is refused rather than sent.
 
 ### Resources
 
@@ -479,7 +488,7 @@ the developer-mode step, is planned but has not arrived yet.
 What the agent may do is decided once, at sign-in: read, or standard — never
 deletion, whatever the conversation asks for.
 
-Source: https://developers.openai.com/api/docs/guides/developer-mode
+Source: https://developers.openai.com/plugins/deploy/connect-chatgpt
 
 ### Claude.ai (web, Desktop, mobile)
 

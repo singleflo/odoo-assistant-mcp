@@ -5,6 +5,7 @@ import pytest
 
 from odoo_assistant import tools_discuss
 from odoo_client import OdooExecutedButUnserializable
+from tests.conftest import approved
 
 
 def test_odoo_17_discuss_model_is_resolved_once_per_connection(mock_odoo):
@@ -85,7 +86,7 @@ def test_channel_get_result_is_read_under_the_resolved_model_key(
     )
     mock_odoo.set_results(channel_model, 91, method="message_post")
 
-    result = json.loads(tools_discuss.send_direct_message(9, "Hello"))
+    result = json.loads(approved(tools_discuss.send_direct_message, 9, "Hello"))
 
     channel_calls = [call for call in mock_odoo.calls
                      if call["model"] == channel_model]
@@ -114,7 +115,7 @@ def test_odoo_16_channel_message_uses_mail_channel_members(mock_odoo, monkeypatc
     mock_odoo.set_results("ir.model.data", [])
     mock_odoo.set_results("mail.channel", 92, method="message_post")
 
-    result = json.loads(tools_discuss.send_channel_message(44, "Hello team"))
+    result = json.loads(approved(tools_discuss.send_channel_message, 44, "Hello team"))
 
     assert result["message_id"] == 92
     assert any(call["model"] == "mail.channel.member" for call in mock_odoo.calls)
@@ -152,7 +153,7 @@ def test_a_post_that_cannot_serialise_is_confirmed_by_reading_it_back(
     ])
 
     result = json.loads(
-        tools_discuss.send_direct_message(9, "Ready by Friday & confirmed"))
+        approved(tools_discuss.send_direct_message, 9, "Ready by Friday & confirmed"))
 
     assert result["message_id"] == 790
     assert result["sent_to"] == "Ada"
@@ -175,7 +176,7 @@ def test_an_unconfirmed_post_still_reports_the_uncertainty(
         {"id": 12, "body": "<p>something else entirely</p>"},
     ])
 
-    answer = tools_discuss.send_direct_message(9, "Ready by Friday")
+    answer = approved(tools_discuss.send_direct_message, 9, "Ready by Friday")
 
     assert "COMMITTED but result unserializable" in answer
     assert "Do NOT retry" in answer
@@ -202,6 +203,6 @@ def test_a_channel_post_is_confirmed_the_same_way(mock_odoo, monkeypatch):
         {"id": 801, "body": "<p>Hello team</p>"},
     ])
 
-    result = json.loads(tools_discuss.send_channel_message(44, "Hello team"))
+    result = json.loads(approved(tools_discuss.send_channel_message, 44, "Hello team"))
 
     assert result["message_id"] == 801

@@ -271,3 +271,18 @@ def mock_odoo(monkeypatch):
 def mock_writer(mock_odoo):
     """A `Writer` double bound to the same injected client."""
     return MockWriter(mock_odoo)
+
+
+def approved(tool, *args, **kwargs):
+    """Call a preview-then-confirm tool the way an approving user makes it run.
+
+    The first call must send nothing and answer with a token; the second, with
+    the same arguments and that token, is the one that sends. Tests about what
+    a SEND does go through here; tests about refusals call the tool directly,
+    since a refusal happens before any preview is issued.
+    """
+    import json
+
+    preview = json.loads(tool(*args, **kwargs))
+    assert preview["status"].startswith("NOT SENT"), preview
+    return tool(*args, **kwargs, confirmation_token=preview["confirmation_token"])

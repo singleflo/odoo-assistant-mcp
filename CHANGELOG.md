@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A one-paste install prompt.** `docs/INSTALL-PROMPT.md` holds a single message, in English, Italian, Spanish and Czech, that a person pastes into Hermes, Claude Code or any other agent to have it install the server; the README quickstart carries the English one.
+
+### Changed
+- **`docs/INSTALL-WITH-YOUR-AGENT.md` is written for a person who is not technical.** The agent now speaks the person's language, gives one step per message, walks them through creating the API key screen by screen, helps them find the Odoo Online database name, and turns to the hosted connection when it runs in Claude.ai or ChatGPT and cannot install anything. Hermes, Claude Code, Claude Desktop and opencode have their snippets in full, with the absolute `uvx` path Hermes and Claude Desktop need, and the closing report ends with three questions the person can ask right away.
+
 ## [0.3.12] - 2026-10-03
 
 ### Changed

@@ -7,13 +7,26 @@ Singleflo for Odoo is an independent project, not affiliated with, endorsed by o
 
 ## Quickstart
 
-**Install with your AI agent.** If you already have an AI coding assistant —
-Claude Code, Claude Desktop, Cursor, opencode, any of the hosts below —
-paste this link into your agent and ask it to set up Singleflo for Odoo:
-`https://raw.githubusercontent.com/singleflo/odoo-assistant-mcp/main/docs/INSTALL-WITH-YOUR-AGENT.md`
-That page is written for the agent rather than for you: it asks you for the
-Odoo URL and an API key, installs `uv`, writes the configuration file its own
-host reads, and verifies the connection. The manual route is below.
+**Install with your AI agent.** If you already have an AI assistant on your
+computer — Hermes, Claude Code, Claude Desktop, Codex, Cursor, opencode, any of
+the hosts below — paste this prompt into it as one message:
+
+```text
+Please install "Singleflo for Odoo" (the MCP server `odoo-assistant`) so that you can work with my Odoo.
+Open and follow, step by step, the instructions written for you at:
+https://raw.githubusercontent.com/singleflo/odoo-assistant-mcp/main/docs/INSTALL-WITH-YOUR-AGENT.md
+I am not technical. Talk to me in English, give me one simple step at a time and wait for my answer, and do all the technical work yourself.
+When you need the Odoo API key, guide me through creating it screen by screen. Never ask me for my Odoo password.
+At the end, check that you can read my Odoo and tell me what you set up.
+```
+
+The same prompt in Italian, Spanish and Czech is in
+[docs/INSTALL-PROMPT.md](docs/INSTALL-PROMPT.md). The page it links is written
+for the agent rather than for you: it asks you for the Odoo address, walks you
+through creating the API key, finds the database name on Odoo Online, installs
+`uv`, writes the configuration file its own host reads, and verifies the
+connection. In Claude.ai or ChatGPT, which cannot install anything, it guides
+you to the hosted connection instead. The manual route is below.
 
 ### 1. Install
 

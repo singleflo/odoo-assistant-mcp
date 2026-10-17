@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`docs/INSTALL-WITH-YOUR-AGENT.md` is written for a person who is not technical.** The agent now speaks the person's language, gives one step per message, walks them through creating the API key screen by screen, helps them find the Odoo Online database name, and turns to the hosted connection when it runs in Claude.ai or ChatGPT and cannot install anything. Hermes, Claude Code, Claude Desktop and opencode have their snippets in full, with the absolute `uvx` path Hermes and Claude Desktop need, and the closing report ends with three questions the person can ask right away.
+- **The hosted server moved to `https://odoomcp.singleflo.com`.** The old address `mcp.singleflo.com` no longer answers. The OAuth issuer and the protected-resource metadata follow `ODOO_REMOTE_PUBLIC_URL`, so the deployment variable moved with the domain; every document, the OpenAI package, `server.json`, the plugin manifests and the live-check script now name the new address. A connection made through the old address has to be added again.
 
 ## [0.3.12] - 2026-10-03
 

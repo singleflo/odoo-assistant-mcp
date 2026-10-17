@@ -292,7 +292,7 @@ given as well, because it writes the same entry without a hand-edited file.
 
 Everything in the sections below runs the server on your machine. There is a
 second way into the same 22 tools: they are also served over the internet at
-`https://mcp.singleflo.com/mcp`, which Claude.ai, ChatGPT and Codex can reach
+`https://odoomcp.singleflo.com/mcp`, which Claude.ai, ChatGPT and Codex can reach
 directly. Nothing is installed and no environment variables are set on your
 side — you sign in once with your Odoo address and API key, on the server's
 consent page, and the chat you already use reaches your Odoo. The local
@@ -316,8 +316,8 @@ says so when it happens.
 **What the hosted server stores**: your Odoo URL and API key, encrypted at
 rest; your sign-in identity, kept only as a hash; and the files a tool
 produces, which live there only as links that expire after fifteen minutes.
-The details are at https://mcp.singleflo.com/privacy, with
-https://mcp.singleflo.com/terms and https://mcp.singleflo.com/support on the
+The details are at https://odoomcp.singleflo.com/privacy, with
+https://odoomcp.singleflo.com/terms and https://odoomcp.singleflo.com/support on the
 same domain.
 
 Per-host instructions: Claude.ai and ChatGPT are hosted-only connections and
@@ -415,7 +415,7 @@ The one-liner above runs the server on your machine. Claude Code can also use
 the hosted server — no install, no environment variables:
 
 ```bash
-claude mcp add --transport http odoo-assistant https://mcp.singleflo.com/mcp
+claude mcp add --transport http odoo-assistant https://odoomcp.singleflo.com/mcp
 ```
 
 The first tool call starts the sign-in and lands on the consent page, where
@@ -465,7 +465,7 @@ session and check it with `/mcp`.
 The hosted server is added by URL instead, and the sign-in is its own command:
 
 ```bash
-codex mcp add odoo-assistant --url https://mcp.singleflo.com/mcp
+codex mcp add odoo-assistant --url https://odoomcp.singleflo.com/mcp
 codex mcp login odoo-assistant
 ```
 
@@ -487,7 +487,7 @@ Pro, Plus, Business, Enterprise and Education accounts, on the web:
    and turn on **Developer mode**.
 2. Open [chatgpt.com/plugins](https://chatgpt.com/plugins), press the plus
    button and create a developer-mode app for the MCP URL
-   `https://mcp.singleflo.com/mcp`.
+   `https://odoomcp.singleflo.com/mcp`.
 3. ChatGPT starts the sign-in, which lands on the server's consent page:
    enter your Odoo URL and API key and choose **read** or **standard**.
 4. In a conversation, choose **Developer mode** from the plus menu and select
@@ -507,7 +507,7 @@ Source: https://developers.openai.com/plugins/deploy/connect-chatgpt
 
 Claude connects to the hosted server as a custom connector. Open
 **Customize → Connectors → Add custom connector**, paste
-`https://mcp.singleflo.com/mcp` as the server URL and confirm. On Team and
+`https://odoomcp.singleflo.com/mcp` as the server URL and confirm. On Team and
 Enterprise plans an owner adds it once under **Organization settings →
 Connectors**; members then connect from **Customize → Connectors**.
 
@@ -518,7 +518,7 @@ This link opens the same dialog with the name and URL already filled in —
 review them and confirm; nothing is added until you do:
 
 ```text
-https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Odoo%20Assistant&connectorUrl=https%3A%2F%2Fmcp.singleflo.com%2Fmcp
+https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Singleflo%20for%20Odoo&connectorUrl=https%3A%2F%2Fodoomcp.singleflo.com%2Fmcp
 ```
 
 Source: https://claude.com/docs/connectors/custom/remote-mcp

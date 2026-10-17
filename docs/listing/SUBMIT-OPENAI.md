@@ -22,17 +22,17 @@ Before submitting to the Plugin Directory, confirm you have:
 
 ## Domain Verification
 
-Plugins with MCP must verify ownership of the host domain (`mcp.singleflo.com`):
+Plugins with MCP must verify ownership of the host domain (`odoomcp.singleflo.com`):
 
 1. Obtain the verification challenge token from the portal when prompted.
-2. In your Coolify environment configuration for `mcp.singleflo.com`, set:
+2. In your Coolify environment configuration for `odoomcp.singleflo.com`, set:
    ```bash
    ODOO_REMOTE_OPENAI_CHALLENGE=<token>
    ```
 3. Redeploy the application.
 4. Confirm verification by testing the endpoint:
    ```bash
-   curl https://mcp.singleflo.com/.well-known/openai-apps-challenge
+   curl https://odoomcp.singleflo.com/.well-known/openai-apps-challenge
    ```
    The endpoint must return exactly `<token>` in plain text (this route is landed and verified in `tests/test_remote_app.py`).
 5. Click **Verify Domain** in the OpenAI portal.
@@ -50,13 +50,13 @@ The portal reads these from `docs/listing/openai/.codex-plugin/plugin.json` and 
 - **Logo and composer icon**: `assets/logo.png` and `assets/icon.png` (from dossier section `Icon`).
 - **Category**: `Business & Operations` (from dossier section `Categories`).
 - **Website URL**: `https://singleflo.com/en/odoo-assistant`; **Support URL**: `https://singleflo.com/en/odoo-assistant#support`.
-- **Privacy Policy URL**: `https://mcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
-- **Terms URL**: `https://mcp.singleflo.com/terms` (from dossier section `URLs` -> `Terms URL`).
+- **Privacy Policy URL**: `https://odoomcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
+- **Terms URL**: `https://odoomcp.singleflo.com/terms` (from dossier section `URLs` -> `Terms URL`).
 
 ### 2. MCP Tab
 
 - **MCP Server URL Type**: Universal
-- **MCP Server URL**: `https://mcp.singleflo.com/mcp`
+- **MCP Server URL**: `https://odoomcp.singleflo.com/mcp`
 - **Authentication**: OAuth 2.0 with PKCE (`oauth_dcr`).
 - Click **Scan Tools**.
   - The scan snapshots the server's tool metadata.
@@ -106,7 +106,7 @@ not fit. Paste this instead, with the two placeholders filled:
 
 ```text
 Sign-in URL: none to visit — your client opens the consent page at
-https://mcp.singleflo.com/consent when you first use the plugin.
+https://odoomcp.singleflo.com/consent when you first use the plugin.
 Odoo instance URL: <review instance base URL, no trailing slash>
 API key: <fresh key generated for this review>
 Database: leave empty (this host serves exactly one database)

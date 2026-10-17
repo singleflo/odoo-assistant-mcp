@@ -12,7 +12,7 @@ the PDF contract.
 Environment:
 
 * Required gate (the module skips without all four):
-  ODOO_REMOTE_PUBLIC_URL (normally https://mcp.singleflo.com; a tunnel URL
+  ODOO_REMOTE_PUBLIC_URL (normally https://odoomcp.singleflo.com; a tunnel URL
   while the Coolify deploy is pending), ODOO_REMOTE_TEST_ODOO_URL,
   ODOO_REMOTE_TEST_API_KEY and ODOO_REMOTE_TEST_DB.
 * ODOO_REMOTE_TEST_POLICY — "read" (default) or "standard". The policy the

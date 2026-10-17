@@ -40,12 +40,12 @@ able to run shell commands and write files.
   nothing is installed:
   - **Claude.ai** (web, Desktop, mobile): walk them through **Settings or
     Customize → Connectors → Add custom connector**, name *Singleflo for
-    Odoo*, URL `https://mcp.singleflo.com/mcp`. Or give them this link, which
+    Odoo*, URL `https://odoomcp.singleflo.com/mcp`. Or give them this link, which
     opens the same dialog prefilled:
-    `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Singleflo%20for%20Odoo&connectorUrl=https%3A%2F%2Fmcp.singleflo.com%2Fmcp`
+    `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Singleflo%20for%20Odoo&connectorUrl=https%3A%2F%2Fodoomcp.singleflo.com%2Fmcp`
   - **ChatGPT**: **Settings → Security and login → Developer mode** on, then
     at <https://chatgpt.com/plugins> the plus button, MCP URL
-    `https://mcp.singleflo.com/mcp`. Developer mode needs a Plus, Pro,
+    `https://odoomcp.singleflo.com/mcp`. Developer mode needs a Plus, Pro,
     Business, Enterprise or Education account.
 
   In both, the first use opens a Singleflo sign-in page that asks for their

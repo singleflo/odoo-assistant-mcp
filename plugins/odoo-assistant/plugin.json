@@ -17,8 +17,8 @@
         "shortDescription": "Work on your own Odoo records",
         "category": "Business & Operations",
         "websiteURL": "https://github.com/singleflo/odoo-assistant-mcp",
-        "privacyPolicyURL": "https://mcp.singleflo.com/privacy",
-        "termsOfServiceURL": "https://mcp.singleflo.com/terms",
+        "privacyPolicyURL": "https://odoomcp.singleflo.com/privacy",
+        "termsOfServiceURL": "https://odoomcp.singleflo.com/terms",
         "composerIcon": "./assets/icon.png",
         "logo": "./assets/logo.png"
       }

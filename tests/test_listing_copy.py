@@ -158,8 +158,8 @@ def test_annotation_table_matches_the_live_wire_annotations():
 def test_urls_sections_and_no_real_credentials():
     text = LISTING.read_text(encoding="utf-8")
     blocks = _blocks_by_heading(text)
-    assert _first(blocks, "Privacy URL") == "https://mcp.singleflo.com/privacy"
-    assert _first(blocks, "Terms URL") == "https://mcp.singleflo.com/terms"
+    assert _first(blocks, "Privacy URL") == "https://odoomcp.singleflo.com/privacy"
+    assert _first(blocks, "Terms URL") == "https://odoomcp.singleflo.com/terms"
     assert _first(blocks, "Documentation URL").startswith(
         "https://github.com/singleflo/odoo-assistant-mcp")
     assert _first(blocks, "Support URL").startswith(

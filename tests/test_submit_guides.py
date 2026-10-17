@@ -17,7 +17,7 @@ PER_GUIDE_SECTIONS = ("Country availability",)
 # The hosted server is not deployed yet. A DNS failure for it is the
 # expected state until deploy: attempted on every run, recorded as
 # EXPECTED-PENDING-DEPLOY, never silently skipped.
-EXPECTED_PENDING_HOSTS = ("mcp.singleflo.com",)
+EXPECTED_PENDING_HOSTS = ("odoomcp.singleflo.com",)
 
 
 def _guide_text(path: Path) -> str:

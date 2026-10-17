@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Plain-HTTP transcript of the deployed hosted endpoint (no Odoo, no token).
 # Usage: ./scripts/remote_live_check.sh [URL]
-#   URL defaults to $ODOO_REMOTE_PUBLIC_URL, then https://mcp.singleflo.com.
+#   URL defaults to $ODOO_REMOTE_PUBLIC_URL, then https://odoomcp.singleflo.com.
 # The three checks a freshly deployed endpoint must answer before any OAuth
 # or MCP traffic is worth attempting. Each prints PASS or FAIL; the exit
 # status is nonzero when any check fails.
 set -euo pipefail
 
-BASE="${1:-${ODOO_REMOTE_PUBLIC_URL:-https://mcp.singleflo.com}}"
+BASE="${1:-${ODOO_REMOTE_PUBLIC_URL:-https://odoomcp.singleflo.com}}"
 fail=0
 
 echo "== GET $BASE/health =="

@@ -98,22 +98,22 @@ After the GitHub Actions run completes successfully, verify the release:
 
 ## Hosted server (Coolify)
 
-The hosted server at `https://mcp.singleflo.com` is deployed by Coolify from
+The hosted server at `https://odoomcp.singleflo.com` is deployed by Coolify from
 the repository's `docker-compose.yaml` (repository mode — the compose has a
 `build:`, which only that mode supports). The compose file carries no domain
 and no secret: the domain lives in Coolify's UI, and every secret is a
 `${VAR:?}` reference that Coolify surfaces under **Configuration → Environment
 Variables** and refuses to deploy while empty. Steps in order:
 
-1. **DNS**: create an **A record** `mcp` pointing at the Coolify server's IP
-   address — not a CNAME, unless the domain sits behind a CDN.
+1. **DNS**: create an **A record** `odoomcp` pointing at the Coolify server's
+   IP address — not a CNAME, unless the domain sits behind a CDN.
 2. **Coolify**: **+ Add resource** → **GitHub repository** (the GitHub App
    source) → repository `singleflo/odoo-assistant-mcp`, branch `main`.
 3. **Configuration → General**: set **Build Pack** to **Docker Compose** and
    **Docker Compose Location** to `docker-compose.yaml`.
-4. Set the domain of the `mcp` service to `https://mcp.singleflo.com`.
+4. Set the domain of the `mcp` service to `https://odoomcp.singleflo.com`.
 5. **Configuration → Environment Variables**: set
-   `ODOO_REMOTE_PUBLIC_URL=https://mcp.singleflo.com` (typed explicitly — the
+   `ODOO_REMOTE_PUBLIC_URL=https://odoomcp.singleflo.com` (typed explicitly — the
    OAuth issuer and the protected-resource metadata must equal the URL users
    visit, character for character, so it is never derived from a generated
    variable), generate `ODOO_REMOTE_SECRET_KEY` with
@@ -129,7 +129,7 @@ Variables** and refuses to deploy while empty. Steps in order:
    into the GitHub repository secrets `COOLIFY_API_TOKEN` and
    `COOLIFY_DEPLOY_WEBHOOK` — `.github/workflows/deploy.yml` then redeploys on
    every `v*` tag (and no-ops on forks that lack the secrets).
-9. **After every deploy, check `https://mcp.singleflo.com/health` first.**
+9. **After every deploy, check `https://odoomcp.singleflo.com/health` first.**
    Measured Coolify behaviour: a failing healthcheck does **not** block or
    roll back a deploy — Traefik simply drops the unhealthy container from
    routing and the site answers "No available server" instead of an error.
@@ -140,27 +140,27 @@ Variables** and refuses to deploy while empty. Steps in order:
    **named volume** for `/data`.
 10. **Post-deploy verification**, against the live domain after every deploy:
     ```bash
-    curl https://mcp.singleflo.com/health
+    curl https://odoomcp.singleflo.com/health
     ```
     must return the version JSON (`{"status":"ok","version":"…"}`) naming the
     version that was just deployed. An unauthenticated call to the endpoint
     ```bash
-    curl -si -X POST https://mcp.singleflo.com/mcp
+    curl -si -X POST https://odoomcp.singleflo.com/mcp
     ```
     must answer **401**, and its `WWW-Authenticate` header must carry
-    `resource_metadata="https://mcp.singleflo.com/.well-known/oauth-protected-resource/mcp"`
+    `resource_metadata="https://odoomcp.singleflo.com/.well-known/oauth-protected-resource/mcp"`
     — that header is how a host discovers where to sign in, so a 401 without
     it breaks every client before the first sign-in. The protected-resource
     metadata itself
     ```bash
-    curl https://mcp.singleflo.com/.well-known/oauth-protected-resource/mcp
+    curl https://odoomcp.singleflo.com/.well-known/oauth-protected-resource/mcp
     ```
     must return JSON whose `resource` equals the `/mcp` URL character for
     character — the reason `ODOO_REMOTE_PUBLIC_URL` is typed explicitly in
     step 5 rather than derived. And when `ODOO_REMOTE_OPENAI_CHALLENGE` is set
     (step 5), OpenAI's app review verifies it by fetching
     ```bash
-    curl https://mcp.singleflo.com/.well-known/openai-apps-challenge
+    curl https://odoomcp.singleflo.com/.well-known/openai-apps-challenge
     ```
     which must return exactly the token stored in the variable — no wrapper,
     no trailing content.

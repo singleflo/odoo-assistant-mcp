@@ -25,12 +25,12 @@ The portal walks through sequential steps. Fill each field using the values from
 - Select **Remote MCP server**.
 
 ### Step 2: Connection
-- **Server URL**: `https://mcp.singleflo.com/mcp`
+- **Server URL**: `https://odoomcp.singleflo.com/mcp`
 - **Transport**: Streamable HTTP
 - **URL Reach**: Universal URL (the same URL for every user).
 
 ### Step 3: Tools
-- Select **Sync Tools**. The portal automatically reads the 22 tools exposed by `https://mcp.singleflo.com/mcp` and verifies that every tool carries a title and valid annotations. Claude requires `title` plus one of `readOnlyHint` / `destructiveHint`; this server publishes all three hints on all 22, which also satisfies OpenAI's stricter rule.
+- Select **Sync Tools**. The portal automatically reads the 22 tools exposed by `https://odoomcp.singleflo.com/mcp` and verifies that every tool carries a title and valid annotations. Claude requires `title` plus one of `readOnlyHint` / `destructiveHint`; this server publishes all three hints on all 22, which also satisfies OpenAI's stricter rule.
 
 ### Step 4: Listing
 - **Name**: `Singleflo for Odoo` (from dossier section `Identity` -> `Name`, 100 characters max). It replaced "Odoo Assistant" after OpenAI rejected that name as implying an affiliation with Odoo; an existing Claude listing needs the same name, tagline and description edited in the portal.
@@ -38,7 +38,7 @@ The portal walks through sequential steps. Fill each field using the values from
 - **Description**: Copy the exact text from dossier section `Identity` -> `Long description` (2,000 characters max).
 - **Categories**: Select 1 to 5 categories from the portal dropdown (recommended from dossier section `Categories`: Business, Productivity, Data & analytics, Developer tools, Operations).
 - **Documentation URL**: `https://github.com/singleflo/odoo-assistant-mcp` (from dossier section `URLs` -> `Documentation URL`).
-- **Privacy Policy URL**: `https://mcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
+- **Privacy Policy URL**: `https://odoomcp.singleflo.com/privacy` (from dossier section `URLs` -> `Privacy URL`).
 - **Support Contact / URL**: `https://github.com/singleflo/odoo-assistant-mcp/issues` (from dossier section `URLs` -> `Support URL`).
 - **Country availability**: `worldwide` (from dossier section `Country availability` — the portal asks where the connector is available).
 - **Icon**: Upload `docs/listing/icon.png` (from dossier section `Icon`, 512x512 flat PNG).
@@ -64,7 +64,7 @@ The portal walks through sequential steps. Fill each field using the values from
 | Field | Value |
 |---|---|
 | Odoo instance URL | `<dev instance base URL, no trailing slash>` |
-| MCP endpoint | `https://mcp.singleflo.com/mcp` |
+| MCP endpoint | `https://odoomcp.singleflo.com/mcp` |
 | Login | `<demo user login>` |
 | API key | `<fresh key, generated for this review, revoked after>` |
 | Database name | `<only when the instance serves more than one database>` |
@@ -83,7 +83,7 @@ Include a summary of visible fixture data: the companies, the draft quotations, 
 
 During review, Anthropic verifies:
 1. **Tool Annotations**: Every tool has a `title`, `readOnlyHint`, `destructiveHint`, and `openWorldHint` matching actual execution behavior (refer to dossier section `Tool annotations`).
-2. **Privacy Page**: The privacy URL (`https://mcp.singleflo.com/privacy`) is live, HTTPS, accessible, and discloses data storage practices.
+2. **Privacy Page**: The privacy URL (`https://odoomcp.singleflo.com/privacy`) is live, HTTPS, accessible, and discloses data storage practices.
 3. **Working Examples**: Test cases exercise real tools (e.g. `search_read`, `instance_overview`, `required_fields`, `create_record`, `send_direct_message`).
 4. **Test Account**: Reviewer credentials work cleanly without MFA, SMS, email verification, or private network barriers.
 
@@ -109,7 +109,7 @@ outcome, and the badge is a second, separate event that is not applied for.
 While waiting for directory approval, users can connect immediately using the custom connector link (percent-encoded URL from dossier/README):
 
 ```text
-https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Odoo%20Assistant&connectorUrl=https%3A%2F%2Fmcp.singleflo.com%2Fmcp
+https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Singleflo%20for%20Odoo&connectorUrl=https%3A%2F%2Fodoomcp.singleflo.com%2Fmcp
 ```
 
 ## Versioning Note

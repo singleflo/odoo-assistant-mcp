@@ -23,8 +23,8 @@
     ],
     "websiteURL": "https://singleflo.com/en/odoo-assistant",
     "supportURL": "https://singleflo.com/en/odoo-assistant#support",
-    "privacyPolicyURL": "https://mcp.singleflo.com/privacy",
-    "termsOfServiceURL": "https://mcp.singleflo.com/terms",
+    "privacyPolicyURL": "https://odoomcp.singleflo.com/privacy",
+    "termsOfServiceURL": "https://odoomcp.singleflo.com/terms",
     "defaultPrompt": [
       "Which quotations are waiting for confirmation this week?",
       "How many sales orders did we book this month, and what is their total?",

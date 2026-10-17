@@ -71,7 +71,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.singleflo.com/mcp"
+      "url": "https://odoomcp.singleflo.com/mcp"
     }
   ]
 }

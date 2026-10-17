@@ -159,13 +159,13 @@ https://github.com/singleflo/odoo-assistant-mcp/issues
 ### Privacy URL
 
 ```text
-https://mcp.singleflo.com/privacy
+https://odoomcp.singleflo.com/privacy
 ```
 
 ### Terms URL
 
 ```text
-https://mcp.singleflo.com/terms
+https://odoomcp.singleflo.com/terms
 ```
 
 ## Country availability
@@ -194,7 +194,7 @@ OpenAI takes the listing as a ZIP, rendered from this dossier by
 `uv run python scripts/build_openai_package.py` into `docs/listing/openai/`
 and zipped to `docs/listing/singleflo-for-odoo.zip` (git-ignored). The
 package holds the Codex-format manifest `.codex-plugin/plugin.json`, the MCP
-declaration `.mcp.json` pointing at `https://mcp.singleflo.com/mcp`, and the
+declaration `.mcp.json` pointing at `https://odoomcp.singleflo.com/mcp`, and the
 two icons under `assets/`. The manifest carries the listing copy above, the
 five positive and three negative test cases below, the demo video and the
 release notes; `tests/test_listing_copy.py` fails when the committed files
@@ -380,7 +380,7 @@ submission portal and nowhere else; `tests/test_listing_copy.py` fails if a
 | Field | Value |
 |---|---|
 | Odoo instance URL | `<review instance base URL, no trailing slash>` |
-| MCP endpoint | `https://mcp.singleflo.com/mcp` |
+| MCP endpoint | `https://odoomcp.singleflo.com/mcp` |
 | API key | `<fresh key, generated for this review, revoked after>` |
 | Database name | leave empty when the host serves exactly one database |
 | Odoo login | leave empty when the key owner's uid is below 60 |

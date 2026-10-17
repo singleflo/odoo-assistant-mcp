@@ -32,7 +32,7 @@ MCP_CONFIG = PACKAGE / ".mcp.json"
 ZIP_PATH = REPO / "docs" / "listing" / "singleflo-for-odoo.zip"
 
 MCP_SERVER_NAME = "singleflo-for-odoo"
-MCP_URL = "https://mcp.singleflo.com/mcp"
+MCP_URL = "https://odoomcp.singleflo.com/mcp"
 WEBSITE_URL = "https://singleflo.com/en/odoo-assistant"
 SUPPORT_URL = "https://singleflo.com/en/odoo-assistant#support"
 DEMO_URL = (

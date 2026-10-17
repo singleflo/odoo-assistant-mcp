@@ -856,7 +856,7 @@ release. It is milestone M7.
 
 > Delivered in 0.3.0: milestone M7 shipped as the `odoo-assistant-remote`
 > entry point (`odoo_assistant.remote`), the hosted server behind
-> `https://mcp.singleflo.com/mcp` — see `docs/REMOTE.md`.
+> `https://odoomcp.singleflo.com/mcp` — see `docs/REMOTE.md`.
 
 ---
 

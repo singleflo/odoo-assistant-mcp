@@ -151,11 +151,11 @@ is complete on its own. All of them point at the deployed server; for a
 tunnel, substitute the tunnel URL.
 
 * **Claude.ai** — Customize → Connectors → Add custom connector, URL
-  `https://mcp.singleflo.com/mcp`; the first use lands on the consent page.
+  `https://odoomcp.singleflo.com/mcp`; the first use lands on the consent page.
 * **ChatGPT** — Settings → Security and login → Developer mode, then create a
   developer-mode app at chatgpt.com/plugins for the same URL.
-* **Claude Code** — `claude mcp add --transport http odoo-assistant https://mcp.singleflo.com/mcp`
-* **Codex** — `codex mcp add odoo-assistant --url https://mcp.singleflo.com/mcp`
+* **Claude Code** — `claude mcp add --transport http odoo-assistant https://odoomcp.singleflo.com/mcp`
+* **Codex** — `codex mcp add odoo-assistant --url https://odoomcp.singleflo.com/mcp`
   then `codex mcp login odoo-assistant`
 
 ## What the server keeps, and for how long
@@ -188,14 +188,14 @@ rotation keep working until their own expiry; reconnecting replaces them.
 
 ## Deploying to Coolify
 
-The deployed instance serves `https://mcp.singleflo.com`. Deploy by pushing a
+The deployed instance serves `https://odoomcp.singleflo.com`. Deploy by pushing a
 tag — the CI workflow builds and deploys it — or press **Redeploy** in Coolify
 for the same commit.
 
 Then check health **first**:
 
 ```bash
-curl https://mcp.singleflo.com/health
+curl https://odoomcp.singleflo.com/health
 ```
 
 While the container is starting or failing its health check, Coolify's proxy
@@ -205,7 +205,7 @@ deploy logs, not an HTTP status, tell you which. Once the container is up, the
 same URL returns `{"status":"ok","version":"…"}`.
 
 One configuration rule binds this document to `server.json`: on the deployed
-instance, `ODOO_REMOTE_PUBLIC_URL` must be `https://mcp.singleflo.com`,
+instance, `ODOO_REMOTE_PUBLIC_URL` must be `https://odoomcp.singleflo.com`,
 character for character — the registry entry's remote URL is that plus `/mcp`,
 and the two are only correct together.
 

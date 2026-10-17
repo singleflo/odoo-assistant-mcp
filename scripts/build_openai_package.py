@@ -32,7 +32,7 @@ MCP_CONFIG = PACKAGE / ".mcp.json"
 ZIP_PATH = REPO / "docs" / "listing" / "singleflo-for-odoo.zip"
 
 MCP_SERVER_NAME = "singleflo-for-odoo"
-MCP_URL = "https://odoomcp.singleflo.com/mcp"
+MCP_URL = "https://odoomcp.singleflo.com/openai/mcp"
 WEBSITE_URL = "https://singleflo.com/en/odoo-assistant"
 SUPPORT_URL = "https://singleflo.com/en/odoo-assistant#support"
 DEMO_URL = (
@@ -107,7 +107,7 @@ def render(text: str) -> tuple[dict, dict]:
         "prompt": case["Prompt"],
     } for case in _cases(text, "Negative")]
 
-    description = first("Long description")
+    description = first("OpenAI long description")
     manifest = {
         "name": first("Plugin name"),
         "version": version,

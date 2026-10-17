@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "singleflo-for-odoo": {
-      "url": "https://odoomcp.singleflo.com/mcp"
+      "url": "https://odoomcp.singleflo.com/openai/mcp"
     }
   }
 }

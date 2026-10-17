@@ -82,6 +82,9 @@ def _check_copy(text: str) -> None:
     long_description = _first(blocks, "Long description")
     assert 0 < len(long_description) <= 2000, (
         f"long description is {len(long_description)} chars, limit 2000")
+    openai_description = _first(blocks, "OpenAI long description")
+    assert 0 < len(openai_description) <= 4000, (
+        f"OpenAI long description is {len(openai_description)} chars, limit 4000")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -192,12 +195,18 @@ def test_openai_package_matches_the_dossier():
         "docs/listing/openai is stale: run scripts/build_openai_package.py")
     assert json.loads(builder.MCP_CONFIG.read_text(encoding="utf-8")) == mcp
     assert mcp["mcpServers"], "the package declares no MCP server"
+    urls = [entry["url"] for entry in mcp["mcpServers"].values()]
+    assert len(urls) == 1 and urls[0].endswith("/openai/mcp"), urls
 
     interface = manifest["interface"]
     assert len(interface["displayName"]) <= 30
     assert len(interface["shortDescription"]) <= 30
     assert len(interface["capabilities"]) <= 20
     assert all(0 < len(c) <= 120 for c in interface["capabilities"])
+    long_description = interface["longDescription"]
+    assert "Move work forward" not in long_description
+    assert "run_action" not in long_description
+    assert "Run workflow steps" not in interface["capabilities"]
     cases = manifest["extensions"]["com.openai"]["review"]["test_cases"]
     assert len(cases["positive"]) == 5 and len(cases["negative"]) == 3
     for case in cases["positive"]:

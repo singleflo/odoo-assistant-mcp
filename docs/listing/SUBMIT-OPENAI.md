@@ -45,7 +45,7 @@ The portal reads these from `docs/listing/openai/.codex-plugin/plugin.json` and 
 - **Plugin name**: `singleflo-for-odoo` (from dossier section `Identity` -> `Plugin name`).
 - **Display name**: `Singleflo for Odoo` (from dossier section `Identity` -> `Display name`, 30 characters max).
 - **Short description**: `Work on your own Odoo records` (from dossier section `Identity` -> `Short description`, 30 characters max).
-- **Long description**: dossier section `Identity` -> `Long description` (4,000 characters max).
+- **Long description**: dossier section `Identity` -> `OpenAI long description` (4,000 characters max).
 - **Developer name**: `Persevida SL`, the verified business identity.
 - **Logo and composer icon**: `assets/logo.png` and `assets/icon.png` (from dossier section `Icon`).
 - **Category**: `Business & Operations` (from dossier section `Categories`).
@@ -56,12 +56,13 @@ The portal reads these from `docs/listing/openai/.codex-plugin/plugin.json` and 
 ### 2. MCP Tab
 
 - **MCP Server URL Type**: Universal
-- **MCP Server URL**: `https://odoomcp.singleflo.com/mcp`
+- **MCP Server URL**: `https://odoomcp.singleflo.com/openai/mcp`
 - **Authentication**: OAuth 2.0 with PKCE (`oauth_dcr`).
 - Click **Scan Tools**.
   - The scan snapshots the server's tool metadata.
-  - Snapshot contents: 22 tools (`search_read`, `read_record`, `read_long_field`, `count_records`, `group_records`, `instance_overview`, `required_fields`, `describe_model`, `create_record`, `write_record`, `run_action`, `cancel_record`, `notify_user`, `create_activity`, `download_docs`, `generate_pdf`, `list_message_targets`, `read_conversation`, `send_direct_message`, `send_channel_message`, `explore_module`, `list_known_modules`), along with their `title`, `description`, `inputSchema`, `readOnlyHint`, `destructiveHint`, and `openWorldHint` (refer to dossier section `Tool annotations`).
-- The portal asks for a **written justification per annotation**, not one per tool. The dossier's `Tool annotations` table carries the `readOnlyHint` and `destructiveHint` reasoning in its `Why` column, row by row; the `openWorldHint` justification is stated once above the table, because it is the same sentence for all 22 — every tool answers from an operator-supplied Odoo instance rather than from a workspace this publisher owns.
+  - Snapshot contents: 21 tools (`search_read`, `read_record`, `read_long_field`, `count_records`, `group_records`, `instance_overview`, `required_fields`, `describe_model`, `create_record`, `write_record`, `cancel_record`, `notify_user`, `create_activity`, `download_docs`, `generate_pdf`, `list_message_targets`, `read_conversation`, `send_direct_message`, `send_channel_message`, `explore_module`, `list_known_modules`), along with their `title`, `description`, `inputSchema`, `readOnlyHint`, `destructiveHint`, and `openWorldHint` (refer to dossier section `Tool annotations`).
+  - `run_action` is not served on this endpoint, because OpenAI requires each model-callable operation to be its own tool; the Claude listing at `/mcp` keeps it.
+- The portal no longer asks for annotation justifications: it reads explicit `readOnlyHint`, `destructiveHint` and `openWorldHint` values from each tool. The dossier's `Tool annotations` table still records the reasoning behind each value, for an appeal if the automated review flags one.
 
 ### 3. Prompts Tab
 

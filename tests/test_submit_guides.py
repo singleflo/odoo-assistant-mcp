@@ -172,23 +172,40 @@ def _live_tool_names() -> list[str]:
 
 def test_every_tool_count_in_the_guides_matches_the_live_server():
     """A submitter reading "19 tools" and seeing 22 in the portal cannot tell
-    which side is wrong. The count in the guides is the server's, or it is a
-    lie that survives to the review."""
-    expected = len(_live_tool_names())
+    which side is wrong. Each guide's count is that of the endpoint its store
+    connects to: the Claude guide the full set at /mcp, the OpenAI guide the
+    set without the excluded tools at /openai/mcp."""
+    from odoo_assistant.remote.app import OPENAI_EXCLUDED_TOOLS
+
+    all_names = _live_tool_names()
+    openai_names = [n for n in all_names if n not in OPENAI_EXCLUDED_TOOLS]
 
     wrong = []
-    for path in (SUBMIT_CLAUDE_PATH, SUBMIT_OPENAI_PATH):
+    for path, expected in (
+        (SUBMIT_CLAUDE_PATH, len(all_names)),
+        (SUBMIT_OPENAI_PATH, len(openai_names)),
+    ):
         for count in re.findall(r"(\d+)\s+tools\b", _guide_text(path)):
             if int(count) != expected:
-                wrong.append(f"{path}: says {count} tools, server exposes {expected}")
+                wrong.append(f"{path}: says {count} tools, its endpoint exposes {expected}")
     assert not wrong, wrong
 
 
 def test_the_openai_guide_lists_every_tool_by_name():
     """The MCP tab's snapshot is the reviewed contract, so the guide spells it
-    out. A tool missing from that list is a tool nobody checked."""
-    names = _live_tool_names()
+    out. A tool missing from that list is a tool nobody checked, and a tool
+    the OpenAI endpoint does not serve must not appear in it."""
+    from odoo_assistant.remote.app import OPENAI_EXCLUDED_TOOLS
+
+    names = [n for n in _live_tool_names() if n not in OPENAI_EXCLUDED_TOOLS]
     text = _guide_text(SUBMIT_OPENAI_PATH)
 
     missing = [name for name in names if f"`{name}`" not in text]
     assert not missing, f"{SUBMIT_OPENAI_PATH} never names: {missing}"
+
+    snapshot_lines = [line for line in text.splitlines() if f"{len(names)} tools" in line]
+    assert snapshot_lines, f"{SUBMIT_OPENAI_PATH} has no line stating {len(names)} tools"
+    listed_excluded = [
+        name for name in sorted(OPENAI_EXCLUDED_TOOLS) for line in snapshot_lines if f"`{name}`" in line
+    ]
+    assert not listed_excluded, f"{SUBMIT_OPENAI_PATH} lists tools the OpenAI endpoint does not serve: {listed_excluded}"

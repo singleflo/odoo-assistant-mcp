@@ -426,6 +426,93 @@ def test_full_oauth_flow_then_initialize_and_twenty_two_tools(tmp_path,
         "base": ODOO_A, "db": DB, "user": "", "key": API_KEY}]
 
 
+# ------------------------------------------------------- the /openai/mcp endpoint
+_INIT_PARAMS = {"protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"}}
+
+
+def _bearer(token):
+    return _AUTH_HEADERS | {"Authorization": f"Bearer {token}"}
+
+
+def test_no_bearer_on_openai_mcp_is_a_401_naming_its_own_metadata(tmp_path):
+    with make_client(tmp_path) as client:
+        r = client.post("/openai/mcp", json=_rpc_body("initialize", {}),
+                        headers=_AUTH_HEADERS)
+    assert r.status_code == 401
+    assert "resource_metadata=" in r.headers["www-authenticate"]
+    assert ("oauth-protected-resource/openai/mcp"
+            in r.headers["www-authenticate"])
+
+
+def test_openai_protected_resource_metadata_names_its_own_resource(tmp_path):
+    with make_client(tmp_path) as client:
+        r = client.get("/.well-known/oauth-protected-resource/openai/mcp")
+        main = client.get("/.well-known/oauth-protected-resource/mcp")
+    assert r.status_code == 200
+    doc = r.json()
+    assert doc["resource"].rstrip("/") == f"{PUBLIC_URL}/openai/mcp"
+    assert doc["authorization_servers"] == main.json()["authorization_servers"]
+    assert doc["scopes_supported"] == main.json()["scopes_supported"] == ["odoo"]
+
+
+def test_openai_endpoint_lists_every_tool_but_run_action_on_the_same_token(
+        tmp_path, consent_connect):
+    """Given one OAuth token, When both endpoints list their tools, Then
+    /openai/mcp serves the other 21 and /mcp still serves all 22."""
+    with make_client(tmp_path) as client:
+        token = _full_token(client, odoo_url=ODOO_A)
+
+        init = client.post("/openai/mcp", headers=_bearer(token),
+                           json=_rpc_body("initialize", _INIT_PARAMS))
+        assert init.status_code == 200, init.text
+        result = _rpc_result(init)["result"]
+        assert result["instructions"] == remote_app.OPENAI_INSTRUCTIONS
+        assert result["serverInfo"]["name"] == "odoo-assistant"
+
+        listed = client.post("/openai/mcp", headers=_bearer(token),
+                             json=_rpc_body("tools/list", {}, id=2))
+        assert listed.status_code == 200, listed.text
+        openai_names = {t["name"]
+                        for t in _rpc_result(listed)["result"]["tools"]}
+
+        main_init = client.post("/mcp", headers=_bearer(token),
+                                json=_rpc_body("initialize", _INIT_PARAMS))
+        assert (_rpc_result(main_init)["result"]["instructions"]
+                == remote_app.INSTRUCTIONS)
+        main_listed = client.post("/mcp", headers=_bearer(token),
+                                  json=_rpc_body("tools/list", {}, id=3))
+        main_names = {t["name"]
+                      for t in _rpc_result(main_listed)["result"]["tools"]}
+
+    assert len(openai_names) == 21
+    assert "run_action" not in openai_names
+    assert openai_names == main_names - remote_app.OPENAI_EXCLUDED_TOOLS
+    assert len(main_names) == 22
+    assert "run_action" in main_names
+
+
+def test_run_action_on_the_openai_endpoint_is_unknown_and_never_reaches_odoo(
+        tmp_path, consent_connect, monkeypatch):
+    reached = []
+    monkeypatch.setattr(tenant_module, "connect",
+                        lambda **kw: reached.append(kw))
+    with make_client(tmp_path) as client:
+        token = _full_token(client, odoo_url=ODOO_A)
+        answered = client.post("/openai/mcp", headers=_bearer(token),
+                               json=_rpc_body("tools/call", {
+                                   "name": "run_action",
+                                   "arguments": {
+                                       "model": "sale.order",
+                                       "method": "action_confirm",
+                                       "record_ids": [1]}}, id=4))
+    assert answered.status_code == 200, answered.text
+    payload = _rpc_result(answered)
+    failed = "error" in payload or payload["result"].get("isError") is True
+    assert failed, payload
+    assert reached == []
+
+
 # ------------------------------------------------------------------- (5)
 def test_each_token_reaches_only_its_own_tenants_odoo(
         tmp_path, consent_connect, tenant_odoos):

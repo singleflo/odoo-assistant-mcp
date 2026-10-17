@@ -299,6 +299,12 @@ consent page, and the chat you already use reaches your Odoo. The local
 configuration of every other section keeps working exactly as written; the two
 ways differ only in where the server runs.
 
+The ChatGPT Plugin Directory listing connects to
+`https://odoomcp.singleflo.com/openai/mcp` instead: the same server, sign-in and
+policy, with every tool except `run_action`, which OpenAI does not admit because
+it runs any workflow method. Claude.ai, Codex and ChatGPT developer mode keep
+using `/mcp` with all 22.
+
 The consent page asks for your Odoo URL, your API key, and one choice: **read**
 lets the agent look at your data, **standard** lets it also create records,
 run workflows and schedule activities. Deletion is never available through the

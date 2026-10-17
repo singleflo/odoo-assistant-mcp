@@ -102,6 +102,24 @@ INSTRUCTIONS = (
     "the user to paste an API key or a password into the conversation."
 )
 
+# The second endpoint, for the ChatGPT Plugin Directory listing. It serves the
+# same tools minus the ones named here: `run_action` runs any model's method,
+# which that review rejects as a generic executor. Same OAuth server, same
+# tenants; a token minted for either endpoint works on both.
+OPENAI_MCP_PATH = "/openai/mcp"
+OPENAI_EXCLUDED_TOOLS = frozenset({"run_action"})
+OPENAI_INSTRUCTIONS = (
+    "Works on the records of the Odoo instance the user connected when "
+    "signing in, with that user's own Odoo permissions. Read tools search, "
+    "count and summarise records. Write tools create and update records, "
+    "post notes, schedule activities and send Discuss messages, and only "
+    "when the user chose standard access at sign-in. Deleting, cancelling, "
+    "archiving and mass mailing are always refused. Confirm with the user "
+    "before a write that changes or sends something. The Odoo address and "
+    "API key are entered on the sign-in page: never ask the user to paste an "
+    "API key or a password into the conversation."
+)
+
 # Refused before anything else starts: one of these in the environment turns
 # the multi-tenant server into a quiet proxy onto one Odoo database.
 _TENANT_ENV_VARS = ("ODOO_BASE_URL", "ODOO_API_KEY", "ODOO_DB", "ODOO_USER")
@@ -514,28 +532,23 @@ async def _sweep_forever(store: Store) -> None:
                 SWEEP_SECONDS)
 
 
-def build_app(settings: RemoteSettings) -> Starlette:
-    """The complete hosted server: MCP at /mcp plus the consent, files and
-    pages routes, with every request bound to its tenant."""
-    _refuse_shared_odoo_env()
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    # One data root everywhere: pin the process-wide override once at
-    # startup so files, references, profiles and per-tenant scratch all
-    # resolve settings.data_dir, not a captured copy that can go stale.
-    paths.set_data_dir_override(settings.data_dir)
-    store = Store(settings.data_dir / "remote.db", settings.secret_key)
-    store.init()
-    provider = OdooAssistantAuthProvider(store, settings.public_url)
-
+def _build_mcp_server(settings: RemoteSettings,
+                      provider: OdooAssistantAuthProvider,
+                      store: Store, *, instructions: str,
+                      resource_path: str) -> MCPServer:
+    """One MCP server with every tool and resource registered. Both endpoints
+    share the auth provider, the scope and the tenant binding; they differ in
+    instructions and in the resource URL the token is meant for."""
     mcp = MCPServer(
         "odoo-assistant",
         version=_VERSION,
-        instructions=INSTRUCTIONS,
+        instructions=instructions,
         website_url=REPO_URL,
         auth_server_provider=provider,
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(settings.public_url),
-            resource_server_url=AnyHttpUrl(f"{settings.public_url}/mcp"),
+            resource_server_url=AnyHttpUrl(
+                f"{settings.public_url}{resource_path}"),
             required_scopes=["odoo"],
             client_registration_options=ClientRegistrationOptions(
                 enabled=True, valid_scopes=["odoo"], default_scopes=["odoo"]),
@@ -549,6 +562,36 @@ def build_app(settings: RemoteSettings) -> Starlette:
     tools_discuss.register(mcp)
     tools_evolution.register(mcp)
     resources.register(mcp)
+    return mcp
+
+
+def build_app(settings: RemoteSettings) -> Starlette:
+    """The complete hosted server: MCP at /mcp (every tool) and at
+    /openai/mcp (every tool except those in OPENAI_EXCLUDED_TOOLS), plus the
+    consent, files and pages routes, with every request bound to its tenant.
+
+    The /openai/mcp endpoint is a second MCPServer whose endpoint and
+    protected-resource routes are grafted onto the main app. Its own auth
+    routes are dropped: the main app already serves /authorize, /token,
+    /register and /revoke, and its bearer middleware authenticates both
+    endpoints."""
+    _refuse_shared_odoo_env()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    # One data root everywhere: pin the process-wide override once at
+    # startup so files, references, profiles and per-tenant scratch all
+    # resolve settings.data_dir, not a captured copy that can go stale.
+    paths.set_data_dir_override(settings.data_dir)
+    store = Store(settings.data_dir / "remote.db", settings.secret_key)
+    store.init()
+    provider = OdooAssistantAuthProvider(store, settings.public_url)
+
+    mcp = _build_mcp_server(settings, provider, store,
+                            instructions=INSTRUCTIONS, resource_path="/mcp")
+    openai_mcp = _build_mcp_server(
+        settings, provider, store, instructions=OPENAI_INSTRUCTIONS,
+        resource_path=OPENAI_MCP_PATH)
+    for excluded in OPENAI_EXCLUDED_TOOLS:
+        openai_mcp.remove_tool(excluded)
 
     mcp.custom_route("/consent", methods=["GET"])(consent.consent_form)
     mcp.custom_route("/consent", methods=["POST"])(consent.consent_submit)
@@ -586,19 +629,35 @@ def build_app(settings: RemoteSettings) -> Starlette:
             _page_handler(name, settings))
 
     host = urlsplit(settings.public_url).hostname or "localhost"
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[host, f"{host}:*"],
+        allowed_origins=[
+            settings.public_url, "https://claude.ai", "https://chatgpt.com"],
+    )
     app = mcp.streamable_http_app(
         streamable_http_path="/mcp",
         stateless_http=True,  # mandatory: a stateful session pins one tenant
         host=settings.host,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[host, f"{host}:*"],
-            allowed_origins=[
-                settings.public_url, "https://claude.ai", "https://chatgpt.com"],
-        ),
+        transport_security=transport_security,
     )
+    openai_app = openai_mcp.streamable_http_app(
+        streamable_http_path=OPENAI_MCP_PATH,
+        stateless_http=True,
+        host=settings.host,
+        transport_security=transport_security,
+    )
+    # Only the endpoint and its protected-resource metadata cross over; the
+    # second app's auth routes would duplicate the main app's.
+    app.router.routes.extend(
+        route for route in openai_app.router.routes
+        if getattr(route, "path", "") == OPENAI_MCP_PATH
+        or getattr(route, "path", "").startswith(
+            "/.well-known/oauth-protected-resource"))
     app.add_middleware(SecurityHeaders)
     app.state.session_manager = mcp._lowlevel_server._session_manager
+    openai_session_manager = openai_mcp.session_manager
+    app.state.openai_session_manager = openai_session_manager
     # consent.py reads request.app.state.consent_deps; request.app is THIS
     # app (custom routes join it unmounted). Set it on the returned app,
     # after streamable_http_app() has run.
@@ -607,14 +666,16 @@ def build_app(settings: RemoteSettings) -> Starlette:
         allow_private_targets=settings.allow_private_targets,
         publisher=settings.publisher)
 
-    # Wrap, not replace: the session manager only starts through the
-    # lifespan the SDK app already installed.
+    # Wrap, not replace: the session managers only start through the
+    # lifespan the SDK app already installed (main) or the one we enter
+    # here (the second app's, which is otherwise never run).
     session_manager_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         _sweep_once(store)
-        async with session_manager_lifespan(app):
+        async with (session_manager_lifespan(app),
+                    openai_session_manager.run()):
             # anyio waits for children on a normal exit instead of
             # cancelling them, so the sweep must be cancelled explicitly or
             # the shutdown would hang on the sleeping task.

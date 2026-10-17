@@ -66,10 +66,10 @@ Work on your own Odoo records
 
 ### Long description
 
-One text for both stores (Claude caps at 2,000 characters, OpenAI at 4,000 —
-the shorter limit wins). Written for the person who installs the plugin:
-OpenAI's metadata check rejected an earlier, tool-by-tool version with
-"Explain what users can do with the plugin."
+The Claude listing's description (Claude caps it at 2,000 characters). OpenAI
+gets the variant below it, without workflow steps. Written for the person who
+installs the plugin: OpenAI's metadata check rejected an earlier, tool-by-tool
+version with "Explain what users can do with the plugin."
 
 ```text
 Singleflo for Odoo lets you work with your company's Odoo data by asking in plain language. Connect your own Odoo instance once, then look things up, update records and keep your team informed without switching to Odoo.
@@ -90,6 +90,28 @@ Works with Odoo 14 to 19, whether self-hosted, on Odoo.sh or on Odoo Online. Ope
 Singleflo for Odoo is an independent project and is not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.
 ```
 
+### OpenAI long description
+
+OpenAI only (4,000 characters max). It differs from the Claude text because the ChatGPT endpoint, `/openai/mcp`, omits `run_action`: OpenAI requires every operation to be its own reviewed tool, so the workflow-step bullet is dropped and the standard-access wording no longer lists confirming. The Claude listing keeps the full text above.
+
+```text
+Singleflo for Odoo lets you work with your company's Odoo data by asking in plain language. Connect your own Odoo instance once, then look things up, update records and keep your team informed without switching to Odoo.
+
+What you can do:
+- Find and review records: look up customers, quotations, sales orders, invoices, tasks or any other record, and see totals by stage, status or month.
+- Get an overview of your Odoo: which apps are installed, which companies are set up and how much data each area holds.
+- Create and update records: add contacts, fill in fields and correct values. Before creating a record, the assistant checks what Odoo requires, and it reuses an existing match instead of creating a duplicate.
+- Keep your team informed: post notes on a record, schedule activities for colleagues, and send direct or channel messages in Odoo Discuss.
+- Work with documents: download the files attached to a record and generate PDF reports such as quotations and invoices.
+
+Safe by design:
+You connect with an Odoo API key, never a password, and the assistant can only do what your own Odoo user is allowed to do. When you connect, you choose read-only access or standard access, which also allows creating, updating and messaging. Deleting records is never possible, and cancelling, archiving and mass mailing are blocked. When a request is refused, the assistant tells you why and what would allow it.
+
+Works with Odoo 14 to 19, whether self-hosted, on Odoo.sh or on Odoo Online. Open source under the MIT license, published by Persevida SL.
+
+Singleflo for Odoo is an independent project and is not affiliated with, endorsed by or sponsored by Odoo S.A. Odoo is a trademark of Odoo S.A.
+```
+
 ### Capabilities
 
 OpenAI only, shown on the listing: up to 20 labels of at most 120 characters,
@@ -99,7 +121,6 @@ one per line below. Carried by the OpenAI package as `capabilities`.
 Search and review records
 Summarize totals by stage, status or month
 Create and update records
-Run workflow steps
 Post notes and schedule activities
 Send messages in Odoo Discuss
 Download documents and generate PDFs
@@ -179,11 +200,11 @@ worldwide
 Resubmission after the first review.
 
 ```text
-Version 0.3.12 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
+Version 0.3.13 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
 
-Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-two tools read records, create and update them, run workflow actions, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
+Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty-one tools read records, create and update them, notify colleagues on the record chatter and in Discuss, download documents and render PDFs, and explore the instance's module structure.
 
-Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; explore_module is now declared destructive, because regenerating a reference replaces the previous one; run_action's description now states its side effects, asks for the user's confirmation and names what the write policy refuses; the server instructions describe the plugin's scope in plain terms and tell the model never to ask for an API key or password in the conversation; and send_direct_message, send_channel_message and notify_user now preview the message and send it only after the user approves, through a single-use token bound to the exact previewed message.
+Server changes since 0.3.6: every tool carries its title inside its annotations; a user without administrator rights can take the first call; explore_module is now declared destructive, because regenerating a reference replaces the previous one; the ChatGPT endpoint, https://odoomcp.singleflo.com/openai/mcp, serves 21 tools: run_action, which ran any workflow method, is left out so that every operation is a separately reviewed tool; the server instructions describe the plugin's scope in plain terms and tell the model never to ask for an API key or password in the conversation; and send_direct_message, send_channel_message and notify_user now preview the message and send it only after the user approves, through a single-use token bound to the exact previewed message.
 
 Every write passes a method-name gate owned by the instance operator before it reaches Odoo: deletion is refused by default, and a connection can be run read-only. Authentication is by Odoo API key over OAuth 2.1 with dynamic client registration and PKCE; the hosted server stores per-tenant Odoo credentials and session tokens only, described in the privacy policy.
 ```
@@ -194,7 +215,9 @@ OpenAI takes the listing as a ZIP, rendered from this dossier by
 `uv run python scripts/build_openai_package.py` into `docs/listing/openai/`
 and zipped to `docs/listing/singleflo-for-odoo.zip` (git-ignored). The
 package holds the Codex-format manifest `.codex-plugin/plugin.json`, the MCP
-declaration `.mcp.json` pointing at `https://odoomcp.singleflo.com/mcp`, and the
+declaration `.mcp.json` pointing at `https://odoomcp.singleflo.com/openai/mcp`,
+the endpoint without `run_action` (OpenAI requires every operation to be its
+own reviewed tool, so the generic workflow executor stays on `/mcp` only), and the
 two icons under `assets/`. The manifest carries the listing copy above, the
 five positive and three negative test cases below, the demo video and the
 release notes; `tests/test_listing_copy.py` fails when the committed files
@@ -209,8 +232,9 @@ them in the portal under Review information → Review details.
 
 ## Tool annotations
 
-OpenAI's portal asks for `readOnlyHint`, `destructiveHint` and
-`openWorldHint` per tool, with a justification; Claude's portal checks
+OpenAI's portal reads explicit `readOnlyHint`, `destructiveHint` and
+`openWorldHint` values per tool (justifications are no longer asked for; the
+`Why` column is what an appeal would cite); Claude's portal checks
 `readOnlyHint`/`destructiveHint` against the wire. The values below were
 dumped from the running server (`list_tools()`), not written by hand — the
 test in `tests/test_listing_copy.py` compares this table against the live

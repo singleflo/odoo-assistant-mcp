@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.13] - 2026-10-17
 
 ### Added
+- **A second hosted endpoint for the ChatGPT Plugin Directory: `/openai/mcp`.** OpenAI's review held `run_action` under a rule it states outright: every model-callable operation must be its own tool, and a generic executor that picks any method is not admitted. `run_action` runs any workflow method of any model, which is what makes it useful on an instance full of in-house modules — so it stays, on `/mcp`, for the Claude directory, Codex, ChatGPT developer mode and the local install. `https://odoomcp.singleflo.com/openai/mcp` serves the same server with every tool except `run_action`: same sign-in, same consent page, same tenants, and one token works on both. It publishes its own protected-resource metadata and its own instructions, which no longer mention workflow steps. The OpenAI package, its description, capabilities and release notes, and the OpenAI submission guide now describe that endpoint and its 21 tools.
 - **A one-paste install prompt.** `docs/INSTALL-PROMPT.md` holds a single message, in English, Italian, Spanish and Czech, that a person pastes into Hermes, Claude Code or any other agent to have it install the server; the README quickstart carries the English one.
 
 ### Changed

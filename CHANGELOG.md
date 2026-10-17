@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.14] - 2026-10-17
+
+### Changed
+- **`/openai/mcp` leaves out `explore_module` too.** The first scan of the new endpoint flagged it under the same rule as `run_action`: its `action` argument chooses between two operations — generating a reference or ranking modules — inside one tool. On the hosted server the tool also gave the model nothing to read, since a generated reference is written to the tenant's directory and is not served back, so the read tools (`describe_model`, `required_fields`, `instance_overview`) already cover what it offered there. The endpoint now serves 20 tools; `/mcp` and the local install keep `explore_module` and `run_action` unchanged.
+
 ## [0.3.13] - 2026-10-17
 
 ### Added

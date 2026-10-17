@@ -485,8 +485,9 @@ def test_openai_endpoint_lists_every_tool_but_run_action_on_the_same_token(
         main_names = {t["name"]
                       for t in _rpc_result(main_listed)["result"]["tools"]}
 
-    assert len(openai_names) == 21
+    assert len(openai_names) == 20
     assert "run_action" not in openai_names
+    assert "explore_module" not in openai_names
     assert openai_names == main_names - remote_app.OPENAI_EXCLUDED_TOOLS
     assert len(main_names) == 22
     assert "run_action" in main_names

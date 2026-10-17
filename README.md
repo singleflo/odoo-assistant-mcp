@@ -301,8 +301,9 @@ ways differ only in where the server runs.
 
 The ChatGPT Plugin Directory listing connects to
 `https://odoomcp.singleflo.com/openai/mcp` instead: the same server, sign-in and
-policy, with every tool except `run_action`, which OpenAI does not admit because
-it runs any workflow method. Claude.ai, Codex and ChatGPT developer mode keep
+policy, with every tool except `run_action` and `explore_module`, which OpenAI
+does not admit: the first runs any workflow method, the second picks between two
+operations with one argument. Claude.ai, Codex and ChatGPT developer mode keep
 using `/mcp` with all 22.
 
 The consent page asks for your Odoo URL, your API key, and one choice: **read**

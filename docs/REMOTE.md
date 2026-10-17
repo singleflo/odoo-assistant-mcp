@@ -2,7 +2,7 @@
 
 `odoo-assistant-remote` is the same package's second front door: one process
 serving the same 22 tools over streamable HTTP at `/mcp`, and the same tools
-minus `run_action` at `/openai/mcp` for the ChatGPT Plugin Directory, with its own OAuth
+minus `run_action` and `explore_module` at `/openai/mcp` for the ChatGPT Plugin Directory, with its own OAuth
 2.1 authorization server in front of them. Instead of reading one instance's
 credentials from the environment, every request is bound to the person signed
 in — a tenant — whose Odoo URL and API key they entered on the consent page.

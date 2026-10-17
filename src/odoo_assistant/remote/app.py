@@ -103,11 +103,14 @@ INSTRUCTIONS = (
 )
 
 # The second endpoint, for the ChatGPT Plugin Directory listing. It serves the
-# same tools minus the ones named here: `run_action` runs any model's method,
-# which that review rejects as a generic executor. Same OAuth server, same
-# tenants; a token minted for either endpoint works on both.
+# same tools minus the ones named here, which that review rejects as
+# operation selectors: `run_action` runs any model's method, and
+# `explore_module` picks between two operations with its `action` argument —
+# and on this hosted server its generated reference is a file the model never
+# reads back, so it offers nothing the read tools do not. Same OAuth server,
+# same tenants; a token minted for either endpoint works on both.
 OPENAI_MCP_PATH = "/openai/mcp"
-OPENAI_EXCLUDED_TOOLS = frozenset({"run_action"})
+OPENAI_EXCLUDED_TOOLS = frozenset({"run_action", "explore_module"})
 OPENAI_INSTRUCTIONS = (
     "Works on the records of the Odoo instance the user connected when "
     "signing in, with that user's own Odoo permissions. Read tools search, "

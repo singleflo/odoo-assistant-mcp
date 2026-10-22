@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Invisible preheader padding no longer fills `read_long_field` windows.** Mail templates follow the hidden preheader with hundreds of characters that render as nothing, so the inbox preview shows no body text. Measured on 282 live email bodies: 173 carried them, 25,758 U+034F and 25,002 U+200B in all, about 400 characters of every 4,000-character window. The HTML-to-text conversion now drops U+034F, U+200B, U+2060, U+FEFF and the soft hyphen; the joiners that shape emoji and scripts (U+200D, U+FE0F, U+200C) stay. Two of the bodies that prompted the 0.3.14 fix lost 560 characters each.
+
 ## [0.3.14] - 2026-10-22
 
 ### Fixed

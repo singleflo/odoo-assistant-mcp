@@ -129,10 +129,18 @@ class _HtmlText(HTMLParser):
         self._parts.append(data if self._pre else re.sub(r"\s+", " ", data))
 
     def text(self) -> str:
-        raw = "".join(self._parts).replace("\xa0", " ")
+        raw = "".join(self._parts).replace("\xa0", " ").translate(_INVISIBLE)
         lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip()
                  for line in raw.split("\n")]
         return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+# Characters that render as nothing. Mail templates repeat them by the
+# hundred after the hidden preheader so the inbox preview shows no body text:
+# measured on 282 live email bodies, 173 carried them, 25,758 U+034F and
+# 25,002 U+200B in all — about 400 characters of every window. Joiners that
+# shape emoji (U+200D, U+FE0F) and scripts (U+200C) are left alone.
+_INVISIBLE = dict.fromkeys(map(ord, "\u034f\u200b\u2060\ufeff\u00ad"))
 
 
 def html_to_text(value: str) -> str:

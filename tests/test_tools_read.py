@@ -742,3 +742,22 @@ def test_source_line_wrapping_is_not_mistaken_for_the_senders_line_breaks(
         "These contents are confidential and meant for you.",
         "",
         "keep", "this", "layout"]
+
+
+def test_the_invisible_preheader_padding_of_a_mail_template_is_dropped(
+        mock_odoo):
+    """Templates pad the hidden preheader with hundreds of characters that
+    render as nothing (measured: 173 of 282 live emails), which would spend a
+    tenth of every window. Emoji joiners stay: they are part of what is shown."""
+    pad = "\u034f \u200b" * 150
+    _field_type(mock_odoo, "mail.message", "body", "html")
+    mock_odoo.set_results("mail.message", [{"id": 7, "body": (
+        f"<div>{pad}</div><p>Soft\u00adhyphen and \ufeffBOM \u2060gone.</p>"
+        "<p>Team \U0001F468\u200d\U0001F4BB \u2764\ufe0f</p>")}], method="read")
+
+    out = tools_read.read_long_field("mail.message", 7, "body")
+
+    assert out.split("\n", 1)[1].splitlines() == [
+        "Softhyphen and BOM gone.",
+        "",
+        "Team \U0001F468\u200d\U0001F4BB \u2764\ufe0f"]

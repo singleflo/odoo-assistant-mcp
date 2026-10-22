@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.14] - 2026-10-17
+## [0.3.14] - 2026-10-22
+
+### Fixed
+- **An HTML field is read as text.** Email bodies stored by Odoo carry the sender's markup: measured on live `mail.message` records, 60,300 characters of HTML — 666 inline `style` attributes — held 5,984 characters of text. `read_record` and `search_read` cut such a value at the 5,000-character cap before a single sentence was reached, and `read_long_field` walked it as markup, fifteen windows of CSS for two of content. `read_long_field` now asks the field's type and, for an `html` field, returns its plain text: styles, scripts and the document head are dropped, blocks and list items keep their own lines, a source line wrap becomes a space, a link shows its target unless the text already does or the target is a several-hundred-character tracking URL, and offsets count characters of that text. The three bodies that prompted it read in one, two and two windows. A `text` field is still returned verbatim, markup included, because there it is the user's text. Reading a thread is now two steps: `search_read` on `mail.message` with `id, date, author_id, subject, preview` for the list, then `read_long_field` on one message's `body`.
 
 ### Changed
 - **`/openai/mcp` leaves out `explore_module` too.** The first scan of the new endpoint flagged it under the same rule as `run_action`: its `action` argument chooses between two operations — generating a reference or ranking modules — inside one tool. On the hosted server the tool also gave the model nothing to read, since a generated reference is written to the tenant's directory and is not served back, so the read tools (`describe_model`, `required_fields`, `instance_overview`) already cover what it offered there. The endpoint now serves 20 tools; `/mcp` and the local install keep `explore_module` and `run_action` unchanged.

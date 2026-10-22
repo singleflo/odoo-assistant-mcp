@@ -25,7 +25,9 @@ nothing, which keeps every tool callable as a plain function in tests.
 import contextlib
 import io
 import json
+import re
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 from mcp.server import MCPServer
@@ -59,6 +61,87 @@ DEFAULT_LIMIT = 80
 # always fits `MAX_RESULT_CHARS`, so walking a field never hits the cap that
 # made the field unreadable in the first place.
 LONG_FIELD_WINDOW = 4000
+
+# A link target longer than this is dropped from the text: Outlook rewrites
+# every link into a "safelinks" URL of several hundred characters, and a body
+# full of them would spend the window on tracking parameters.
+MAX_SHOWN_HREF = 200
+
+
+class _HtmlText(HTMLParser):
+    """Plain text of an Odoo HTML value, the way a person reads it.
+
+    Measured on live email bodies: 60,300 characters of HTML, 666 inline
+    `style` attributes, held 5,984 characters of text. Walking the HTML in
+    4,000-character windows spent fifteen calls on CSS; the text takes two.
+    Styles, scripts and the document head are dropped, block elements start
+    their own line, list items keep a "- " marker, and a link whose target the
+    text does not already show gets it in parentheses.
+    """
+
+    _BLOCK = frozenset({
+        "address", "article", "blockquote", "br", "dd", "div", "dl", "dt",
+        "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li",
+        "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul"})
+    _HIDDEN = frozenset({"head", "script", "style", "title"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._hidden = 0
+        self._pre = 0
+        self._links: list[tuple[str, int]] = []
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in self._HIDDEN:
+            self._hidden += 1
+            return
+        if tag == "pre":
+            self._pre += 1
+        if tag == "li":
+            self._parts.append("\n- ")
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+        if tag == "a":
+            self._links.append((dict(attrs).get("href") or "", len(self._parts)))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._HIDDEN:
+            self._hidden = max(0, self._hidden - 1)
+            return
+        if tag == "a" and self._links:
+            href, start = self._links.pop()
+            shown = "".join(self._parts[start:])
+            bare = href.removeprefix("mailto:")
+            if (href.startswith(("http://", "https://", "mailto:"))
+                    and bare not in shown and len(href) <= MAX_SHOWN_HREF):
+                self._parts.append(f" ({bare})")
+        if tag == "pre":
+            self._pre = max(0, self._pre - 1)
+        if tag in self._BLOCK and tag not in ("br", "li"):
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._hidden:
+            return
+        # Outside <pre>, a line break in the source is just a space: the mail
+        # client wrapped its HTML at 80 columns, not the sender's sentences.
+        self._parts.append(data if self._pre else re.sub(r"\s+", " ", data))
+
+    def text(self) -> str:
+        raw = "".join(self._parts).replace("\xa0", " ")
+        lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip()
+                 for line in raw.split("\n")]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def html_to_text(value: str) -> str:
+    """The readable text of an Odoo HTML field value."""
+    parser = _HtmlText()
+    parser.feed(value)
+    parser.close()
+    return parser.text()
+
 
 # The fields `Writer.state_of` reads, plus the name every model carries. Only
 # those a model actually has are asked for — see `_default_fields`.
@@ -230,8 +313,11 @@ def read_long_field(
 
     This reads that field alone and returns a 4000-character window of it,
     naming the total length and the offset of the next window, so the value can
-    be walked to the end one call at a time. For anything else — several
-    fields, several records — `read_record` and `search_read` stay the tools.
+    be walked to the end one call at a time. An HTML field — an email `body`,
+    a note — comes back as its plain text: tags, styles and scripts are
+    dropped, paragraphs and list items keep their own lines, and offsets count
+    characters of that text. For anything else — several fields, several
+    records — `read_record` and `search_read` stay the tools.
 
     Args:
         model: Odoo model, e.g. "crm.lead".
@@ -242,6 +328,7 @@ def read_long_field(
     _gate_or_raise(model, "read", [record_id])
     try:
         odoo = server._get_odoo()
+        spec = odoo.fields_get(model, [field], ["type"])
         rows = odoo.call(model, "read", [[record_id], [field]], {})
     except Exception as exc:
         return handle_odoo_exception(exc, phase="before_mutation").deliver()
@@ -259,6 +346,14 @@ def read_long_field(
         return tool_result(f"{model} id={record_id}: {field} is empty.")
 
     text = value if isinstance(value, str) else str(value)
+    field_spec = spec.get(field) if isinstance(spec, dict) else None
+    label = field
+    if isinstance(field_spec, dict) and field_spec.get("type") == "html":
+        text = html_to_text(text)
+        label = f"{field} (HTML, shown as plain text)"
+        if not text:
+            return tool_result(
+                f"{model} id={record_id}: {field} holds HTML markup but no text.")
     total = len(text)
     start = max(0, min(offset, total))
     window = text[start:start + LONG_FIELD_WINDOW]
@@ -267,7 +362,7 @@ def read_long_field(
         f"Next window: offset={end}." if end < total
         else "This is the end of the field.")
     return tool_result(
-        f"{model} id={record_id} {field} — characters {start}-{end} of "
+        f"{model} id={record_id} {label} — characters {start}-{end} of "
         f"{total}. {next_step}\n{window}")
 
 

@@ -556,8 +556,13 @@ def test_the_new_tools_describe_their_parameters_on_the_wire():
 
 
 # -------------------------------------------------------------- read_long_field
+def _field_type(mock_odoo, model, field, kind):
+    mock_odoo.set_results(model, {field: {"type": kind}}, method="fields_get")
+
+
 def test_read_long_field_asks_odoo_for_that_one_field_only(mock_odoo):
     """Given a field name, When walked, Then the read names it and nothing else."""
+    _field_type(mock_odoo, "crm.lead", "description", "text")
     mock_odoo.set_results("crm.lead", [{"id": 759, "description": "x" * 10}],
                           method="read")
 
@@ -569,6 +574,7 @@ def test_read_long_field_asks_odoo_for_that_one_field_only(mock_odoo):
 def test_read_long_field_returns_a_window_and_says_where_to_continue(mock_odoo):
     """Given a value past the window, When read from 0, Then the answer carries
     the window, the total length and the offset the next call needs."""
+    _field_type(mock_odoo, "crm.lead", "description", "text")
     mock_odoo.set_results("crm.lead", [{"id": 759, "description": "ab" * 30_000}],
                           method="read")
 
@@ -586,6 +592,7 @@ def test_read_long_field_returns_a_window_and_says_where_to_continue(mock_odoo):
 def test_read_long_field_walks_to_the_end_and_says_so(mock_odoo):
     """Given an offset near the end, When read, Then the tail comes back and
     the answer states there is no next window."""
+    _field_type(mock_odoo, "crm.lead", "description", "text")
     mock_odoo.set_results("crm.lead", [{"id": 759, "description": "y" * 4500}],
                           method="read")
 
@@ -599,6 +606,7 @@ def test_read_long_field_walks_to_the_end_and_says_so(mock_odoo):
 def test_read_long_field_reports_an_empty_field_as_empty(mock_odoo):
     """Odoo answers False, not "", for an empty text field — say so plainly
     rather than returning a window of nothing."""
+    _field_type(mock_odoo, "crm.lead", "description", "text")
     mock_odoo.set_results("crm.lead", [{"id": 759, "description": False}],
                           method="read")
 
@@ -610,6 +618,7 @@ def test_read_long_field_reports_an_empty_field_as_empty(mock_odoo):
 def test_read_long_field_names_describe_model_when_the_field_is_absent(mock_odoo):
     """A field the model does not have must not read as an empty value: the
     refusal names the tool that lists what the model does have."""
+    mock_odoo.set_results("crm.lead", {}, method="fields_get")
     mock_odoo.set_results("crm.lead", [{"id": 759}], method="read")
 
     with pytest.raises(ToolExecutionError, match="describe_model"):
@@ -621,3 +630,115 @@ def test_read_long_field_refuses_account_move_like_read_record():
     to carry a move_type filter, so it is refused here too."""
     with pytest.raises(ToolExecutionError, match="move_type"):
         tools_read.read_long_field("account.move", 6162, "narration")
+
+
+# An Outlook reply as Odoo stores it: inline styles everywhere, a style block,
+# a quoted earlier message, a list, an entity and a long tracking link.
+OUTLOOK_BODY = (
+    '<div><style>p.MsoNormal{margin:0cm;font-size:11pt}</style>'
+    '<div style="direction:ltr; font-family:Aptos, Arial; font-size:12pt">'
+    '<p class="MsoNormal" style="margin:0px 0 16px 0">Ciao Roberto,</p>'
+    '<p style="margin:0">the order ships on <b>Friday</b>&nbsp;&amp; the '
+    'invoice follows.</p>'
+    '<ul style="margin:0"><li style="color:red">Pallet 1</li>'
+    '<li>Pallet 2</li></ul>'
+    '<p>Tracking: <a href="https://carrier.example/t/42">this link</a>, '
+    'safelink <a href="https://eur01.safelinks.protection.outlook.com/?url='
+    + "x" * 300 + '">here</a>, mail <a href="mailto:ops@example.com">'
+    'ops@example.com</a></p>'
+    '<blockquote style="border-left:1px solid #ccc"><p>Earlier: is it '
+    'ready?</p></blockquote></div></div>')
+
+
+def test_an_html_field_is_walked_as_its_text_not_its_markup(mock_odoo):
+    """Measured on live mail: 60,300 characters of HTML held 5,984 of text, so
+    walking the markup spent fifteen windows on CSS. An HTML field must come
+    back as the text a person reads, with offsets counted in that text."""
+    _field_type(mock_odoo, "mail.message", "body", "html")
+    mock_odoo.set_results("mail.message", [{"id": 64964, "body": OUTLOOK_BODY}],
+                          method="read")
+
+    out = tools_read.read_long_field("mail.message", 64964, "body")
+
+    header, text = out.split("\n", 1)
+    assert "body (HTML, shown as plain text)" in header
+    assert f"of {len(text)}." in header
+    assert "This is the end of the field." in header
+    assert text.splitlines() == [
+        "Ciao Roberto,",
+        "",
+        "the order ships on Friday & the invoice follows.",
+        "",
+        "- Pallet 1",
+        "- Pallet 2",
+        "",
+        "Tracking: this link (https://carrier.example/t/42), safelink here, "
+        "mail ops@example.com",
+        "",
+        "Earlier: is it ready?",
+    ]
+
+
+def test_the_text_windows_of_an_html_field_add_up_to_the_whole_text(mock_odoo):
+    """Walking with the offsets the tool reports must reach every character of
+    the text exactly once — no gap, no overlap, no markup leaking in."""
+    paragraphs = "".join(
+        f'<p style="margin:0;font-family:Calibri">Line {i} of the thread.</p>'
+        for i in range(900))
+    _field_type(mock_odoo, "mail.message", "body", "html")
+    mock_odoo.set_results("mail.message", [{"id": 1, "body": paragraphs}],
+                          method="read")
+
+    walked, offset = [], 0
+    while True:
+        out = tools_read.read_long_field("mail.message", 1, "body", offset=offset)
+        header, window = out.split("\n", 1)
+        walked.append(window)
+        if "This is the end of the field." in header:
+            break
+        offset = int(header.split("Next window: offset=")[1].rstrip("."))
+
+    expected = "\n\n".join(f"Line {i} of the thread." for i in range(900))
+    assert "".join(walked) == expected
+    assert len(walked) == -(-len(expected) // tools_read.LONG_FIELD_WINDOW)
+
+
+def test_a_text_field_that_contains_markup_is_returned_verbatim(mock_odoo):
+    """The conversion follows the field's declared type, not its content: a
+    plain text field that happens to hold "<b>" is the user's text."""
+    _field_type(mock_odoo, "crm.lead", "description", "text")
+    mock_odoo.set_results("crm.lead", [{"id": 759, "description": "use <b> tags"}],
+                          method="read")
+
+    out = tools_read.read_long_field("crm.lead", 759, "description")
+
+    assert out.split("\n", 1)[1] == "use <b> tags"
+
+
+def test_an_html_field_with_no_text_says_so(mock_odoo):
+    """A body that is only an image or empty paragraphs has nothing to walk."""
+    _field_type(mock_odoo, "mail.message", "body", "html")
+    mock_odoo.set_results("mail.message",
+                          [{"id": 5, "body": '<p><img src="x.png"></p><p> </p>'}],
+                          method="read")
+
+    out = tools_read.read_long_field("mail.message", 5, "body")
+
+    assert out == "mail.message id=5: body holds HTML markup but no text."
+
+
+def test_source_line_wrapping_is_not_mistaken_for_the_senders_line_breaks(
+        mock_odoo):
+    """Mail clients wrap their HTML source at a fixed width; a browser renders
+    that break as a space. Only block elements and <pre> make real lines."""
+    _field_type(mock_odoo, "mail.message", "body", "html")
+    mock_odoo.set_results("mail.message", [{"id": 6, "body": (
+        "<p>These contents are\nconfidential and\n   meant for\nyou.</p>"
+        "<pre>keep\nthis\nlayout</pre>")}], method="read")
+
+    out = tools_read.read_long_field("mail.message", 6, "body")
+
+    assert out.split("\n", 1)[1].splitlines() == [
+        "These contents are confidential and meant for you.",
+        "",
+        "keep", "this", "layout"]

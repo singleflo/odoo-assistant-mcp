@@ -200,7 +200,7 @@ worldwide
 Resubmission after the first review.
 
 ```text
-Version 0.3.14 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
+Version 0.3.15 resubmits the plugin first reviewed as version 0.3.6 under the name "Odoo Assistant", which was rejected because the name implied an affiliation with Odoo. It is now named "Singleflo for Odoo": the name leads with the publisher's own brand, the description states that the project is independent of Odoo S.A., and the subtitle no longer mentions MCP.
 
 Singleflo for Odoo works on the user's own Odoo instance, with the user's own API key. Twenty tools read records, create and update them, notify colleagues on the record chatter and in Discuss, and download documents and render PDFs.
 
